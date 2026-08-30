@@ -1776,6 +1776,8 @@ function applyHelpVisibility() {
   document.getElementById("help-phonon").classList.toggle("hidden", !state.phUnlocked);
   document.getElementById("help-annihilation").classList.toggle("hidden", state.annihilations < 1);
   document.getElementById("help-distort").classList.toggle("hidden", state.annihilations < 20);
+  document.getElementById("help-sp-upgrades").classList.toggle("hidden", !hasDistortMilestone(3));
+  document.getElementById("help-blackhole").classList.toggle("hidden", !bhUnlocked());
   document.getElementById("stat-ann-group").classList.toggle("hidden", state.annihilations < 1);
   document.getElementById("subtab-stats-challenge").classList.toggle("hidden", state.annihilations < 20);
 }

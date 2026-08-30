@@ -382,29 +382,81 @@
         </details>
 
         <details class="help-section hidden" id="help-annihilation">
-          <summary>湮灭与奇点 <span class="help-ver">v0.4</span></summary>
+          <summary>湮灭与奇点 <span class="help-ver purple-text">v0.4</span></summary>
           <div class="help-body">
             <p>当温度逼近当前宇宙的极限——<strong>普朗克温度</strong>（初始 1.4168×10³² K，约为宇宙大爆炸后 10⁻⁴³ 秒的温度）——波本身将无法存在。此时你可以<strong>湮灭</strong>一切。</p>
             <p><strong>湮灭重置</strong>：波速、波长、所有升级购买、声子数、发生器等级全部归零。保留：成就、已解锁页面，以及里程碑给予的保留项。</p>
-            <p><strong>奇点 Sp</strong>：湮灭的所得。你获得过的<strong>总奇点</strong>会改写新宇宙的物理常数：</p>
+            <p><strong>奇点 Sp</strong>：湮灭的所得（紫色资源）。你获得过的<strong>总奇点</strong>会改写新宇宙的物理常数：</p>
             <ul>
               <li>波速获取 ×(1+Sp)²</li>
               <li>普朗克常数 ×(1+Sp)^1.5（等价于温度倍率）</li>
               <li>温度上限 = 初始值 ×(1+Sp)^10</li>
             </ul>
             <p>Sp 获取量：在 T &lt; 1e50 K 时随指数线性增长到 10；1e50 ≤ T &lt; 1e100 K 时为 floor(lg(T)/5)（线性增长到 20）；T ≥ 1e100 K 时为 floor(2·T^0.01)。湮灭需要温度超过最初的普朗克温度（1.42e32 K）。</p>
-            <p><strong>湮灭升级</strong>（花 Sp）：如「奇点之前的升级不再消耗资源」（1 Sp）。</p>
             <p><strong>里程碑</strong>（按湮灭次数）：1 次解锁自动化并保留声子解锁；2/3 次湮灭保留单次升级；5 次保留自动化开关且发生器常开；8 次解锁自动升级 3；10 次解锁自动湮灭；20 次解锁「扭曲」。</p>
             <p><strong>自动化</strong>：主要页升级（F ≥ 1e10 Hz）与声子页升级（F ≥ 1e20 Hz）自动购买；后续可自动购买升级 3（可设倍率阈值）与自动湮灭（可设 Sp 阈值）。</p>
           </div>
         </details>
 
         <details class="help-section hidden" id="help-distort">
-          <summary>扭曲 <span class="help-ver darkred-text">v0.4.2.1（测试）</span></summary>
+          <summary>扭曲 <span class="help-ver darkred-text">v0.4.2.1</span></summary>
           <div class="help-body">
-            <p>第 20 次湮灭后解锁。扭曲将带你进入一系列更困难的宇宙，目标是达到该宇宙的普朗克温度——达到目标后湮灭该宇宙即可获得奖励；未达标时点击湮灭按钮会退出该宇宙。</p>
+            <p>第 20 次湮灭后解锁（<span class="darkred-text">暗红色</span>主题）。扭曲将带你进入一系列更困难的宇宙，目标是达到该宇宙的普朗克温度——达到目标后湮灭该宇宙即可获得奖励；未达标时点击湮灭按钮会退出该宇宙。</p>
             <p><strong>扭曲宇宙内的湮灭不获得 Sp</strong>；每湮灭一个扭曲宇宙，奇点获取 ×2。</p>
-            <p class="muted">当前为测试版本：宇宙温度与奖励数值待调整。</p>
+            <p><strong>扭曲宇宙</strong>（8 个）：刚性（无法缩短波长）、膨胀（波长随时间 ×1e20，波速获取指数每秒 -0.1 到 0）、定向（50% 概率波速取反）、冷却（购买后波速获取受指数削弱）、通胀（价格平方、获取 ^0.75）、热寂（热涨落无效、温度除波速获取）、狭窄（只能购买 10 次升级）、简洁（基础获取固定 1、奇点效果平方根、普朗克常数恒 1）。</p>
+            <p><strong>扭曲里程碑</strong>（按已湮灭扭曲宇宙数 DA，暗红色）：</p>
+            <ul>
+              <li><strong>1 DA</strong>：奇点效果指数 ×(1 + log₂(1+DA))（所有奇点加成的指数被放大）。</li>
+              <li><strong>3 DA</strong>：解锁更多奇点升级（SAU 可重复 + 真空衰变 + AU 单次四组）。</li>
+              <li><strong>5 DA</strong>：解锁<strong>黑洞</strong>。</li>
+              <li><strong>8 DA</strong>：打破宇宙的规则（取消温度上限，WIP）。</li>
+            </ul>
+            <p class="muted">统计页有「挑战」子页记录各扭曲宇宙最佳完成时间与所有挑战时间之和。</p>
+          </div>
+        </details>
+
+        <details class="help-section hidden" id="help-sp-upgrades">
+          <summary>奇点升级 <span class="help-ver purple-text">v0.4.2</span></summary>
+          <div class="help-body">
+            <p>3DA 里程碑解锁（<span class="purple-text">紫色</span>主题，位于湮灭页「奇点」子页）。消耗奇点 Sp 购买，永久保留。</p>
+            <p><strong>基础</strong>（spu1，1 Sp）：除升级 3 外奇点之前的升级不再消耗资源。</p>
+            <p><strong>真空衰变</strong>（sau4，可重复，3DA 解锁）：每级使获得的奇点 ×2，价 10^(3+n)。</p>
+            <p><strong>SAU 可重复升级</strong>（3DA 解锁，一行三个）：</p>
+            <ul>
+              <li><strong>象限拓张</strong>（sau1）：声子升级 3 上限 +2/级，价 10^(2+2n)。</li>
+              <li><strong>奇点凝聚</strong>（sau2）：奇点效果指数额外 ×(1+n/10)，价 10^(5n)。</li>
+              <li><strong>紫外灾难</strong>（sau3，原「霍金辐射」）：热涨落效果指数 +0.015/级，价 10^(3+2n)。</li>
+            </ul>
+            <p><strong>AU 单次升级</strong>（3DA 解锁，四组×4，第 4 组 4DA 解锁）：</p>
+            <ul>
+              <li>第 1 组：机械共振（up1 指数加成）、受激跃迁（pg2 免费等级）、光子共振（up2 底数加成）、黑体辐射（波长倒数增强声子）。</li>
+              <li>第 2 组：时序扩张（升级 3 自动化间隔模式）、末日时钟（自动湮灭间隔模式）、声纹记忆（升级 3 不重置升级 2）、量子涟漪（湮灭保留声子）。</li>
+              <li>第 3 组：时间之矢（真实时间倍率）、成就刻印（成就时间倍率 1.1→1.2）、绝对零度（冷却最佳完成时间倍率）、引力扭曲（WIP）。</li>
+              <li>第 4 组：声子湮灭（声子加成奇点获取）+ 三个占位。</li>
+            </ul>
+            <p class="muted">自动化页另有「批量购买上限翻倍」升级（A34 奖励解锁）。</p>
+          </div>
+        </details>
+
+        <details class="help-section hidden" id="help-blackhole">
+          <summary>黑洞 <span class="help-ver black-text">v0.4.3</span></summary>
+          <div class="help-body">
+            <p>5DA 里程碑解锁（<span class="black-text">黑色</span>主题，位于湮灭页「黑洞」子页）。黑洞是一个独立系统，<strong>湮灭不重置黑洞</strong>——质量、虚粒子、升级在宇宙间持续存在。</p>
+            <p><strong>黑洞质量 M</strong>（太阳质量，初始 1）与<strong>虚粒子 VP</strong>（不稳定）。基础效果为 M^0.2，给予游戏时间倍率加成（仅扭曲状态）。</p>
+            <p><strong>三个状态</strong>（手动切换，无冷却；吸积/脉冲用真实时间，不受时间倍率影响）：</p>
+            <ul>
+              <li><strong>吸积</strong>：质量获取 dM/dt = M^0.75·(F/1e200)^0.01（吸积效率可被 SBU1 加成），无时间倍率加成，<strong>虚粒子每秒衰减为 9/10</strong>。</li>
+              <li><strong>扭曲</strong>：给予时间倍率 ×(1 + M^0.2)，无质量变化，无虚粒子。</li>
+              <li><strong>脉冲</strong>：每秒质量 ×0.5（损失一半，到 1 为止），获取 floor(M^0.1) 虚粒子/秒（M=1 时停止）。</li>
+            </ul>
+            <p><strong>三个黑洞升级</strong>（黑色按钮，花 Sp）：</p>
+            <ul>
+              <li><strong>事件视界</strong>（SBU1）：吸积效率 ×2/级，价 1e9·100^(n-1)。</li>
+              <li><strong>引力潮汐</strong>（SBU2）：黑洞效果指数 +0.01/级（即 M^(0.2+0.01·sbu2)），价 1e10·1000^(n-1)。</li>
+              <li><strong>霍金辐射</strong>（SBU3）：虚粒子获取 ×2/级，价 1e11·100^(n-1)。</li>
+            </ul>
+            <p><strong>动画</strong>：canvas 旋转黑洞，半径随 1+lg(M) 增大（初始 0.1 倍页面宽，上限 0.6 倍）。吸积时粒子向内螺旋、扭曲时加速旋转、脉冲时中心变红向外吐粒子。</p>
+            <p class="muted">虚粒子显示为整数。虚粒子的其他用途尚在开发中。</p>
           </div>
         </details>
 
