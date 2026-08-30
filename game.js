@@ -2899,11 +2899,11 @@ function renderFast() {
   } else {
     nwEl.classList.add("hidden");
   }
-  // e100 软上限提示 / 通胀宇宙提示（同一位置）
+  // e100 软上限提示 / 滞涨宇宙提示（同一位置）
   const scNote = document.getElementById("softcap-note");
   if (inDistort("inflation")) {
     scNote.classList.remove("hidden");
-    scNote.textContent = "你处于通胀宇宙，将始终遭受更强的折算";
+    scNote.textContent = "你处于滞涨宇宙，将始终遭受更强的折算";
   } else {
     scNote.classList.toggle("hidden", !softcapped());
     scNote.textContent = "当频率超过 e100 Hz 时，升级的价格和效果将被软上限";
