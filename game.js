@@ -133,7 +133,7 @@ const DISTORT_UNIVERSES = [
   },
   {
     id: "inflation", name: "滞涨",
-    desc: "价格折算从 10 Hz 开始，并且变得更强，声子升级价格平方，频率获取变为原来的 ^0.4；「奇点之前的升级不再消耗资源」在此失效",
+    desc: "前奇点资源不消耗被禁用，所有升级价格折算从10Hz开始并且变得更严重，声子升级价格平方，波速获取变为^0.3",
     tp: Infinity, // 测试值，待调整
   },
   {
@@ -604,8 +604,8 @@ function gainRate() {
   if (inDistort("directed") && Math.random() < 0.5) g = -g;
   // 冷却宇宙：波速获取量变为 A^k（k 随购买后时间线性 0→1）
   if (inDistort("cooldown")) g = Math.pow(Math.max(0, g), cooldownExp());
-  // 滞涨宇宙（原通胀）：频率获取变为原来的 0.4 次方
-  if (inDistort("inflation")) g = Math.pow(Math.max(0, g), 0.4);
+  // 滞涨宇宙（原通胀）：波速获取变为原来的 0.3 次方
+  if (inDistort("inflation")) g = Math.pow(Math.max(0, g), 0.3);
   // 膨胀宇宙：波速获取指数随时间下降（每秒 -0.1，到 0 为止）
   if (inDistort("expand")) g = Math.pow(Math.max(0, g), distortGainExp());
   return g;
@@ -646,7 +646,7 @@ function gainRateLog() {
     log *= cooldownExp();
   }
   // 通胀：^0.75 → log ×= 0.75（v0.4.3：由平方根削弱）
-  if (inDistort("inflation")) log *= 0.4;
+  if (inDistort("inflation")) log *= 0.3;
   // 膨胀：波速获取指数随时间下降 → log ×= distortGainExp（到 0 后 gain=0）
   if (inDistort("expand")) {
     const ge = distortGainExp();
