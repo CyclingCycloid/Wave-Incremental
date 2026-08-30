@@ -651,9 +651,12 @@ function gainRateLog() {
   }
   return { log: clampLog(log), sign };
 }
-// 时间速率：每个普通成就给予 ×1.1 的游戏时间速率加成；黑洞扭曲状态给予 ×(1+bhEffect)
+// 时间速率：每个普通成就给予 ×1.1 的游戏时间速率加成；黑洞扭曲状态给予 ×(1+bhEffect)；
+// A41 特殊奖励：总时间倍率再 ^1.1
 function timeRate() {
-  return Math.pow(achTimeBase(), state.ach.normal.length) * timeArrowMult() * absZeroMult() * bhTimeMult();
+  let tr = Math.pow(achTimeBase(), state.ach.normal.length) * timeArrowMult() * absZeroMult() * bhTimeMult();
+  if (state.ach.normal.includes("A41")) tr = Math.pow(tr, 1.1);
+  return tr;
 }
 // A25 奖励：每次重置后初始波速 100 m/s（否则 10）
 function resetU() { return state.ach.normal.includes("A25") ? 100 : 10; }
@@ -3002,7 +3005,7 @@ const NORMAL_ACH = [
   { id: "A34", name: "秩序", desc: "湮灭一个被扭曲的宇宙", star: true, reward: "解锁批量购买", check: () => state.distortDone.length >= 1 },
   { id: "A35", name: "刻写", desc: "购买第一个奇点升级", star: true, reward: "奇点升级解锁", check: () => (state.sau1 + state.sau2 + state.sau3 > 0) || Object.keys(state.au).length > 0 },
   // 第 4 行 (A41-A45) 奇点
-  { id: "A41", name: "视界", desc: "解锁黑洞", check: () => false }, // 待黑洞实装
+  { id: "A41", name: "视界", desc: "解锁黑洞", star: true, reward: "总时间倍率再 ^1.1", check: () => bhUnlocked() },
   { id: "A42", name: "烂柯", desc: "总时间倍率超过 3.65e6", check: () => timeRate() >= 3.65e6 },
   { id: "A43", name: "无限", desc: "打破宇宙的规则", check: () => state.rulesBroken && !state.testBreakRules }, // 原 A35
   { id: "A44", name: "永炽", desc: "温度超过 1.79e308 K", check: () => temperature() >= 1.79e308 },
