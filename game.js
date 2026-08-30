@@ -3,7 +3,7 @@
 // ---------- Save schema ----------
 function defaultState() {
   return {
-    version: "0.4.3",
+    version: "0.4.3.1",
     // 物理资源
     U: 10,                 // 波速 m/s (默认国际单位制，double 缓存；极端值看 logU10)
     logU10: 1,             // log10(U) 权威表示（防溢出/下溢；U=0 时为 NLOG 哨兵）
@@ -66,6 +66,9 @@ function defaultState() {
     logVP: NLOG,           // log10(虚粒子) 权威
     sbu1: 0, sbu2: 0, sbu3: 0, // 黑洞升级：事件视界/引力潮汐/霍金辐射
     svpu1: 0, svpu2: 0, svpu3: 0, // 黑洞虚粒子升级：全息原理/虚幻湮灭/非欧几何
+    bhCanvasClicks: 0,     // S21：黑洞动画点击计数
+    bhPulseSince: 0,       // S22：本次持续处于脉冲状态的起始时刻（0=不在脉冲）
+    bhDistorlSince: 0,     // S23：本次持续处于扭曲状态的起始时刻（0=不在扭曲）
 
     // 统计
     totalFGained: 10,      // 累计频率（生成总量，double 缓存；极端值看 logTotalF）
@@ -851,6 +854,10 @@ function migrateState() {
   if (state.sbu1 === undefined) state.sbu1 = 0;
   if (state.sbu2 === undefined) state.sbu2 = 0;
   if (state.sbu3 === undefined) state.sbu3 = 0;
+  // v0.4.3.1：黑洞成就追踪字段回填
+  if (state.bhCanvasClicks === undefined) state.bhCanvasClicks = 0;
+  if (state.bhPulseSince === undefined) state.bhPulseSince = 0;
+  if (state.bhDistorlSince === undefined) state.bhDistorlSince = 0;
 }
 function loadGame() {
   try {
@@ -2098,8 +2105,8 @@ function buildBlackholeOnce() {
     row.className = "bh-upg-row";
     return row;
   };
-  // 奇点升级（花 Sp）
-  list.appendChild(mkTitle("奇点升级"));
+  // 黑洞升级（花 Sp）
+  list.appendChild(mkTitle("黑洞升级"));
   const sbuRow = mkRow();
   list.appendChild(sbuRow);
   for (const u of SBU_DEFS) {
@@ -2133,6 +2140,18 @@ function buildBlackholeOnce() {
     b.addEventListener("click", () => setBhState(b.dataset.bhState));
     bhStateBtns.push(b);
   });
+  // S21 这是饼干点点乐吗？—— 点击黑洞动画界面 100 次
+  const canvas = document.getElementById("bh-canvas");
+  if (canvas) {
+    canvas.addEventListener("click", () => {
+      if (!bhUnlocked() || state.ach.hidden.includes("S21")) return;
+      state.bhCanvasClicks++;
+      if (state.bhCanvasClicks >= 100) {
+        grantHidden("S21");
+        updateAchievementsUI();
+      }
+    });
+  }
   // 动画初始化：粒子池
   bhParticles = [];
   for (let i = 0; i < 60; i++) bhParticles.push({ a: Math.random() * Math.PI * 2, r: 0.3 + Math.random() * 0.6, s: 0.5 + Math.random(), life: Math.random() });
@@ -2140,9 +2159,9 @@ function buildBlackholeOnce() {
 }
 
 function bhRadius() {
-  // 半径：基础宽度 0.1 倍，随 (1+lg(M)/5) 增大，上限 0.6 倍页面宽度
+  // 半径：max(0.1, min(0.6, lg(M)/50)) 倍页面宽度
   const mLog = Math.max(0, getLogBhMass());
-  const scale = Math.min(0.6, 0.1 * (1 + mLog / 5));
+  const scale = Math.max(0.1, Math.min(0.6, mLog / 50));
   const pageW = document.getElementById("app").offsetWidth || 760;
   return { r: pageW * scale, pageW };
 }
@@ -3069,6 +3088,9 @@ const HIDDEN_ACH = [
   { id: "S18", name: "getting over it", check: () => false }, // 能完成后重试/退出而非完成
   { id: "S19", name: "滚木", check: () => false }, // 生产为 0 Hz/s 超过 10 分钟
   { id: "S20", name: "version control", check: () => false }, // 查看 changelog
+  { id: "S21", name: "这是饼干点点乐吗？", check: () => false }, // 点击黑洞动画界面 100 次
+  { id: "S22", name: "白洞", check: () => false }, // 黑洞保持脉冲状态 5 分钟以上
+  { id: "S23", name: "裸奇点", check: () => false }, // 黑洞倍率为 1 时保持扭曲状态 10 分钟以上
 ];
 // S5 目标序列：S1,S1,S4,S5,S1,S4
 const S5_SEQUENCE = ["S1", "S1", "S4", "S5", "S1", "S4"];
@@ -3390,6 +3412,20 @@ function tick() {
     } else {
       state.capReachedAt = 0;
     }
+  }
+  // S22：白洞 —— 黑洞保持脉冲状态 5 分钟以上（真实时间，切走即重置）
+  if (bhUnlocked() && state.bhState === "pulse") {
+    if (!state.bhPulseSince) state.bhPulseSince = Date.now();
+    else if (!state.ach.hidden.includes("S22") && Date.now() - state.bhPulseSince >= 300000) grantHidden("S22");
+  } else {
+    state.bhPulseSince = 0;
+  }
+  // S23：裸奇点 —— 黑洞倍率为 1（M=1，M^0.2=1）时保持扭曲状态 10 分钟以上
+  if (bhUnlocked() && state.bhState === "distorl" && bhEffect() <= 1) {
+    if (!state.bhDistorlSince) state.bhDistorlSince = Date.now();
+    else if (!state.ach.hidden.includes("S23") && Date.now() - state.bhDistorlSince >= 600000) grantHidden("S23");
+  } else {
+    state.bhDistorlSince = 0;
   }
   dirty = true;
 
