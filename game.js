@@ -1,0 +1,2812 @@
+/* ===== Wave Incremental v0.4.2.4 — game logic ===== */
+
+// ---------- Save schema ----------
+function defaultState() {
+  return {
+    version: "0.4.2.4",
+    // 物理资源
+    U: 10,                 // 波速 m/s (默认国际单位制)
+    L: 1,                  // 波长 m（double 缓存；极端值看 logL10）
+    logL10: 0,             // log10(L) 权威表示（防下溢）
+    // up1 / up2 = 升级1/2 购买次数; up3 = 缩短波长次数; meta1 = 单次元升级(频率加成波速获取)是否已购
+    up1: 0, up2: 0, up3: 0, up3LastF: 0, meta1: 0,
+    // 声子系统：声子数（浮点存储，显示取整）、发生器开关、页面解锁
+    phonons: 0, phOn: false, phUnlocked: 0,
+    pg1: 0,                // 声子发生器效率（间隔 ÷1.5/级）
+    pg2: 0,                // 声子发生器倍率（×(n+1)²）
+    pg3: 0,                // 升级3指数加成（+0.01/级，上限20）
+    phFluct: 0,            // 单次：声子涨落（温度加成声子获取）
+    phCoupling: 0,         // 单次：声波耦合（波速加成声子获取）
+    // 湮灭层：奇点（持有 / 总获取）、湮灭次数、奇点升级、自动化
+    sp: 0, totalSp: 0, annihilations: 0,
+    spu1: 0,               // 奇点升级1：奇点之前的升级不再消耗资源（1 Sp）
+    autoWaveUpg: 0,        // 主要页可重复升级自动化解锁（1e10 Hz）
+    autoPhononUpg: 0,      // 声子页可重复升级自动化解锁（1e20 Hz）
+    autoUp3: 0,            // 升级3自动化解锁（第8次湮灭）
+    autoAnn: 0,            // 自动湮灭解锁（第10次湮灭）
+    autoOn: { wave: false, phonon: false, up3: false, ann: false },
+    autoUp3Mult: 1.1,      // 升级3自动购买倍率阈值
+    autoAnnSp: 1,          // 自动湮灭 Sp 阈值
+    annStartReal: 0,       // 本次湮灭开始（真实时间戳, ms）
+    annStartGame: 0,       // 本次湮灭开始（游戏时间, s）
+    annBestSp: 0,          // 最好单次奇点获取
+    annBestRate: 0,        // 最好单次奇点/分
+    annFastest: 0,         // 最快湮灭时间（真实秒，0=无记录）
+    annHistory: [],        // 最近十次湮灭记录
+    // 扭曲系统（v0.4.2.1 测试）
+    distortActive: "",     // 当前所在扭曲宇宙 id（空=普通宇宙）
+    distortDone: [],       // 已湮灭的扭曲宇宙 id（每宇宙只计一次奖励）
+    distortMult: 1,        // 湮灭扭曲宇宙给的 Sp 倍率（×2/个）
+    distortFails: 0,       // S14：扭曲宇宙失败次数
+    distortBest: {},       // 各扭曲宇宙最佳完成时间（秒，id→秒）
+    distortTotal: 0,       // 所有挑战（扭曲宇宙）耗时总和（秒）
+    lastPurchaseAt: 0,     // 冷却宇宙：最近一次购买升级的时间戳
+    narrowPurchases: 0,    // 狭窄宇宙：本宇宙内已购买升级次数
+    batchMax: 2,           // A34 奖励：批量购买上限（Sp 升级翻倍）
+    batchLvl: 0,           // 批量上限已购级数
+    batchMode: { wave: false, phonon: false }, // 批量购买开关（false=单次）
+    rulesBroken: false,    // 8DA：打破宇宙规则
+    zeroGainSince: 0,       // S19：生产为 0 的起始时刻
+    autoUp3Mode: "ratio",  // AU21：升级3自动化模式（ratio=比例 / time=时间间隔）
+    autoUp3Interval: 10,   // AU21：时间模式的间隔秒数
+    autoAnnMode: "sp",     // AU22：自动湮灭模式（sp=奇点阈值 / time=时间间隔）
+    autoAnnInterval: 60,   // AU22：时间模式的间隔秒数
+    lastAutoUp3At: 0,      // 上次自动升级3时刻
+    lastAutoAnnAt: 0,      // 上次自动湮灭时刻
+    sau1: 0, sau2: 0, sau3: 0, sau4: 0,  // 奇点可重复升级等级（3DA 解锁）
+    au: {},                                 // 奇点单次升级已购标记（id→1）
+    testBreakRules: false, // 测试按钮：临时打破规则（不获 Sp，v0.4.3 移除）
+
+    // 统计
+    totalFGained: 10,      // 累计频率（生成总量）
+    maxF: 10, maxU: 10, minL: 1,
+    playTime: 0,
+    realTime: 0,           // 真实时间（未乘时间速率）
+    // 成就
+    ach: { normal: [], hidden: [], hiddenRevealed: [] },
+    // 成就相关瞬时状态（加载时重置，避免离线干扰）
+    hiddenClicks: [],      // S5 点击序列（单元格 id）
+    metaClicks: [],        // S3 单次升级点击时间戳
+    notationSwitches: [],  // S6 显示方式切换时间戳
+    phToggles: [],         // S7 声子发生器开关时间戳
+    capReachedAt: 0,       // S11 达到温度上限的时间戳
+    settings: { theme: "black", notation: "scientific", decimals: 3, uiFps: 33 },
+    lastTick: Date.now(),
+  };
+}
+
+const SAVE_KEY = "waveIncremental_save";
+const SLOT_KEY_PREFIX = "waveIncremental_slot";
+const SLOT_COUNT = 3;
+const AUTOSAVE_INTERVAL = 15000;
+
+let state = defaultState();
+let currentSlot = 0;
+let dirty = false;
+
+// ---------- 扭曲宇宙（v0.4.2.1 测试）----------
+// 进入扭曲宇宙会立刻湮灭重置；达到该宇宙的普朗克温度即可湮灭它（首杀奖励 Sp 获取 ×2）。
+// 宇宙内湮灭不获得 Sp；未达标时点击湮灭按钮 = 退出该宇宙。
+const DISTORT_UNIVERSES = [
+  {
+    id: "rigid", name: "刚性",
+    desc: "无法缩短波长，且无法购买声子升级 3",
+    tp: 1e100,
+  },
+  {
+    id: "expand", name: "膨胀",
+    desc: "波长随时间指数增长",
+    tp: Infinity, // 测试值，待调整
+  },
+  {
+    id: "directed", name: "定向",
+    desc: "每刻有 50% 概率波速获取变为相反数（波速有 0 的硬下限）；声波耦合失效",
+    tp: 1e70,
+  },
+  {
+    id: "cooldown", name: "冷却",
+    desc: "购买任何升级后，波速获取受到指数削弱（最高 0.75 次方），在 15 秒内线性回复到最大值",
+    tp: 1e90,
+  },
+  {
+    id: "inflation", name: "通胀",
+    desc: "价格折算从 10 Hz 开始，并且变得更强，声子升级价格平方，频率获取变为原来的平方根",
+    tp: Infinity, // 测试值，待调整
+  },
+  {
+    id: "adiabatic", name: "热寂",
+    desc: "热涨落与声子涨落无效，声波耦合无效，无法购买声子发生器效率，温度以 ^0.3 的倍率除波速获取",
+    tp: Infinity, // 测试值，待调整
+  },
+  {
+    id: "narrow", name: "狭窄",
+    desc: "你一共只能购买十次升级，禁用所有自动化",
+    tp: 1e170,
+  },
+  {
+    id: "simple", name: "简洁",
+    desc: "基础波速获取固定为 1 m/s²，波动升级 1/2 与声子升级 3 无效，热涨落无效，声子数始终为 1，升级 3 效果变为原来的平方根",
+    tp: Infinity, // 测试值，待调整
+  },
+];
+// 膨胀宇宙的进入时刻（真实 ms），用于计算波长倍率
+let distortEnterAt = 0;
+
+function inDistort(id) { return state.distortActive === id; }
+
+// ---------- 资源 Decimal 双表示（3DA 起）----------
+// 权威 log10 表示，永不溢出；state.X 为 double 缓存（超 ±1.8e308 时失真但不崩）
+function getLogSp() {
+  if (state.logDsp !== undefined && isFinite(state.logDsp)) return state.logDsp;
+  return state.sp > 0 ? Math.log10(state.sp) : 0;
+}
+function setSp(v) {
+  state.sp = v;
+  state.logDsp = v > 0 ? Math.log10(v) : 0;
+}
+function getLogTotalSp() {
+  if (state.logDtotal !== undefined && isFinite(state.logDtotal)) return state.logDtotal;
+  return state.totalSp > 0 ? Math.log10(state.totalSp) : 0;
+}
+function setTotalSp(v) {
+  state.totalSp = v;
+  state.logDtotal = v > 0 ? Math.log10(v) : 0;
+}
+function getLogPhonons() {
+  // 声子为 0 时返回 -Infinity（乘积为 0），而非 0（会被当作 1）
+  if (state.logDph !== undefined && isFinite(state.logDph)) {
+    return state.phonons > 0 ? state.logDph : -Infinity;
+  }
+  return state.phonons > 0 ? Math.log10(state.phonons) : -Infinity;
+}
+function setPhonons(v) {
+  state.phonons = v;
+  state.logDph = v > 0 ? Math.log10(v) : 0;
+}
+// log 域相加（对数加法 = 数值乘法），返回 double log10
+function logAdd(a, b) { return a + b; }
+// ---------- 派生物理量 ----------
+// L 的双表示：logL10 权威（永不下溢），L 为 double 缓存（极端小时可能下溢为 0）
+function getLogL10() { return (state.logL10 !== undefined && isFinite(state.logL10)) ? state.logL10 : Math.log10(state.L || 1e-300); }
+function setL(newL) {
+  state.logL10 = newL > 0 ? Math.log10(newL) : -1000; // 0/负保护
+  state.L = newL; // 可能下溢为 0，读取方走 log 域
+}
+// F = U / L（定向宇宙：波速取绝对值；膨胀宇宙：波长乘以膨胀倍率）
+function distortLMod() {
+  if (!inDistort("expand")) return 1;
+  const t = (Date.now() - distortEnterAt) / 1000;
+  if (t <= 1) return 1;
+  return Math.pow(1e15, t - 1); // 进入 1 秒后，每秒波长膨胀 1e15 倍
+}
+// 波长倍率的 log10（代数式，避免 double 溢出）
+function distortLModLog() {
+  if (!inDistort("expand")) return 0;
+  const t = (Date.now() - distortEnterAt) / 1000;
+  if (t <= 1) return 0;
+  return 15 * (t - 1);
+}
+function FLog() {
+  return Math.log10(Math.max(Math.abs(state.U), 1e-300)) - getLogL10() - distortLModLog();
+}
+function F() {
+  const logF = FLog();
+  if (logF > 308) return Infinity;
+  if (logF < -308) return 0;
+  return Math.pow(10, logF);
+}
+// 温度 T = n·h·F/k_B（声子数 × 普朗克常数 × 频率 / 玻尔兹曼常数），单位 K
+// 普朗克常数受总奇点 (1+Sp)^1.5 加成（等价于温度倍率）；温度受当前宇宙硬上限约束
+const H_OVER_KB = 6.62607015e-34 / 1.380649e-23; // ≈ 4.799e-11 K·s
+function temperature() {
+  // 打破规则：无上限；log 域乘积（phonons 用权威 log 表示）
+  const parts = [state.phonons, H_OVER_KB, F(), planckMult()];
+  if (parts.some(p => !isFinite(p))) return Infinity;
+  const logSum = parts.reduce((s, p) => s + Math.log10(Math.max(p, 1e-300)), 0);
+  const raw = logSum > 300 ? Infinity : Math.pow(10, logSum);
+  // 打破规则（正式 8DA 或测试按钮）后取消上限
+  if (state.rulesBroken || state.testBreakRules) return raw;
+  // 扭曲宇宙：使用该宇宙自己的普朗克温度作为上限，而非住宇宙上限
+  if (state.distortActive) {
+    const u = DISTORT_UNIVERSES.find(x => x.id === state.distortActive);
+    if (u) return Math.min(raw, u.tp);
+  }
+  return Math.min(raw, temperatureCap());
+}
+// 热涨落：波速获取 ×= max(1, T)^0.2
+function thermalMult() {
+  if (inDistort("adiabatic")) return 1 / Math.pow(Math.max(1, temperature()), 0.3); // 热寂：温度反而削弱波速获取
+  if (inDistort("simple")) return 1; // 简洁：热涨落无效
+  return Math.pow(Math.max(1, temperature()), thermalExp());
+}
+// 声子涨落（单次）：声子获取 ×= ceil(lg(max(1,T))^1.5)
+function fluctMult() {
+  if (!state.phFluct) return 1;
+  // 热寂宇宙：声子涨落无效
+  if (inDistort("adiabatic")) return 1;
+  return Math.max(1, Math.ceil(Math.pow(Math.log10(Math.max(1, temperature())), 1.5)));
+}
+// 声波耦合（单次）：声子获取 ×= ceil(U^0.05)（定向宇宙中失效）
+function couplingMult() {
+  if (!state.phCoupling || inDistort("directed") || inDistort("adiabatic")) return 1;
+  return Math.ceil(Math.pow(Math.abs(state.U), 0.05));
+}
+// 声子发生器产量（每游戏秒）
+function phononRate() {
+  return Math.pow(1.5, state.pg1) * Math.pow(state.pg2 + 1 + pg2Free(), 2) * fluctMult() * couplingMult() * invLMult();
+}
+// 升级3波长指数：0.25 基础 + pg3 每级 0.01（上限 20 级 → 0.45）
+// 扭曲：刚性 → 指数 ÷4；简洁 → 指数 ×1.5；冷却 → 指数受削弱倍率影响
+function up3Exp() {
+  let e = 0.25 + 0.01 * state.pg3;
+
+  if (inDistort("inflation")) e /= 2; // 效果开平方根 = 指数 ÷2
+  if (inDistort("simple")) e *= 0.5; // 简洁：升级3效果变为原来的平方根
+  return e;
+}
+// ---------- e100 软上限 ----------
+// 当频率超过 1e100 Hz：升级1价格增速 ×10（每级 ×10），升级2价格增速变为乘当前等级，升级3效果超出部分按 5/√(log10 F) 缩放
+const SOFTCAP_F = 1e100;
+// Stirling 近似 log10(n!)（误差 O(1/n)，软上限价格用代数式直接算）
+function lgamma10(n) {
+  if (n < 2) return 0;
+  return (n * Math.log(n) - n + 0.5 * Math.log(2 * Math.PI * n)) / Math.LN10;
+}
+function softcapped() { return F() > SOFTCAP_F; }
+// 升级1价格（含软上限与通胀）：基础 5×2^n；e100 后增速 ×10（近似取 5×10^n×校准，保持当前价平滑）
+function up1Cost() {
+  const n = state.up1 + 1;
+  // 通胀宇宙：直接 100^n（不叠加 costOf 平方与 e100 软上限）
+  if (inDistort("inflation")) return Math.pow(100, n);
+  // 普通：5×2^n；e100 软上限：额外 ×5/级
+  const logP2 = Math.log10(5) + n * Math.log10(2) + (softcapped() ? Math.max(0, n - 332) * Math.log10(5) : 0);
+  return costOf(Math.pow(10, logP2));
+}
+// 升级2价格（含软上限与通胀）：基础 10^(n+1)；e100 后增速变为乘当前等级
+function up2Cost() {
+  const n = state.up2 + 1;
+  // 通胀宇宙：10^(n+1) × max(n²,100)，从头生效（不叠加软上限与 costOf 平方）
+  if (inDistort("inflation")) {
+    // 初始价 = 1000 的平方（1e6），此后每级乘 max(n²,100)（n 为当前等级，1 起）
+    let p = 1e6;
+    for (let k = 1; k <= state.up2; k++) p *= Math.max(k * k, 100);
+    return p;
+  }
+  const k = state.up2; // 当前等级
+  if (k <= 98) return costOf(Math.pow(10, n + 1)); // ≤98 级：10^(n+1)
+  // ≥98 级软上限：连续衔接 10^100 × k!/99!
+  // 近距离（k ≤ 300）用精确循环（乘法本身在 double 内安全：k!/99! ≤ 300!/99! ≈ 1e464 超 double，
+  // 故以 log 累加）；远处走 Stirling（误差 O(1/k)）
+  let logP;
+  if (k <= 300) {
+    logP = 100;
+    for (let i = 100; i <= k; i++) logP += Math.log10(i);
+  } else {
+    logP = 100 + lgamma10(k) - lgamma10(99);
+  }
+  if (logP > 300) return costOf(Decimal.pow(10, logP).toNumber()); // 超 double 返回 Infinity
+  return costOf(Math.pow(10, logP));
+}
+// 升级3实际波长缩减（软上限）：e100 以下 1/F^e；超出部分指数 × 5/√(log10 F)
+function up3Wavelength(f) {
+  const e = up3Exp();
+  if (f <= SOFTCAP_F || !isFinite(f)) return Math.pow(f, e);
+  const excess = f / SOFTCAP_F;
+  const scale = 5 / Math.sqrt(Math.log10(f));
+  return Math.pow(SOFTCAP_F, e) * Math.pow(excess, e * scale);
+}
+// 由 log10(F) 计算波长缩减量 F^e 的 log10（含软上限缩放，代数式永不溢出）
+function up3WavelengthFromFLog(lf) {
+  const e = up3Exp();
+  if (!isFinite(lf)) return Infinity;
+  if (lf <= 100) return e * lf;
+  const scale = 5 / Math.sqrt(lf);
+  return e * 100 + e * scale * (lf - 100);
+}
+// e100 软上限：超出部分（log10 F > 100）的指数缩放增量
+function softcapExtraLog(lf) {
+  if (lf <= 100) return 0;
+  const scale = 5 / Math.sqrt(lf);
+  return up3Exp() * (scale - 1) * (lf - 100);
+}
+// 上者的 log10（代数式，永不溢出）
+function up3WavelengthLog(f) {
+  // f 为 F（double）；超 double 的 F 由调用方传 log 域（see buyUp3）
+  const e = up3Exp();
+  if (!isFinite(f) || f <= 0) return f === Infinity ? e * FLog() : -Infinity;
+  const lf = Math.log10(f);
+  if (f <= SOFTCAP_F) return e * lf;
+  const scale = 5 / Math.sqrt(lf);
+  return e * 100 + e * scale * (lf - 100);
+}
+// 冷却宇宙：购买任何升级 → 波速获取量变为 A^k，k 在 15 秒内从 0 线性变到 1；
+// 期间再次购买则 k 重置为 0（获取量瞬间跌到 1）
+function narrowBlocked() { return inDistort("narrow") && state.narrowPurchases >= 10; }
+function markPurchase() {
+  if (inDistort("cooldown")) state.lastPurchaseAt = Date.now();
+  if (inDistort("narrow")) state.narrowPurchases++;
+}
+function cooldownExp() {
+  if (!inDistort("cooldown") || !state.lastPurchaseAt) return 1;
+  const t = (Date.now() - state.lastPurchaseAt) / 1000;
+  if (t >= 15) return 0.75;
+  return 0.75 * (t / 15); // k: 0 → 0.75 线性（最大指数 0.75）
+}
+
+
+// ---------- 湮灭层 ----------
+const T_P0 = 1.4168e32; // 最初宇宙的普朗克温度
+// 普朗克常数受 (1+总Sp)^1.5 加成 → 等价于温度倍率（T = n·h·F/k_B 中 h 同倍放大）
+function planckMult() {
+  // log 域：log10((1+totalSp)^exp)，totalSp 超 double 时用 Decimal
+  const exp = hasDistortMilestone(1) ? 1.5 * daExpMult() : 1.5;
+  if (getLogTotalSp() > 250) {
+    return Decimal.pow(10, getLogTotalSp() * exp).toNumber(); // (Sp)^exp ≈ 10^(logSp·exp)
+  }
+  return Math.pow(1 + state.totalSp, exp);
+}
+// 当前宇宙温度硬上限：t·(1+总Sp)^10
+function temperatureCap() {
+  const exp = hasDistortMilestone(1) ? 10 * daExpMult() : 10;
+  // log 域原上限：log10(T_P0) + exp × log10(1+totalSp)
+  let logCap;
+  if (getLogTotalSp() > 250) {
+    logCap = Math.log10(T_P0) + exp * getLogTotalSp();
+  } else {
+    logCap = Math.log10(T_P0) + exp * Math.log10(1 + state.totalSp);
+  }
+  // 软上限：原上限超 1e250 的部分开十次方根（eff = 1e225 × Tp^0.1）
+  if (logCap > 250) {
+    logCap = 225 + 0.1 * logCap;
+  }
+  if (logCap > 308) return Decimal.pow(10, logCap).toNumber();
+  return Math.pow(10, logCap);
+}
+// 基础奇点获取：10 以下随温度指数线性增长（1 Sp @ T_P0，10 Sp @ 1e50 K），之后 10·(T/1e50)^0.024
+function baseSpGain(T) {
+  // 连续版本（floor 只在 spGain 最外层乘 distortMult 之后执行）：
+  // T < 1e50：旧公式 1~10 线性；1e50 ≤ T < 1e100：lg(T)/5（线性到 20）；T ≥ 1e100：2·T^0.01
+  if (T < 1e50) {
+    const frac = Math.log10(T / T_P0) / Math.log10(1e50 / T_P0);
+    return 1 + 9 * Math.max(0, frac);
+  }
+  if (T < 1e100) {
+    return Math.log10(T) / 5; // e50→10, e70→14, e99→19.8（连续）
+  }
+  if (T === Infinity || T > 1e300) {
+    return Decimal.pow(T, 0.01).times(2).toNumber();
+  }
+  return 2 * Math.pow(T, 0.01);
+}
+function spGainExact() {
+  if (state.testBreakRules) return 0;
+  const b = baseSpGain(temperature());
+  const m = state.distortMult * Math.pow(2, state.sau4) * phononSpMult();
+  // 超 double 用 Decimal
+  if (b > 1e300) return Decimal.pow(b, 1).times(m).toNumber();
+  return Math.max(state.annihilations === 0 ? 1 : 0, b) * m;
+}
+function spGain() {
+  // 测试按钮（打破规则）激活期间不能获得 Sp
+  if (state.testBreakRules) return 0;
+  // distortMult 乘在 floor 内部：先乘后取整，数值连续（外部乘法会造成整数跳变）
+  const base = Math.max(state.annihilations === 0 ? 1 : 0, baseSpGain(temperature())) * state.distortMult * Math.pow(2, state.sau4) * phononSpMult();
+  return Math.floor(base);
+}
+// gainRate 的 log10 版本（完整乘法链在 log 域，永不溢出）
+function gainRate() {
+  let g;
+  if (inDistort("simple")) {
+    // 简洁：基础固定 1，升级 1/2 无效
+    g = 1;
+  } else {
+    // A21 奖励：up1 的效果变为原来的 1.5 次方；AU11 机械共振：指数 up1Exp()
+    const base = Math.pow(state.up1, (state.ach.normal.includes("A21") ? 1.5 : 1) * up1Exp());
+    g = base * Math.pow(up2Base(), state.up2);
+  }
+  // 单次升级"频率加成波速获取"：拥有后 ×(1 + lg(F+1))
+  if (state.meta1 >= 1) g *= 1 + Math.log10(F() + 1);
+  // 热涨落：波速获取 ×= max(1, T)^0.2
+  g *= thermalMult();
+  // 奇点：波速获取 ×= (1+总Sp)^2；1DA 后指数 ×daExpMult()
+  {
+    const exp = hasDistortMilestone(1) ? 2 * daExpMult() : 2;
+    if (getLogTotalSp() > 250) {
+      g *= Decimal.pow(10, getLogTotalSp() * exp).toNumber();
+    } else {
+      g *= Math.pow(1 + state.totalSp, exp);
+    }
+  }
+  // 定向：每刻 50% 概率取反（F 计算取绝对值，故 U 可为负）
+  if (inDistort("directed") && Math.random() < 0.5) g = -g;
+  // 冷却宇宙：波速获取量变为 A^k（k 随购买后时间线性 0→1）
+  if (inDistort("cooldown")) g = Math.pow(Math.max(0, g), cooldownExp());
+  // 通胀宇宙：频率获取变为原来的平方根
+  if (inDistort("inflation")) g = Math.sqrt(Math.max(0, g));
+  return g;
+}
+// 时间速率：每个普通成就给予 ×1.1 的游戏时间速率加成
+function timeRate() {
+  return Math.pow(achTimeBase(), state.ach.normal.length) * timeArrowMult() * absZeroMult();
+}
+// A25 奖励：每次重置后初始波速 100 m/s（否则 10）
+function resetU() { return state.ach.normal.includes("A25") ? 100 : 10; }
+// 升级价格（下一次购买）
+// 通胀宇宙：所有升级的价格变为原来的平方
+function costOf(c) { return inDistort("inflation") ? c * c : c; }
+function up3Visible() { return F() >= 50000 || state.up3 >= 1; }
+const META_COST = 5000; // 单次升级"频率加成波速获取"固定价格（单次购买）
+const PH_UNLOCK_COST = 1e10; // 单次升级"解锁声子"价格
+// 通胀宇宙下常量价格也需平方（costOf 定义在后，运行时无碍）
+
+// ---------- Number / time formatting ----------
+function fmt(num) {
+  if (num === null || num === undefined || isNaN(num)) return "—";
+  if (num === 0) return "0";
+  if (!isFinite(num)) return "∞";
+  // 小数位数由设置控制（3–6）
+  const d = Math.min(6, Math.max(3, (state.settings && state.settings.decimals) || 3));
+  const sign = num < 0 ? "-" : "";
+  const abs = Math.abs(num);
+  const tiny = Math.pow(10, -d); // 小于此值用科学计数法
+  if (abs < 1000 && abs >= tiny) return sign + abs.toFixed(d);
+  if (abs > 0 && abs < tiny) {
+    return sign + abs.toExponential(d).replace("e+", "e");
+  }
+  const notation = (state.settings && state.settings.notation) || "scientific";
+  if (notation === "log") {
+    return "10^" + Math.log10(abs).toFixed(d);
+  }
+  if (notation === "engineering") {
+    const exp = Math.floor(Math.log10(abs));
+    const engExp = Math.floor(exp / 3) * 3;
+    const mant = abs / Math.pow(10, engExp);
+    return sign + mant.toFixed(d) + "e" + engExp;
+  }
+  // scientific (default)
+  return sign + abs.toExponential(d).replace("e+", "e");
+}
+
+function fmtLog(logV) {
+  // 以 log10 显示：e999999 以下用 double 指数，之上直接 eN 格式
+  if (!isFinite(logV)) return "∞";
+  if (logV < 308) return Math.pow(10, logV).toExponential(3).replace("e+", "e");
+  return "1e" + logV.toFixed(0);
+}
+function fmtTime(seconds, precise) {
+  // precise=true 时保留到 25ms 刻度的小数（挑战计时用）
+  const total = precise ? seconds : Math.floor(seconds);
+  const d = Math.floor(total / 86400);
+  const h = Math.floor((total % 86400) / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const sStr = precise ? (Math.round(s * 40) / 40).toString() : `${s}`;
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m ${sStr}s`;
+  if (m > 0) return `${m}m ${sStr}s`;
+  return `${sStr}s`;
+}
+
+// ---------- Base64 (Unicode-safe) ----------
+function encodeSave(obj) {
+  const json = JSON.stringify(obj);
+  const b64 = btoa(unescape(encodeURIComponent(json)));
+  return "WI1-" + b64;
+}
+function decodeSave(str) {
+  str = str.trim();
+  if (str.startsWith("WI1-")) str = str.slice(4);
+  const json = decodeURIComponent(escape(atob(str)));
+  return JSON.parse(json);
+}
+
+// ---------- Persistence ----------
+// 迁移旧存档：旧版 up3 叠加除法、无 up3LastF；按当前波长反推等效峰值频率。
+function migrateState() {
+  // 旧档可能直接写 state.L（无 logL10）：同步 log 表示
+  if (state.logL10 === undefined || state.logL10 === null || !isFinite(state.logL10)) {
+    state.logL10 = (state.L > 0) ? Math.log10(state.L) : 0;
+  }
+  // 存档若带有 logL10 且 L 已下溢为 0，则 L 以 log 为准
+  if (state.L === 0 && isFinite(state.logL10)) state.L = 0; // 保持 0，读取走 getLogL10
+  if (state.up3 > 0 && !state.up3LastF) {
+    state.up3LastF = Math.pow(10, -getLogL10() / up3Exp()); // (1/L)^(1/e) 的 log 域形式
+  }
+  // 旧存档无 realTime：以 playTime 作为初始近似值
+  if (!state.realTime) state.realTime = state.playTime;
+  // 旧存档 distortTotal 为对象（各宇宙分别累计）时：求和迁移为单一数字
+  if (typeof state.distortTotal === "object" && state.distortTotal !== null) {
+    let s = 0;
+    for (const k in state.distortTotal) s += state.distortTotal[k] || 0;
+    state.distortTotal = s;
+  }
+  // v0.4.2.x：批量升级改版（增速 ×20），一次性清除旧价格体系的等级（标记防重复）
+  if (!state.batchResetDone && state.batchLvl > 0) { state.batchLvl = 0; state.batchMax = 2; state.batchResetDone = 1; }
+  else if (!state.batchResetDone) state.batchResetDone = 1;
+}
+function loadGame() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return false;
+    const obj = decodeSave(raw);
+    state = Object.assign(defaultState(), obj);
+    state.settings = Object.assign({ theme: "black", notation: "scientific", decimals: 3 }, obj.settings || {});
+    state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
+    migrateState();
+    // 迁移：v0.1 旧存档用 frequency 字段
+    if (obj.frequency !== undefined && obj.U === undefined) {
+      state.U = obj.frequency;
+      state.L = 1; state.logL10 = 0;
+    }
+    if (obj.totalFrequency !== undefined && obj.totalFGained === undefined) {
+      state.totalFGained = obj.totalFrequency;
+    }
+    // 校正派生统计下限
+    state.maxF = Math.max(state.maxF, F());
+    state.maxU = Math.max(state.maxU, state.U);
+    state.minL = Math.min(state.minL, state.L);
+    applyTheme(state.settings.theme);
+    applyNotation(state.settings.notation);
+    state.lastTick = Date.now();
+    return true;
+  } catch (e) {
+    console.error("存档读取失败:", e);
+    return false;
+  }
+}
+
+function saveGame() {
+  state.lastTick = Date.now();
+  try {
+    localStorage.setItem(SAVE_KEY, encodeSave(state));
+    setAutosaveStatus("已自动保存 " + new Date().toLocaleTimeString());
+    return true;
+  } catch (e) {
+    console.error("存档失败:", e);
+    setAutosaveStatus("保存失败！");
+    return false;
+  }
+}
+
+function hardReset() {
+  if (!confirm("确定要硬重置吗？这将清除当前存档的所有进度！")) return;
+  if (!confirm("再次确认：所有进度与成就都将丢失。继续？")) return;
+  localStorage.removeItem(SAVE_KEY);
+  state = defaultState();
+  applyTheme("black");
+  applyNotation("scientific");
+  saveGame();
+  renderAll();
+  setAutosaveStatus("已硬重置");
+}
+
+// ---------- Save slots ----------
+function slotKey(i) { return SLOT_KEY_PREFIX + "_" + i; }
+function getSlotInfo(i) {
+  try {
+    const raw = localStorage.getItem(slotKey(i));
+    if (!raw) return null;
+    const obj = decodeSave(raw);
+    return { freq: (obj.U || 10) / (obj.L || 1), playTime: obj.playTime || 0, empty: false };
+  } catch { return null; }
+}
+function saveToSlot(i) {
+  state.lastTick = Date.now();
+  try {
+    localStorage.setItem(slotKey(i), encodeSave(state));
+    setAutosaveStatus(`已保存到存档槽 ${i + 1}`);
+    renderSlots();
+  } catch { setAutosaveStatus("保存到槽失败！"); }
+}
+function loadFromSlot(i) {
+  try {
+    const raw = localStorage.getItem(slotKey(i));
+    if (!raw) { setAutosaveStatus("该槽为空"); return; }
+    const obj = decodeSave(raw);
+    state = Object.assign(defaultState(), obj);
+    state.settings = Object.assign({ theme: "black", notation: "scientific", decimals: 3 }, obj.settings || {});
+    state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
+    migrateState();
+    state.lastTick = Date.now();
+    currentSlot = i;
+    applyTheme(state.settings.theme);
+    applyNotation(state.settings.notation);
+    saveGame();
+    renderAll();
+    setAutosaveStatus(`已从存档槽 ${i + 1} 载入`);
+  } catch { setAutosaveStatus("读取槽失败！"); }
+}
+function deleteSlot(i) {
+  if (!confirm(`确定删除存档槽 ${i + 1}？`)) return;
+  localStorage.removeItem(slotKey(i));
+  renderSlots();
+  setAutosaveStatus(`已删除存档槽 ${i + 1}`);
+}
+function renderSlots() {
+  const list = document.getElementById("slot-list");
+  list.innerHTML = "";
+  for (let i = 0; i < SLOT_COUNT; i++) {
+    const info = getSlotInfo(i);
+    const row = document.createElement("div");
+    row.className = "slot" + (i === currentSlot ? " current" : "");
+    const name = document.createElement("div"); name.className = "slot-name"; name.textContent = `存档槽 ${i + 1}`;
+    const meta = document.createElement("div"); meta.className = "slot-info";
+    meta.textContent = (info && !info.empty) ? `${fmt(info.freq)} Hz · ${fmtTime(info.playTime)}` : "（空）";
+    const actions = document.createElement("div"); actions.className = "slot-actions";
+    const b1 = document.createElement("button"); b1.textContent = "保存"; b1.onclick = () => saveToSlot(i);
+    const b2 = document.createElement("button"); b2.textContent = "读取"; b2.onclick = () => loadFromSlot(i);
+    const b3 = document.createElement("button"); b3.textContent = "删除"; b3.className = "danger-btn"; b3.onclick = () => deleteSlot(i);
+    actions.append(b1, b2, b3);
+    row.append(name, meta, actions);
+    list.appendChild(row);
+  }
+}
+
+// ---------- Theme / notation ----------
+function applyTheme(theme) {
+  document.body.setAttribute("data-theme", theme);
+  state.settings.theme = theme;
+  document.getElementById("theme-white").classList.toggle("active", theme === "white");
+  document.getElementById("theme-black").classList.toggle("active", theme === "black");
+}
+function applyNotation(n) {
+  state.settings.notation = n;
+  document.querySelectorAll("#notation-row button").forEach(b => {
+    b.classList.toggle("active", b.dataset.notation === n);
+  });
+}
+function applyDecimals(n) {
+  n = Math.min(6, Math.max(3, parseInt(n, 10) || 3));
+  state.settings.decimals = n;
+  const inp = document.getElementById("decimals-input");
+  if (inp) inp.value = n;
+}
+// 界面刷新频率（显示层）：16/33/100 ms —— 逻辑 tick 恒为 100ms，不影响数值
+let uiFrameInterval = 33;
+let uiLastFrame = 0;
+function applyUiFps(ms) {
+  ms = [16, 33, 100].includes(parseInt(ms, 10)) ? parseInt(ms, 10) : 33;
+  state.settings.uiFps = ms;
+  uiFrameInterval = ms;
+  document.querySelectorAll("#uifps-row button").forEach(b => {
+    b.classList.toggle("active", parseInt(b.dataset.uifps, 10) === ms);
+  });
+}
+
+// S6 选择困难症：在 10 分钟内，没有任何一种显示方式被连续使用超过 2 分钟。
+// 实现：记录每次切换的时间戳；取当前时间作为末尾，向前找一段连续间隔均 ≤2min 的区间，
+// 若该区间跨度 ≥10min 则达成。
+function checkS6() {
+  if (state.ach.hidden.includes("S6")) return;
+  const sw = state.notationSwitches.slice();
+  const now = Date.now();
+  sw.push(now); // 把"当前时刻"作为最后一个区间端点
+  let i = sw.length - 1;
+  while (i > 0 && sw[i] - sw[i - 1] <= 120000) i--; // 连续间隔 ≤2min
+  const span = sw[sw.length - 1] - sw[i];
+  if (span >= 600000) grantHidden("S6");
+}
+
+// ---------- Tabs ----------
+const DEFAULT_SUBTAB = { wave: "main", stats: "stats-data", annihilation: "ann-sp" };
+function switchTab(name) {
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === name));
+  document.querySelectorAll(".page").forEach(p => p.classList.add("hidden"));
+  const page = document.getElementById("page-" + name);
+  if (page) page.classList.remove("hidden");
+  // 主标签默认子页（覆盖上次停留状态）
+  if (DEFAULT_SUBTAB[name]) switchSubtab(DEFAULT_SUBTAB[name]);
+  if (name === "settings") renderSlots();
+  if (name === "achievements") updateAchievementsUI();
+  if (name === "annihilation") { updateSpUI(); updateDistortUI(); }
+  if (name === "automation") updateAutomationUI();
+}
+function switchSubtab(name) {
+  document.querySelectorAll(".subtab").forEach(t => t.classList.toggle("active", t.dataset.subtab === name));
+  document.querySelectorAll(".subpage").forEach(p => p.classList.add("hidden"));
+  document.getElementById("sub-" + name).classList.remove("hidden");
+  if (name === "ann-sp") updateSpUI();
+  if (name === "ann-distort") updateDistortUI();
+}
+
+// ---------- Purchase ----------
+function buyUp1() {
+  if (inDistort("simple")) return; // 简洁宇宙：波动升级1/2无效（不可购买）
+  if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
+  const c = up1Cost();
+  if (F() < c) return; // 资源必须达标（spu1 只免扣款，不免门槛）
+  if (!upgradesFree()) state.U -= c * state.L;
+  markPurchase();
+  state.up1++;
+  checkAchievements();
+  renderWave();
+}
+function buyUp2() {
+  if (inDistort("simple")) return; // 简洁宇宙：波动升级1/2无效（不可购买）
+  if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
+  const c = up2Cost();
+  if (F() < c) return; // 资源必须达标（spu1 只免扣款，不免门槛）
+  if (!upgradesFree()) state.U -= c * state.L;
+  markPurchase();
+  state.up2++;
+  checkAchievements();
+  renderWave();
+}
+function buyUp3() {
+  if (inDistort("rigid")) return; // 刚性宇宙：升级 3 无效
+  if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
+  // 仅当当前频率超过上次记录的峰值时才更新（log 域比较，超 double 不截断）
+  const fLog = FLog();
+  const lastLog = state.up3LastF === Infinity ? Infinity : Math.log10(Math.max(state.up3LastF, 1e-300));
+  if (fLog <= lastLog) return;
+  // e100 软上限 + 防下溢：log 域算波长缩减量与新 L
+  const wLog = up3WavelengthFromFLog(fLog);
+  // S8 无用功：加成小于 1.1 倍时购买（log 域：旧L × 缩减 < 1.1）
+  if (getLogL10() + wLog < Math.log10(1.1)) grantHidden("S8");
+  state.up3LastF = fLog > 300 ? Infinity : Math.pow(10, fLog); // 超 double 存 Infinity
+  state.logL10 = -wLog;
+  state.L = wLog < 308 ? 1 / Math.pow(10, wLog) : 0; // 超 double 下溢为 0（读取走 log）
+  if (state.L > 0 && state.L < state.minL) state.minL = state.L;
+  state.U = resetU();
+  state.up1 = 0;
+  if (!auOwned("au23")) state.up2 = 0; // AU23 声纹记忆：购买升级3不再重置升级2
+  markPurchase();
+  state.up3++;
+  checkAchievements();
+  renderWave();
+  return true; // 成功购买（时间模式自动化用）
+}
+
+// ---------- Upgrades rendering (build-once, in-place update) ----------
+// 为避免每 tick 重建 DOM 导致按钮闪烁/点击丢失，卡片只在首次构建，
+// 之后仅原地更新文本与 class。
+let up1Card, up2Card, up3Card = null, metaRefs, unlockRefs;
+let upgradesBuilt = false, metaBuilt = false;
+
+function buildUpgradeCard({ name, desc, buyFn }) {
+  const card = document.createElement("div");
+  card.className = "upgrade-card";
+  const left = document.createElement("div"); left.className = "up-card-left";
+  const nm = document.createElement("div"); nm.className = "up-name"; nm.textContent = name;
+  const d = document.createElement("div"); d.className = "up-desc"; d.textContent = desc;
+  const lv = document.createElement("div"); lv.className = "up-level";
+  const ef = document.createElement("div"); ef.className = "up-effect";
+  left.append(nm, d, lv, ef);
+  const right = document.createElement("div"); right.className = "up-card-right";
+  const cl = document.createElement("div"); cl.className = "up-cost-label"; cl.textContent = "价格";
+  const co = document.createElement("div"); co.className = "up-cost";
+  const btn = document.createElement("button"); btn.className = "up-buy"; btn.textContent = "购买";
+  if (buyFn) btn.addEventListener("click", buyFn);
+  right.append(cl, co, btn);
+  card.append(left, right);
+  return { root: card, levelEl: lv, effectEl: ef, costEl: co, btn,
+    update({ level, effect, cost, affordable, btnText }) {
+      this.levelEl.textContent = level;
+      this.effectEl.textContent = effect;
+      this.costEl.textContent = cost;
+      this.root.classList.toggle("affordable", !!affordable);
+      this.btn.disabled = !affordable;
+      if (btnText !== undefined) this.btn.textContent = btnText;
+    } };
+}
+
+function buildUpgradesOnce() {
+  if (upgradesBuilt) return;
+  const list = document.getElementById("upgrades-list");
+  list.innerHTML = "";
+  up1Card = buildUpgradeCard({ name: "增加基础波速获取", desc: "每次购买为基础获取速率 +1", buyFn: buyUp1 });
+  up2Card = buildUpgradeCard({ name: "加成波速获取", desc: "每次购买使获取速率 ×2", buyFn: buyUp2 });
+  list.append(up1Card.root, up2Card.root);
+  up3Card = null;
+  upgradesBuilt = true;
+}
+
+function buildMetaOnce() {
+  if (metaBuilt) return;
+  const list = document.getElementById("meta-upgrades-list");
+  list.innerHTML = "";
+  const card = document.createElement("div");
+  card.className = "upgrade-card locked";
+  const left = document.createElement("div"); left.className = "up-card-left";
+  const nm = document.createElement("div"); nm.className = "up-name"; nm.textContent = "频率加成波速获取";
+  const d = document.createElement("div"); d.className = "up-desc"; d.textContent = "单次升级 · 按当前频率加成波速获取";
+  const ef = document.createElement("div"); ef.className = "up-effect";
+  left.append(nm, d, ef);
+  const right = document.createElement("div"); right.className = "up-card-right";
+  const cl = document.createElement("div"); cl.className = "up-cost-label"; cl.textContent = "价格";
+  const co = document.createElement("div"); co.className = "up-cost";
+  const btn = document.createElement("button"); btn.className = "up-buy"; btn.textContent = "购买";
+  // 按钮永不 disable：价格充足时购买；价格不足时计入 S3（5 秒 10 次）。
+  btn.addEventListener("click", () => {
+    if (state.meta1 >= 1) return; // 已拥有
+    if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
+    const f = F();
+    if (f >= costOf(META_COST)) {
+      // 价格充足（或奇点升级免费）：消耗并拥有
+      if (!upgradesFree()) state.U -= costOf(META_COST) * state.L;
+      markPurchase();
+      state.meta1 = 1;
+      checkAchievements(); // 触发 A12 协同
+      updateUpgradesUI();
+      updateAchievementsUI();
+      setAutosaveStatus("已购买：频率加成波长获取");
+      return;
+    }
+    // 价格不足：计入 S3
+    const now = Date.now();
+    state.metaClicks = state.metaClicks.filter(t => now - t < 5000);
+    state.metaClicks.push(now);
+    if (state.metaClicks.length >= 10 && !state.ach.hidden.includes("S3")) {
+      grantHidden("S3");
+      state.metaClicks = [];
+      updateAchievementsUI();
+    }
+    setAutosaveStatus("价格不足，需要 " + fmt(costOf(META_COST)) + " Hz");
+  });
+  right.append(cl, co, btn);
+  card.append(left, right);
+  list.appendChild(card);
+  metaRefs = { root: card, effectEl: ef, costEl: co, btn };
+  // 解锁声子卡（单次，1e10 Hz）
+  const ucard = document.createElement("div");
+  ucard.className = "upgrade-card locked";
+  const uleft = document.createElement("div"); uleft.className = "up-card-left";
+  const unm = document.createElement("div"); unm.className = "up-name"; unm.textContent = "解锁声子";
+  const ud = document.createElement("div"); ud.className = "up-desc"; ud.textContent = "单次升级 · 解锁波动标签下的「声子」子页面";
+  const uef = document.createElement("div"); uef.className = "up-effect";
+  uleft.append(unm, ud, uef);
+  const uright = document.createElement("div"); uright.className = "up-card-right";
+  const ucl = document.createElement("div"); ucl.className = "up-cost-label"; ucl.textContent = "价格";
+  const uco = document.createElement("div"); uco.className = "up-cost";
+  const ubtn = document.createElement("button"); ubtn.className = "up-buy"; ubtn.textContent = "购买";
+  ubtn.addEventListener("click", buyPhUnlock);
+  uright.append(ucl, uco, ubtn);
+  ucard.append(uleft, uright);
+  list.appendChild(ucard);
+  unlockRefs = { root: ucard, effectEl: uef, costEl: uco, btn: ubtn };
+  metaBuilt = true;
+}
+
+function updateUpgradesUI() {
+  buildUpgradesOnce();
+  // 升级3 随可见性增删（仅切换时操作 DOM，非每 tick）
+  const vis = up3Visible();
+  if (vis && !up3Card) {
+    up3Card = buildUpgradeCard({ name: "缩短波长，但重置波速", desc: "重置波速与基础/加成升级；按峰值频率更新波长", buyFn: buyUp3 });
+    document.getElementById("upgrades-list").appendChild(up3Card.root);
+  } else if (!vis && up3Card) {
+    up3Card.root.remove();
+    up3Card = null;
+  }
+  const f = F();
+  up1Card.update({
+    level: `等级 ${state.up1}`,
+    effect: `当前获取速率: ${fmt(gainRate() * timeRate())} m/s²`,
+    cost: fmt(up1Cost()) + " Hz",
+    affordable: f >= up1Cost(),
+  });
+  up2Card.update({
+    level: `等级 ${state.up2}`,
+    effect: `当前倍率: ×${fmt(Math.pow(2, state.up2))}`,
+    cost: fmt(up2Cost()) + " Hz",
+    affordable: f >= up2Cost(),
+  });
+  if (up3Card) {
+    const affordable3 = FLog() > Math.log10(Math.max(state.up3LastF, 1e-300));
+    const wLog2 = up3WavelengthFromFLog(FLog());
+    const mult = Math.pow(10, getLogL10() + wLog2);
+    up3Card.update({
+      level: `上次峰值: ${state.up3LastF > 0 ? fmt(state.up3LastF) + " Hz" : "—"}`,
+      effect: affordable3
+        ? `下次重置: ×${fmt(mult)}`
+        : `当前波长: ${fmt(Math.pow(10, Math.max(getLogL10(), -320)))} m`,
+      cost: state.up3LastF > 0 ? `需 F > ${fmt(state.up3LastF)}` : "首次",
+      affordable: affordable3,
+    });
+  }
+  buildMetaOnce();
+  const eff = 1 + Math.log10(f + 1);
+  const owned = state.meta1 >= 1;
+  const affordable = owned || f >= META_COST;
+  metaRefs.root.className = "upgrade-card" + (affordable ? " affordable" : " locked");
+  metaRefs.effectEl.textContent = `当前预期效果: ×${fmt(eff)}`;
+  metaRefs.costEl.textContent = fmt(costOf(META_COST)) + " Hz";
+  metaRefs.btn.textContent = owned ? "已购买" : "购买";
+  // 解锁声子卡
+  const uOwned = state.phUnlocked >= 1;
+  const uAff = uOwned || f >= PH_UNLOCK_COST;
+  unlockRefs.root.className = "upgrade-card" + (uAff ? " affordable" : " locked");
+  unlockRefs.effectEl.textContent = uOwned ? "声子页面已解锁" : "解锁后可启动声子发生器";
+  unlockRefs.costEl.textContent = fmt(costOf(PH_UNLOCK_COST)) + " Hz";
+  unlockRefs.btn.textContent = uOwned ? "已购买" : "购买";
+  unlockRefs.btn.disabled = !uAff;
+}
+
+// ---------- 声子系统 ----------
+function buyPhUnlock() {
+  if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
+  if (state.phUnlocked) return;
+  if (F() < costOf(PH_UNLOCK_COST)) return;
+  if (!upgradesFree()) state.U -= costOf(PH_UNLOCK_COST) * state.L;
+  markPurchase();
+      state.phUnlocked = 1;
+  applyPhononVisibility();
+  updateUpgradesUI();
+  updatePhononUI();
+  setAutosaveStatus("已解锁：声子");
+}
+
+function togglePhononGen() {
+  state.phOn = !state.phOn;
+  // S7 请注意使用规范：10 秒内反复开关 20 次
+  const now = Date.now();
+  state.phToggles = state.phToggles.filter(t => now - t < 10000);
+  state.phToggles.push(now);
+  if (state.phToggles.length >= 20 && !state.ach.hidden.includes("S7")) {
+    grantHidden("S7");
+    state.phToggles = [];
+    updateAchievementsUI();
+  }
+  updatePhononUI();
+  setAutosaveStatus(state.phOn ? "声子发生器已启动" : "声子发生器已关闭");
+}
+
+// 声子升级价格（下一次购买）
+function pg1Cost() { return costOf(1e10 * Math.pow(100, state.pg1)); }  // 花 F，增速 ×100
+function pg2Cost() { return costOf(100 * Math.pow(2, state.pg2)); }     // 花 P，增速 ×2
+function pg3Cost() { return costOf(1e4 * Math.pow(10, state.pg3)); }    // 花 P，增速 ×10
+const FLUCT_COST = 1000;    // 声子涨落（P）
+const COUPLING_COST = 10000; // 声波耦合（P）
+
+function buyPG1() {
+  if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
+  if (inDistort("adiabatic")) return; // 绝热宇宙：无法购买声子发生器效率
+  const c = pg1Cost();
+  if (F() < c) return; // 资源必须达标（spu1 只免扣款，不免门槛）
+  if (!upgradesFree()) state.U -= c * state.L;
+  markPurchase();
+      state.pg1++;
+  renderWave(); updatePhononUI();
+}
+function buyPG2() {
+  if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
+  const c = pg2Cost();
+  if (state.phonons < c) return;
+  if (!upgradesFree()) setPhonons(state.phonons - c);
+  markPurchase();
+      state.pg2++;
+  updatePhononUI();
+}
+function buyPG3() {
+  if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
+  if (state.pg3 >= pg3Cap()) return;
+  if (inDistort("rigid") || inDistort("adiabatic") || inDistort("simple")) return; // 刚性/热寂/简洁：无法购买声子升级3
+  const c = pg3Cost();
+  if (state.phonons < c) return;
+  if (!upgradesFree()) setPhonons(state.phonons - c);
+  markPurchase();
+      state.pg3++;
+  updatePhononUI();
+}
+function buyFluct() {
+  if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
+  if (state.phFluct) return;
+  if (state.phonons < costOf(FLUCT_COST)) return;
+  if (!upgradesFree()) setPhonons(state.phonons - FLUCT_COST);
+  markPurchase();
+      state.phFluct = 1;
+  updatePhononUI();
+  setAutosaveStatus("已购买：声子涨落");
+}
+function buyCoupling() {
+  if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
+  if (state.phCoupling) return;
+  if (state.phonons < costOf(COUPLING_COST)) return;
+  if (!upgradesFree()) setPhonons(state.phonons - COUPLING_COST);
+  markPurchase();
+      state.phCoupling = 1;
+  checkAchievements(); // A23 耦合
+  updatePhononUI();
+  setAutosaveStatus("已购买：声波耦合");
+}
+
+// ---------- 声子 UI (build-once, in-place update) ----------
+let phBuilt = false, phRefs = {};
+function buildPhononOnce() {
+  if (phBuilt) return;
+  const list = document.getElementById("ph-upg-list");
+  const metaList = document.getElementById("ph-meta-list");
+  list.innerHTML = ""; metaList.innerHTML = "";
+  phRefs.pg1 = buildUpgradeCard({ name: "声子发生器效率", desc: "每次购买使发生间隔 ÷1.5", buyFn: buyPG1 });
+  phRefs.pg2 = buildUpgradeCard({ name: "声子发生器倍率", desc: "第 n 级使产量 ×(n+1)²", buyFn: buyPG2 });
+  phRefs.pg3 = buildUpgradeCard({ name: "升级3指数加成", desc: "每级使升级3的波长指数 +0.01（上限 20 级）", buyFn: buyPG3 });
+  list.append(phRefs.pg1.root, phRefs.pg2.root, phRefs.pg3.root);
+  phRefs.fluct = buildUpgradeCard({ name: "声子涨落", desc: "单次 · 温度加成声子获取", buyFn: buyFluct });
+  phRefs.coupling = buildUpgradeCard({ name: "声波耦合", desc: "单次 · 波速加成声子获取", buyFn: buyCoupling });
+  metaList.append(phRefs.fluct.root, phRefs.coupling.root);
+  document.getElementById("ph-gen-btn").addEventListener("click", togglePhononGen);
+  phBuilt = true;
+}
+
+// 声子页快变显示（资源行与热涨落）——由显示循环高频率刷新
+function renderPhononFast() {
+  if (!state.phUnlocked) return;
+  const T = temperature();
+  document.getElementById("ph-res-text").textContent =
+    `你拥有${fmt(Math.floor(state.phonons))}声子，温度为${fmt(T)} K`;
+  document.getElementById("ph-thermal").textContent =
+    `热涨落把你的波速获取变为原来的${fmt(thermalMult())}倍`;
+}
+function updatePhononUI() {
+  if (!state.phUnlocked) return;
+  buildPhononOnce();
+  renderPhononFast();
+  document.getElementById("ph-gen-btn").textContent = state.phOn ? "关闭声子发生器" : "启动声子发生器";
+  const f = F();
+  const c1 = pg1Cost(), c2 = pg2Cost(), c3 = pg3Cost();
+  phRefs.pg1.update({
+    level: `等级 ${state.pg1}`,
+    effect: `当前产量: ${fmt(phononRate())} 声子/s（游戏时间）`,
+    cost: fmt(c1) + " Hz",
+    affordable: f >= c1,
+  });
+  phRefs.pg2.update({
+    level: `等级 ${state.pg2}`,
+    effect: `当前倍率: ×${fmt(Math.pow(state.pg2 + 1, 2))}`,
+    cost: fmt(c2) + " P",
+    affordable: state.phonons >= c2,
+  });
+  phRefs.pg3.update({
+    level: `等级 ${state.pg3} / ${pg3Cap()}`,
+    effect: `升级3当前指数: ${up3Exp().toFixed(2)}`,
+    cost: fmt(c3) + " P",
+    affordable: state.pg3 < pg3Cap() && state.phonons >= c3,
+  });
+  const fOwn = state.phFluct >= 1, cOwn = state.phCoupling >= 1;
+  phRefs.fluct.update({
+    level: fOwn ? "已拥有" : "单次",
+    effect: `当前温度加成: ×${fmt(fluctMult())}`,
+    cost: fmt(costOf(FLUCT_COST)) + " P",
+    affordable: fOwn || state.phonons >= FLUCT_COST,
+    btnText: fOwn ? "已购买" : "购买",
+  });
+  phRefs.coupling.update({
+    level: cOwn ? "已拥有" : "单次",
+    effect: `当前波速加成: ×${fmt(couplingMult())}`,
+    cost: fmt(costOf(COUPLING_COST)) + " P",
+    affordable: cOwn || state.phonons >= COUPLING_COST,
+    btnText: cOwn ? "已购买" : "购买",
+  });
+}
+
+function applyPhononVisibility() {
+  document.getElementById("subtab-phonon").classList.toggle("hidden", !state.phUnlocked);
+}
+
+// ---------- 湮灭 ----------
+// 奇点升级1：除升级3外的升级不再消耗资源
+function upgradesFree() { return state.spu1 >= 1; }
+
+const MILESTONES = [
+  { n: 1,  desc: "保持解锁声子升级和声子页面的可见性，解锁「自动化」主选项卡" },
+  { n: 2,  desc: "湮灭保持单次波动升级，和主要页面自动化的解锁" },
+  { n: 3,  desc: "湮灭保持单次声子升级，和声子相关自动化的解锁" },
+  { n: 5,  desc: "湮灭不重置自动化开关，声子发生器一开始就是启动状态" },
+  { n: 8,  desc: "解锁自动购买升级3（可设置在多少倍率时购买）" },
+  { n: 10, desc: "解锁自动湮灭（可设置在多少奇点时重置）" },
+  { n: 20, desc: "解锁「扭曲」选项卡" },
+];
+function hasMilestone(n) { return state.annihilations >= n; }
+
+// ---------- 扭曲里程碑（按已湮灭的扭曲宇宙数量 DA）----------
+const DISTORT_MILESTONES = [
+  { n: 1, desc: "" }, // 动态填充：基于扭曲宇宙湮灭数，将奇点效果变为 X 倍
+  { n: 3, desc: "解锁更多的奇点升级" },
+  { n: 5, desc: "解锁黑洞（WIP）" },
+  { n: 8, desc: "打破宇宙的规则：取消温度上限（WIP）" },
+];
+function distortDA() { return state.distortDone.length; }
+// 1DA 里程碑效果倍率：基于湮灭扭曲宇宙数，奇点效果指数 ×(1 + log2(1+DA))
+function daExpMult() {
+  return (1 + Math.log2(1 + distortDA())) * sauMult();
+}
+function hasDistortMilestone(n) { return distortDA() >= n; }
+
+function annihilationReady() {
+  // 扭曲宇宙：目标是该宇宙自己的普朗克温度（未知宇宙 id 视为不在扭曲中）
+  if (state.distortActive) {
+    const u = DISTORT_UNIVERSES.find(x => x.id === state.distortActive);
+    if (!u) { state.distortActive = ""; return temperature() >= T_P0; }
+    return temperature() >= u.tp;
+  }
+  return temperature() >= T_P0; // 只需超过最初的普朗克温度，无需到当前宇宙上限
+}
+
+// 记录一次湮灭到历史（最近十次）
+function pushAnnHistory(entry) {
+  state.annHistory.push(entry);
+  if (state.annHistory.length > 10) state.annHistory.shift();
+}
+
+// 大重置：回到波长1m波速10，重置所有升级购买；里程碑决定保留项
+function doAnnihilation() {
+  if (!annihilationReady()) return;
+  const inDistortMode = !!state.distortActive;
+  const dUniverse = inDistortMode ? DISTORT_UNIVERSES.find(x => x.id === state.distortActive) : null;
+  const gained = inDistortMode ? 0 : spGain(); // 扭曲宇宙内湮灭不获得 Sp
+  if (!inDistortMode && gained < 1 && !state.testBreakRules) return; // 测试模式：Sp=0 也执行湮灭
+  const wasFirst = state.annihilations === 0;
+
+  // 统计（扭曲宇宙内不刷新 Sp 相关纪录，但记入历史）
+  const realNow = Date.now();
+  const realDur = (realNow - state.annStartReal) / 1000;
+  const gameDur = state.playTime - state.annStartGame;
+  const rate = realDur > 0 ? (gained / realDur) * 60 : 0; // Sp/分
+  if (!inDistortMode) {
+    setSp(state.sp + gained);
+    setTotalSp(state.totalSp + gained);
+    if (gained > state.annBestSp) state.annBestSp = gained;
+    if (rate > state.annBestRate) state.annBestRate = rate;
+    if (state.annFastest === 0 || realDur < state.annFastest) state.annFastest = realDur;
+  }
+  // 历史记录
+  pushAnnHistory({
+    label: inDistortMode ? `扭曲·${dUniverse.name}` : `第 ${state.annihilations + 1} 次`,
+    distort: inDistortMode ? dUniverse.id : "",
+    sp: gained, realDur, gameDur, rate, at: realNow,
+  });
+  state.annihilations++;
+
+  // 重置（几乎全部）
+  state.U = resetU(); state.L = 1; state.logL10 = 0;
+  state.up1 = 0; state.up2 = 0; state.up3 = 0; state.up3LastF = 0;
+  state.totalFGained = 10; state.maxF = 10; state.maxU = 10; state.minL = 1;
+  if (!auOwned("au24")) setPhonons(0); // AU24 量子涟漪：湮灭保留声子
+  state.pg1 = 0; state.pg2 = 0; state.pg3 = 0; // 发生器重复升级等级总是重置
+  if (!hasMilestone(1)) state.phUnlocked = 0;
+  if (!hasMilestone(2)) state.meta1 = 0;
+  if (!hasMilestone(3)) { state.phFluct = 0; state.phCoupling = 0; }
+  // 自动化解锁随里程碑保留：2 湮灭保主要页自动化，3 湮灭保声子自动化
+  if (!hasMilestone(2)) state.autoWaveUpg = 0;
+  if (!hasMilestone(3)) state.autoPhononUpg = 0;
+  if (!hasMilestone(5)) {
+    state.autoOn = { wave: false, phonon: false, up3: false, ann: false };
+    state.phOn = false;
+  } else {
+    state.phOn = true; // 声子发生器一开始就是启动状态
+  }
+
+  // 里程碑驱动的解锁
+  if (hasMilestone(1)) { /* 声子页保留可见 */ }
+  if (hasMilestone(8)) state.autoUp3 = 1;   // 第 8 次湮灭：解锁自动购买升级3
+  if (hasMilestone(10)) state.autoAnn = 1;  // 第 10 次湮灭：解锁自动湮灭
+
+  // 扭曲宇宙湮灭处理：首杀给予 Sp 获取 ×2，并离开该宇宙
+  if (inDistortMode) {
+    // 挑战计时：耗时计入所有挑战总和，并更新该宇宙最佳
+    state.distortTotal = (state.distortTotal || 0) + Math.max(0.025, Math.round(realDur * 40) / 40);
+    // 计时以 25ms 为最小刻度（硬下限 25ms，防止后续时间加成爆炸）
+    const durQ = Math.max(0.025, Math.round(realDur * 40) / 40);
+    if (!state.distortBest[dUniverse.id] || durQ < state.distortBest[dUniverse.id]) {
+      state.distortBest[dUniverse.id] = durQ;
+    }
+    if (!state.distortDone.includes(dUniverse.id)) {
+      state.distortDone.push(dUniverse.id);
+      state.distortMult *= 2;
+      checkAchievements(); // A34 秩序
+      setAutosaveStatus(`湮灭了扭曲宇宙「${dUniverse.name}」：奇点获取 ×2！`);
+    } else {
+      setAutosaveStatus(`湮灭了扭曲宇宙「${dUniverse.name}」（无奖励）`);
+    }
+    state.distortActive = "";
+  } else {
+    setAutosaveStatus(`湮灭完成：获得 ${fmt(gained)} 奇点`);
+  }
+
+  // 湮灭计时重置
+  state.annStartReal = realNow;
+  state.annStartGame = state.playTime;
+
+  applyPhononVisibility();
+  applyAnnihilationVisibility();
+  checkAchievements();
+  saveGame();
+  renderAll();
+  return true; // 成功执行（wasFirst 语义不再需要，首次流程由 confirmFirstAnnihilation 单独处理）
+}
+
+// 进入扭曲宇宙：立即进行一次湮灭重置（普通宇宙部分照常结算 Sp），然后应用该宇宙规则
+function enterDistort(id) {
+  // S16：硬核玩家 —— 已在一个扭曲宇宙中时点击另一个扭曲宇宙的进入
+  if (state.distortActive && state.distortActive !== id && !state.ach.hidden.includes("S16")) {
+    grantHidden("S16"); updateAchievementsUI();
+  }
+  if (state.distortActive) return;
+  const u = DISTORT_UNIVERSES.find(x => x.id === id);
+  if (!u) return;
+  if (state.annihilations < 20) return; // 扭曲选项卡本身 20 湮灭解锁
+  // 强制进行一次普通湮灭重置（无需达到 T_P0；已达标则照常给 Sp）
+  if (annihilationReady()) {
+    doAnnihilation();
+  } else {
+    forceAnnihilationReset(0); // 未达标进入：重置但不获 Sp、不计入最好纪录
+  }
+  state.distortActive = id;
+  distortEnterAt = Date.now();
+  if (id === "simple") setPhonons(1); // 简洁宇宙：声子恒 1
+  if (id === "narrow") state.narrowPurchases = 0; // 狭窄宇宙：进入时购买次数强制重置（防残留）
+  state.annStartReal = Date.now();
+  state.annStartGame = state.playTime;
+  applyAnnihilationVisibility(); // 重设按钮为扭曲模式文案
+  updateDistortUI();
+  switchTab("wave");
+  switchSubtab("main");
+  setAutosaveStatus(`进入扭曲宇宙「${u.name}」`);
+}
+
+// 强制重置（进入扭曲用）：gained 为获得的 Sp（可为 0）
+function forceAnnihilationReset(gained) {
+  const realNow = Date.now();
+  const realDur = (realNow - state.annStartReal) / 1000;
+  const gameDur = state.playTime - state.annStartGame;
+  const rate = realDur > 0 ? (gained / realDur) * 60 : 0;
+  if (gained > 0) {
+    setSp(state.sp + gained); setTotalSp(state.totalSp + gained);
+    if (gained > state.annBestSp) state.annBestSp = gained;
+    if (rate > state.annBestRate) state.annBestRate = rate;
+    if (state.annFastest === 0 || realDur < state.annFastest) state.annFastest = realDur;
+  }
+  pushAnnHistory({ label: `第 ${state.annihilations + 1} 次`, distort: "", sp: gained, realDur, gameDur, rate, at: realNow });
+  state.annihilations++;
+  applyAnnihilationResetBody(realNow);
+  setAutosaveStatus(gained > 0 ? `湮灭完成：获得 ${fmt(gained)} 奇点` : "湮灭完成");
+}
+
+// 湮灭重置的主体（供 doAnnihilation 与 forceAnnihilationReset 共用）
+function applyAnnihilationResetBody(realNow) {
+  state.U = resetU(); state.L = 1; state.logL10 = 0;
+  state.up1 = 0; state.up2 = 0; state.up3 = 0; state.up3LastF = 0;
+  state.totalFGained = 10; state.maxF = 10; state.maxU = 10; state.minL = 1;
+  setPhonons(0);
+  state.pg1 = 0; state.pg2 = 0; state.pg3 = 0;
+  state.lastPurchaseAt = 0; state.narrowPurchases = 0;
+  if (!hasMilestone(1)) state.phUnlocked = 0;
+  if (!hasMilestone(2)) state.meta1 = 0;
+  if (!hasMilestone(3)) { state.phFluct = 0; state.phCoupling = 0; }
+  if (!hasMilestone(2)) state.autoWaveUpg = 0;
+  if (!hasMilestone(3)) state.autoPhononUpg = 0;
+  if (!hasMilestone(5)) {
+    state.autoOn = { wave: false, phonon: false, up3: false, ann: false };
+    state.phOn = false;
+  } else {
+    state.phOn = true;
+  }
+  if (hasMilestone(8)) state.autoUp3 = 1;
+  if (hasMilestone(10)) state.autoAnn = 1;
+  state.annStartReal = realNow;
+  state.annStartGame = state.playTime;
+  applyPhononVisibility();
+  applyAnnihilationVisibility();
+  checkAchievements();
+  saveGame();
+  renderAll();
+}
+
+// 重试：立刻湮灭重置并再次进入同一扭曲宇宙（不完成挑战，无论是否达标）
+function retryDistort() {
+  const id = state.distortActive;
+  if (!id) return;
+  // S18：getting over it —— 能湮灭扭曲宇宙后重试或退出而并非完成它
+  if (annihilationReady() && !state.ach.hidden.includes("S18")) {
+    grantHidden("S18"); updateAchievementsUI();
+  }
+  // S14 失败计数（重试也视为一次失败）
+  state.distortFails = (state.distortFails || 0) + 1;
+  if (state.distortFails >= 10 && !state.ach.hidden.includes("S14")) {
+    grantHidden("S14"); updateAchievementsUI();
+  }
+  // 挑战计时：重试也计入总和与最佳（25ms 刻度）
+  {
+    const durQ = Math.max(0.025, Math.round(((Date.now() - state.annStartReal) / 1000) * 40) / 40);
+    state.distortTotal = (state.distortTotal || 0) + durQ;
+    if (!state.distortBest[id] || durQ < state.distortBest[id]) state.distortBest[id] = durQ;
+  }
+  // 重置（不触发完成逻辑、不获 Sp、不计历史）
+  state.distortActive = "";
+  state.U = resetU(); state.L = 1; state.logL10 = 0;
+  state.up1 = 0; state.up2 = 0; state.up3 = 0; state.up3LastF = 0;
+  setPhonons(0);
+  state.pg1 = 0; state.pg2 = 0; state.pg3 = 0;
+  state.lastPurchaseAt = 0; state.narrowPurchases = 0;
+  // 再次进入
+  state.distortActive = id;
+  distortEnterAt = Date.now();
+  state.annStartReal = Date.now();
+  state.annStartGame = state.playTime;
+  applyAnnihilationVisibility();
+  updateDistortUI();
+  switchTab("wave");
+  switchSubtab("main");
+  setAutosaveStatus("已重试：" + (DISTORT_UNIVERSES.find(u => u.id === id) || {name:id}).name);
+}
+
+// 退出（按钮版）：湮灭重置回主宇宙（不完成挑战，无论是否达标）
+function exitDistortBtn() {
+  if (!state.distortActive) return;
+  // S18：getting over it —— 能湮灭扭曲宇宙后重试或退出而并非完成它
+  if (annihilationReady() && !state.ach.hidden.includes("S18")) {
+    grantHidden("S18"); updateAchievementsUI();
+  }
+  const u = DISTORT_UNIVERSES.find(x => x.id === state.distortActive);
+  // 挑战计时：退出也计入总和与最佳（25ms 刻度）
+  {
+    const id = state.distortActive;
+    const durQ = Math.max(0.025, Math.round(((Date.now() - state.annStartReal) / 1000) * 40) / 40);
+    state.distortTotal = (state.distortTotal || 0) + durQ;
+    if (!state.distortBest[id] || durQ < state.distortBest[id]) state.distortBest[id] = durQ;
+  }
+  state.distortFails = (state.distortFails || 0) + 1;
+  if (state.distortFails >= 10 && !state.ach.hidden.includes("S14")) {
+    grantHidden("S14"); updateAchievementsUI();
+  }
+  exitDistort();
+  setAutosaveStatus("已退出扭曲宇宙「" + (u ? u.name : "") + "」");
+}
+
+// 退出扭曲宇宙：未达目标时点击湮灭按钮触发；直接大重置回普通宇宙（不获 Sp）
+function exitDistort() {
+  const u = DISTORT_UNIVERSES.find(x => x.id === state.distortActive);
+  state.distortActive = "";
+  // S14：哦不我无疑是难过的 —— 在扭曲宇宙中失败十次
+  state.distortFails = (state.distortFails || 0) + 1;
+  if (state.distortFails >= 10 && !state.ach.hidden.includes("S14")) {
+    grantHidden("S14");
+    updateAchievementsUI();
+  }
+  // 重置（与湮灭相同范围），不计入历史
+  state.U = resetU(); state.L = 1; state.logL10 = 0;
+  state.up1 = 0; state.up2 = 0; state.up3 = 0; state.up3LastF = 0;
+  setPhonons(0);
+  state.pg1 = 0; state.pg2 = 0; state.pg3 = 0;
+  state.lastPurchaseAt = 0; state.narrowPurchases = 0;
+  state.annStartReal = Date.now();
+  state.annStartGame = state.playTime;
+  applyPhononVisibility();
+  applyAnnihilationVisibility();
+  renderAll();
+  setAutosaveStatus(`已退出扭曲宇宙「${u ? u.name : ""}」（未达成目标）`);
+}
+
+// 首次湮灭：渐黑 → "你达到了普朗克温度"淡入淡出 → 主文案+按钮 → 点击 → 黑屏动画 → 执行
+// 阶段切换全部由 CSS 动画时间线驱动（.shown 类触发），无 JS 定时器，不受节流影响
+let annSequenceActive = false; // 序列进行中（含确认后的黑屏动画期），防止 tick 重复拉起遮罩
+function firstAnnihilationFlow() {
+  if (annSequenceActive) return;
+  annSequenceActive = true;
+  const overlay = document.getElementById("first-annihilation-overlay");
+  overlay.classList.remove("hidden");
+  // 重置动画（移除再强制重排再加回，确保重新播放）
+  overlay.classList.remove("shown");
+  void overlay.offsetWidth;
+  requestAnimationFrame(() => overlay.classList.add("shown"));
+}
+function confirmFirstAnnihilation() {
+  const overlay = document.getElementById("first-annihilation-overlay");
+  overlay.classList.add("hidden");
+  const flash = document.getElementById("ann-flash");
+  flash.classList.remove("hidden");
+  flash.classList.add("play");
+  setTimeout(() => { flash.classList.remove("play"); flash.classList.add("hidden"); }, 1700);
+  // 动画中段执行重置（annSequenceActive 保持 true，直到重置完成后解除）
+  setTimeout(() => {
+    doAnnihilation();
+    applyAnnihilationVisibility();
+    switchTab("wave");
+    switchSubtab("main");
+    annSequenceActive = false;
+  }, 700);
+}
+
+function applyAnnihilationVisibility() {
+  applyHelpVisibility();
+  const done = state.annihilations >= 1;
+  document.getElementById("sp-display").classList.toggle("hidden", !done);
+  document.getElementById("tab-annihilation").classList.toggle("hidden", !done);
+  document.getElementById("tab-automation").classList.toggle("hidden", !done);
+  document.getElementById("subtab-distort").classList.toggle("hidden", state.annihilations < 20);
+  const ready = annihilationReady();
+  if (!done) {
+    // 首次湮灭：全屏遮罩接管（类似第一次大塌缩）；序列进行中不重复拉起
+    document.getElementById("annihilate-btn").classList.add("hidden");
+    if (ready && !annSequenceActive) firstAnnihilationFlow();
+    return;
+  }
+  const overlay = document.getElementById("first-annihilation-overlay");
+  if (!overlay.classList.contains("hidden")) overlay.classList.add("hidden");
+  // 湮灭按钮：湮灭后一直可见
+  const btn = document.getElementById("annihilate-btn");
+  btn.classList.remove("hidden");
+  if (state.distortActive) {
+    // 扭曲宇宙：达标显示湮灭该宇宙，否则显示逃离（未知宇宙 id 已被 annihilationReady 清空，不进入此分支）
+    const u = DISTORT_UNIVERSES.find(x => x.id === state.distortActive);
+    if (u) {
+      btn.classList.add("distort-mode");
+      if (ready) {
+        btn.textContent = `湮灭扭曲宇宙「${u.name}」`;
+      } else {
+        btn.textContent = `逃离扭曲宇宙「${u.name}」`;
+      }
+      btn.disabled = false;
+      return;
+    }
+  }
+  btn.classList.remove("distort-mode");
+  if (ready) {
+    btn.textContent = `湮灭 (+${fmt(spGain())} Sp)`;
+    btn.disabled = false;
+  } else {
+    btn.textContent = `湮灭 (须达到1.42e32K)`;
+    btn.disabled = true;
+  }
+}
+
+// 帮助页章节与统计湮灭区随游戏进度开放（避免剧透重置层）
+function applyHelpVisibility() {
+  document.getElementById("help-phonon").classList.toggle("hidden", !state.phUnlocked);
+  document.getElementById("help-annihilation").classList.toggle("hidden", state.annihilations < 1);
+  document.getElementById("help-distort").classList.toggle("hidden", state.annihilations < 20);
+  document.getElementById("stat-ann-group").classList.toggle("hidden", state.annihilations < 1);
+  document.getElementById("subtab-stats-challenge").classList.toggle("hidden", state.annihilations < 20);
+}
+
+// ---------- 奇点升级 ----------
+const SP_UPGRADES = [];
+// spu1 移至 SAU 区（与奇点升级同尺寸按钮）：
+const SPU1_DEF = { id: "spu1", name: "奇点之前的升级不再消耗资源", desc: "购买除升级3外奇点之前的升级不再消耗资源" };
+
+// ---------- 奇点升级（3DA 里程碑解锁）----------
+// 第一类：可重复（SAU1-3，一行三个）
+const SAU_DEFS = [
+  { id: "sau1", key: "sau1", name: "象限拓张", desc: "声子升级3的硬上限 +2/级（20→40）", max: 10,
+    cost: (n) => Math.pow(10, 2 + 2 * n) }, // 第n次（1起）10^(2+2n)
+  { id: "sau2", key: "sau2", name: "奇点凝聚", desc: "第 n 级使奇点效果指数额外乘以 (1+n/10)", max: Infinity,
+    cost: (n) => Math.pow(10, 5 * n) },
+  { id: "sau3", key: "sau3", name: "霍金辐射", desc: "热涨落效果指数 +0.015/级", max: 10,
+    cost: (n) => Math.pow(10, 3 + 2 * n) },
+];
+// 真空衰变（独立行，位于 spu1 下方、SAU 行上方）：每级奇点获取 ×2，价 10^(3+n)
+const VACUUM_DEF = { id: "sau4", key: "sau4", name: "真空衰变", desc: "每级使获得的奇点 ×2", max: Infinity,
+  cost: (n) => Math.pow(10, 3 + n) };
+// 第二类：单次（四组×4，两组共一行）
+const AU_DEFS = [
+  [ // 第1组
+    { id: "au11", name: "机械共振", desc: "基于波动升级1等级给予其指数加成：^max(1,√n/5)", cost: 1e6 },
+    { id: "au12", name: "受激跃迁", desc: "每个声子升级1等级给予声子升级2免费2级", cost: Infinity },
+    { id: "au13", name: "光子共振", desc: "基于波动升级2等级增强其底数：+min(0.5, log₂n/30)", cost: Infinity },
+    { id: "au14", name: "黑体辐射", desc: "波长倒数增强声子产生：×max(1, L^-0.05)", cost: Infinity },
+  ],
+  [ // 第2组
+    { id: "au21", name: "时序扩张", desc: "解锁升级3自动化的间隔模式", cost: 1e5 },
+    { id: "au22", name: "末日时钟", desc: "解锁自动湮灭的间隔模式", cost: 1e6 },
+    { id: "au23", name: "声纹记忆", desc: "购买升级3不再重置升级2", cost: 1e9 },
+    { id: "au24", name: "量子涟漪", desc: "湮灭保留声子数量（进出扭曲宇宙除外）", cost: 1e11 },
+  ],
+  [ // 第3组
+    { id: "au31", name: "时间之矢", desc: "基于真实游玩时间给予时间倍率：×(1+lg(1+t)^0.6)", cost: 1e6 },
+    { id: "au32", name: "成就刻印", desc: "成就的时间倍率 1.1x → 1.2x", cost: 1e7 },
+    { id: "au33", name: "绝对零度", desc: "基于「冷却」最佳完成时间给予时间倍率：×max(1, min(100, 600/T))", cost: 1e10 },
+    { id: "au34", name: "引力扭曲", desc: "增强黑洞的效果（WIP）", cost: Infinity },
+  ],
+  [ // 第4组（4DA 解锁）
+    { id: "au41", name: "声子湮灭", desc: "声子加成奇点获取", cost: Infinity },
+    { id: "au42", name: "???", desc: "（占位）", cost: Infinity },
+    { id: "au43", name: "???", desc: "（占位）", cost: Infinity },
+    { id: "au44", name: "???", desc: "（占位）", cost: Infinity },
+  ],
+];
+function auOwned(id) { return !!state.au[id]; }
+function buySAU(id) {
+  const u = SAU_DEFS.find(x => x.id === id) || (id === VACUUM_DEF.id ? VACUUM_DEF : null);
+  if (!u) return;
+  const n = state[u.key] + 1; // 第 n 次购买（1 起）
+  if (state[u.key] >= u.max) return;
+  const c = u.cost(n);
+  if (state.sp < c) return;
+  setSp(state.sp - c);
+  state[u.key]++;
+  checkAchievements(); // A35
+  updateSpUI();
+  setAutosaveStatus("已购买奇点升级：" + u.name);
+}
+function buyAU(id) {
+  const u = AU_DEFS.flat().find(x => x.id === id);
+  if (!u || auOwned(id)) return;
+  if (state.sp < u.cost) return;
+  setSp(state.sp - u.cost);
+  state.au[id] = 1;
+  checkAchievements(); // A35
+  updateSpUI();
+  setAutosaveStatus("已购买奇点升级：" + u.name);
+}
+
+// ---- 效果挂钩 ----
+// SAU1：声子升级3上限
+function pg3Cap() { return 20 + 2 * state.sau1; }
+// SAU2：奇点效果指数倍率
+function sauMult() { return 1 + state.sau2 / 10; } // 第 n 级总效果 ×(1+n/10)：1级1.1、2级1.2、…
+// SAU3：热涨落指数
+function thermalExp() { return 0.2 + 0.015 * state.sau3; }
+// AU11：up1 指数加成
+function up1Exp() { return auOwned("au11") ? Math.max(1, Math.sqrt(state.up1) / 5) : 1; }
+// AU12：pg2 免费等级
+function pg2Free() { return auOwned("au12") ? state.pg1 * 2 : 0; }
+// AU13：up2 底数加成
+function up2Base() { return 2 + (auOwned("au13") ? Math.min(0.5, Math.log2(Math.max(1, state.up2)) / 30) : 0); }
+// AU14：波长倒数增强声子产生
+function invLMult() { return auOwned("au14") ? Math.max(1, Math.pow(10, -0.05 * getLogL10())) : 1; }
+// AU41：声子湮灭——声子加成奇点获取
+function phononSpMult() {
+  if (!auOwned("au41")) return 1;
+  return Math.max(1, Math.pow(state.phonons / 1e40, 0.02));
+}
+// AU31：时间倍率（真实游玩时间）
+function timeArrowMult() { return auOwned("au31") ? 1 + Math.pow(Math.log10(1 + state.realTime), 0.6) : 1; }
+// AU32：成就时间倍率底数
+function achTimeBase() { return auOwned("au32") ? 1.2 : 1.1; }
+// AU33：绝对零度（冷却最佳完成时间 T 秒）
+function absZeroMult() {
+  if (!auOwned("au33")) return 1;
+  const T = state.distortBest && state.distortBest.cooldown;
+  if (!T || T <= 0) return 1;
+  return Math.max(1, Math.min(100, 30 / T));
+}
+
+// 批量购买上限升级（A34 解锁，位于自动化页）
+const BATCH_UPG = { id: "batch", name: "批量购买上限翻倍", desc: "批量购买的每次上限翻倍（初始 2）；打破规则且上限超过 128 后变为「最大购买」", key: "batchLvl", repeat: true, cost: () => Math.pow(20, state.batchLvl) };
+function buyBatchUpgrade() {
+  if (!state.ach.normal.includes("A34")) return;
+  const cost = BATCH_UPG.cost();
+  if (state.sp < cost) return;
+  setSp(state.sp - cost);
+  state.batchLvl++;
+  state.batchMax = Math.pow(2, state.batchLvl + 1);
+  updateAutomationUI();
+  setAutosaveStatus("已购买：批量购买上限翻倍");
+}
+function buySpUpgrade(id) {
+  // spu1 单独处理（已移至 SAU 区）
+  if (id === "spu1") {
+    if (state.spu1 >= 1) return;
+    if (state.sp < 1) return;
+    setSp(state.sp - 1);
+    state.spu1 = 1;
+    checkAchievements(); // A31
+    updateSpUI();
+    setAutosaveStatus("已购买湮灭升级");
+    return;
+  }
+  const u = SP_UPGRADES.find(x => x.id === id);
+  if (!u) return;
+  if (u.requiresA34 && !state.ach.normal.includes("A34")) return; // A34 解锁
+  const cost = u.repeat ? u.cost() : u.cost;
+  if (!u.repeat && state[u.key]) return;
+  if (state.sp < cost) return;
+  setSp(state.sp - cost);
+  if (u.repeat) {
+    state[u.key]++;
+    if (u.id === "batch") { state.batchMax = Math.pow(2, state.batchLvl + 1); }
+  } else {
+    state[u.key] = 1;
+  }
+  checkAchievements(); // A31
+  updateSpUI();
+  updateAutomationUI();
+  setAutosaveStatus("已购买湮灭升级");
+}
+
+// 湮灭页 UI（build-once, in-place update）
+let spBuilt = false, spRefs = [], msRefs = [], sauRefs = [], auRefs = {}, spu1Ref = null, vacRef = null;
+function buildAnnihilationOnce() {
+  if (spBuilt) return;
+  // 里程碑
+  const mList = document.getElementById("milestone-list");
+  mList.innerHTML = ""; msRefs = [];
+  for (const m of MILESTONES) {
+    const row = document.createElement("div");
+    row.className = "milestone" + (m.n === 20 ? " distort" : "");
+    const d = document.createElement("div"); d.className = "ms-desc"; d.textContent = `第 ${m.n} 次湮灭：${m.desc}`;
+    const c = document.createElement("div"); c.className = "ms-count";
+    row.append(d, c);
+    mList.appendChild(row);
+    msRefs.push({ m, row, countEl: c });
+  }
+  // 扭曲里程碑（接在湮灭里程碑下方，暗红色）
+  const mSection = document.getElementById("milestone-list");
+  const dtTitle = document.createElement("div");
+  dtTitle.className = "ms-distort-title hidden";
+  dtTitle.id = "distort-ms-title";
+  dtTitle.textContent = "扭曲里程碑（已湮灭的扭曲宇宙数量）";
+  mSection.appendChild(dtTitle);
+  for (const m of DISTORT_MILESTONES) {
+    const row = document.createElement("div");
+    row.className = "milestone distort hidden distort-ms";
+    const d = document.createElement("div"); d.className = "ms-desc";
+    d.textContent = m.n + " DA：" + m.desc; // 1DA 描述在 updateSpUI 动态刷新
+    const c = document.createElement("div"); c.className = "ms-count";
+    row.append(d, c);
+    mSection.appendChild(row);
+    msRefs.push({ m, row, countEl: c, descEl: d, distort: true });
+  }
+  // 奇点升级
+  const uList = document.getElementById("sp-upgrade-list");
+  uList.innerHTML = ""; spRefs = [];
+  // spu1（奇点升级区顶部，与 SAU 按钮同尺寸）
+  const spuRow = document.createElement("div");
+  spuRow.className = "sau-row spu-row";
+  const spuBtn = document.createElement("button");
+  spuBtn.className = "sau-btn";
+  {
+    const nm = document.createElement("div"); nm.className = "sau-name"; nm.textContent = SPU1_DEF.name;
+    const ds = document.createElement("div"); ds.className = "sau-desc"; ds.textContent = SPU1_DEF.desc;
+    const ct = document.createElement("div"); ct.className = "sau-cost";
+    spuBtn.append(nm, ds, ct);
+    spuBtn.addEventListener("click", () => buySpUpgrade("spu1"));
+    spuRow.appendChild(spuBtn);
+  }
+  uList.appendChild(spuRow);
+  spu1Ref = { btn: spuBtn, costEl: spuBtn.querySelector ? spuBtn.children[2] : null };
+  // 真空衰变（spu1 下方、SAU 行上方）
+  const vacRow = document.createElement("div");
+  vacRow.className = "sau-row vac-row";
+  vacRef = null;
+  {
+    const btn = document.createElement("button");
+    btn.className = "sau-btn";
+    const nm = document.createElement("div"); nm.className = "sau-name"; nm.textContent = VACUUM_DEF.name;
+    const ds = document.createElement("div"); ds.className = "sau-desc";
+    const ct = document.createElement("div"); ct.className = "sau-cost";
+    btn.append(nm, ds, ct);
+    btn.addEventListener("click", () => buySAU(VACUUM_DEF.id));
+    vacRow.appendChild(btn);
+    vacRef = { u: VACUUM_DEF, btn, descEl: ds, costEl: ct };
+  }
+  uList.appendChild(vacRow);
+  // SAU 可重复升级（一行三个扁长方按钮，3DA 解锁）
+  const sauRow = document.createElement("div");
+  sauRow.className = "sau-row";
+  sauRefs = [];
+  for (const u of SAU_DEFS) {
+    const btn = document.createElement("button");
+    btn.className = "sau-btn";
+    const nm = document.createElement("div"); nm.className = "sau-name"; nm.textContent = u.name;
+    const ds = document.createElement("div"); ds.className = "sau-desc";
+    const ct = document.createElement("div"); ct.className = "sau-cost";
+    btn.append(nm, ds, ct);
+    btn.addEventListener("click", () => buySAU(u.id));
+    sauRow.appendChild(btn);
+    sauRefs.push({ u, btn, descEl: ds, costEl: ct });
+  }
+  uList.appendChild(sauRow);
+  // AU 单次升级（四组，两组一行）
+  auRefs = {};
+  for (let grp = 0; grp < AU_DEFS.length; grp += 2) {
+    const rowEl = document.createElement("div");
+    rowEl.className = "au-row";
+    for (let k = 0; k < 2 && grp + k < AU_DEFS.length; k++) {
+      const col = document.createElement("div");
+      col.className = "au-col";
+      for (const u of AU_DEFS[grp + k]) {
+        const btn = document.createElement("button");
+        btn.className = "au-btn";
+        const nm = document.createElement("div"); nm.className = "sau-name"; nm.textContent = u.name;
+        const ds = document.createElement("div"); ds.className = "sau-desc";
+        const ct = document.createElement("div"); ct.className = "sau-cost";
+        btn.append(nm, ds, ct);
+        btn.addEventListener("click", () => buyAU(u.id));
+        col.appendChild(btn);
+        auRefs[u.id] = { u, btn, nameEl: nm, descEl: ds, costEl: ct };
+      }
+      rowEl.appendChild(col);
+    }
+    uList.appendChild(rowEl);
+  }
+  for (const u of SP_UPGRADES) {
+    if (u.requiresA34 && !state.ach.normal.includes("A34")) continue; // 未获得 A34 前隐藏
+    const row = document.createElement("div");
+    row.className = "sp-upgrade";
+    const left = document.createElement("div");
+    const nm = document.createElement("div"); nm.className = "spu-name"; nm.textContent = u.name;
+    const ds = document.createElement("div"); ds.className = "spu-desc"; ds.textContent = u.desc;
+    left.append(nm, ds);
+    const right = document.createElement("div"); right.className = "auto-controls";
+    const cost = document.createElement("div"); cost.className = "spu-cost";
+    const btn = document.createElement("button"); btn.textContent = "购买";
+    btn.addEventListener("click", () => buySpUpgrade(u.id));
+    right.append(cost, btn);
+    row.append(left, right);
+    uList.appendChild(row);
+    spRefs.push({ u, row, costEl: cost, btn });
+  }
+  spBuilt = true;
+}
+function updateSpUI() {
+  if (state.annihilations < 1) return;
+  buildAnnihilationOnce();
+  // 扭曲里程碑：解锁扭曲（20 湮灭）前不可见
+  const distortMsVisible = state.annihilations >= 20;
+  const dtTitleEl = document.getElementById("distort-ms-title");
+  if (dtTitleEl) dtTitleEl.classList.toggle("hidden", !distortMsVisible);
+  for (const r of msRefs) {
+    if (r.distort) r.row.classList.toggle("hidden", !distortMsVisible);
+    // 1DA 描述动态显示当前倍率
+    if (r.distort && r.m.n === 1 && r.descEl) {
+      r.descEl.textContent = "1 DA：基于扭曲宇宙湮灭数，将奇点效果变为 " + daExpMult().toFixed(2) + " 倍";
+    }
+    const done = r.distort ? hasDistortMilestone(r.m.n) : hasMilestone(r.m.n);
+    r.row.classList.toggle("done", done);
+    const cur = r.distort ? distortDA() : state.annihilations;
+    r.countEl.textContent = done ? "✓" : (cur + " / " + r.m.n);
+  }
+  for (const r of spRefs) {
+    const cost = r.u.repeat ? r.u.cost() : r.u.cost;
+    if (r.u.repeat) {
+      // 可重复升级：显示等级与下一价
+      r.row.classList.toggle("affordable", state.sp >= cost);
+      r.costEl.textContent = `${fmt(cost)} Sp（等级 ${state[r.u.key]}）`;
+      r.btn.textContent = "购买";
+      r.btn.disabled = state.sp < cost;
+    } else {
+      const owned = state[r.u.key] >= 1;
+      r.row.classList.toggle("affordable", owned || state.sp >= cost);
+      r.costEl.textContent = owned ? "已购买" : `${fmt(cost)} Sp`;
+      r.btn.textContent = owned ? "已购买" : "购买";
+      r.btn.disabled = owned || state.sp < cost;
+    }
+  }
+  // spu1（始终显示，与 SAU 同尺寸）
+  if (spu1Ref) {
+    const owned = state.spu1 >= 1;
+    spu1Ref.btn.classList.toggle("bought", owned);
+    spu1Ref.btn.disabled = owned;
+    if (spu1Ref.costEl) spu1Ref.costEl.textContent = owned ? "已购买" : "1 Sp";
+  }
+  // 真空衰变（3DA 解锁）
+  const sauUnlocked = hasDistortMilestone(3);
+  if (vacRef) {
+    vacRef.btn.classList.toggle("hidden", !sauUnlocked);
+    if (sauUnlocked) {
+      const n = state.sau4 + 1;
+      const c = VACUUM_DEF.cost(n);
+      vacRef.descEl.textContent = VACUUM_DEF.desc + "（等级 " + state.sau4 + "）";
+      vacRef.costEl.textContent = fmt(c) + " Sp";
+      vacRef.btn.disabled = state.sp < c;
+      vacRef.btn.classList.toggle("affordable", state.sp >= c);
+    }
+  }
+  for (const r of sauRefs) {
+    r.btn.classList.toggle("hidden", !sauUnlocked);
+    if (!sauUnlocked) continue;
+    const n = state[r.u.key] + 1;
+    const maxed = state[r.u.key] >= r.u.max;
+    const c = r.u.cost(n);
+    r.descEl.textContent = r.u.desc + (r.u.max !== Infinity ? "（" + state[r.u.key] + "/" + r.u.max + "）" : "（等级 " + state[r.u.key] + "）");
+    r.costEl.textContent = maxed ? "已满级" : fmt(c) + " Sp";
+    r.btn.disabled = maxed || state.sp < c;
+    r.btn.classList.toggle("bought", maxed);
+    r.btn.classList.toggle("affordable", !maxed && state.sp >= c);
+  }
+  // AU 单次升级（第 4 组 4DA 前显示 ???，解锁后显示真实内容）
+  const au4Unlocked = hasDistortMilestone(4);
+  for (const id in auRefs) {
+    const r = auRefs[id];
+    r.btn.classList.toggle("hidden", !sauUnlocked);
+    if (!sauUnlocked) continue;
+    const owned = auOwned(id);
+    const afford = state.sp >= r.u.cost;
+    const isAu4 = id.startsWith("au4");
+    const au4Show = !isAu4 || au4Unlocked;
+    r.descEl.textContent = au4Show ? r.u.desc : "？？？";
+    if (r.nameEl) r.nameEl.textContent = au4Show ? r.u.name : "？？？";
+    r.btn.disabled = owned || !afford || (isAu4 && !au4Unlocked);
+    r.costEl.textContent = owned ? "已购买" : (r.u.cost === Infinity ? "未开放" : fmt(r.u.cost) + " Sp");
+    r.btn.disabled = owned || !afford;
+    r.btn.classList.toggle("bought", owned);
+    r.btn.classList.toggle("affordable", !owned && afford);
+  }
+  // 总奇点加成面板
+  const panel = document.getElementById("sp-bonus-panel");
+  const rows = [
+    ["总奇点 (Sp)", fmt(state.totalSp)],
+    ["波速获取倍率", "×" + fmt(hasDistortMilestone(1) ? Decimal.pow(1 + state.totalSp, 2 * daExpMult()).toNumber() : Math.pow(1 + state.totalSp, 2))], // 1DA 后指数 ×daExpMult()
+    ["普朗克常数倍率", "×" + fmt(planckMult())],
+    ["当前宇宙普朗克温度", fmt(temperatureCap()) + " K"],
+  ];
+  panel.innerHTML = "";
+  for (const [label, value] of rows) {
+    const row = document.createElement("div"); row.className = "spb-row";
+    const l = document.createElement("span"); l.className = "spb-label"; l.textContent = label;
+    const v = document.createElement("span"); v.className = "spb-value"; v.textContent = value;
+    row.append(l, v);
+    panel.appendChild(row);
+  }
+  // 温度上限软上限提示：原上限超 1e250 时显示（亮红）
+  {
+    const expS = hasDistortMilestone(1) ? 10 * daExpMult() : 10;
+    const rawLogCap = (getLogTotalSp() > 250 ? expS * getLogTotalSp() : expS * Math.log10(1 + state.totalSp)) + Math.log10(T_P0);
+    if (rawLogCap > 250) {
+      const warn = document.createElement("div");
+      warn.className = "spb-warning";
+      warn.textContent = "宇宙的规则正在阻止你获取更高的温度";
+      panel.appendChild(warn);
+    }
+  }
+  document.getElementById("sp-value").textContent = fmt(state.sp);
+}
+
+// ---------- 扭曲宇宙 UI（build-once, in-place update）----------
+let distortBuilt = false, distortRefs = [];
+function buildDistortOnce() {
+  if (distortBuilt) return;
+  const list = document.getElementById("distort-list");
+  list.innerHTML = ""; distortRefs = [];
+  for (const u of DISTORT_UNIVERSES) {
+    const card = document.createElement("div");
+    card.className = "distort-card";
+    const nm = document.createElement("div"); nm.className = "dt-name"; nm.textContent = u.name;
+    const ds = document.createElement("div"); ds.className = "dt-desc"; ds.textContent = u.desc;
+    const st = document.createElement("div"); st.className = "dt-status";
+    const btn = document.createElement("button"); btn.textContent = "进入";
+    btn.addEventListener("click", () => enterDistort(u.id));
+    card.append(nm, ds, st, btn);
+    list.appendChild(card);
+    distortRefs.push({ u, card, statusEl: st, btn });
+  }
+  distortBuilt = true;
+}
+function updateDistortUI() {
+  if (state.annihilations < 20) return;
+  buildDistortOnce();
+  // 重试/退出按钮：仅在扭曲宇宙中可见
+  document.getElementById("distort-active-controls").classList.toggle("hidden", !state.distortActive);
+  // 顶部汇总行：湮灭的扭曲宇宙数与奇点倍率
+  const summary = document.getElementById("distort-summary");
+  summary.innerHTML =
+    "你湮灭了<span class='ds-red'>" + distortDA() + "</span>个扭曲宇宙，" +
+    "<span class='ds-purple'>奇点</span>获取变为<span class='ds-red'>" + fmt(state.distortMult) + "</span>倍";
+  for (const r of distortRefs) {
+    const done = state.distortDone.includes(r.u.id);
+    const active = state.distortActive === r.u.id;
+    r.card.classList.toggle("done", done && !active);
+    r.card.classList.toggle("active", active);
+    if (active) {
+      r.statusEl.textContent = `进行中 · 目标 ${fmt(r.u.tp)} K`;
+      r.btn.textContent = "进行中";
+      r.btn.disabled = true;
+    } else if (done) {
+      r.statusEl.textContent = `已湮灭 · 可再次进入`;
+      r.btn.textContent = "进入";
+      r.btn.disabled = false;
+    } else {
+      r.statusEl.textContent = `目标 ${fmt(r.u.tp)} K`;
+      r.btn.textContent = "进入";
+      r.btn.disabled = false;
+    }
+  }
+}
+
+// ---------- 自动化 ----------
+const AUTO_DEFS = [
+  { key: "wave", unlockState: "autoWaveUpg", name: "自动购买主要页升级", desc: "自动购买波动主要页面的可重复升级（升级1/2）", unlockDesc: "1e10 Hz 解锁" },
+  { key: "phonon", unlockState: "autoPhononUpg", name: "自动购买声子页升级", desc: "自动购买波动声子页面的可重复升级", unlockDesc: "1e20 Hz 解锁" },
+  { key: "up3", unlockState: "autoUp3", name: "自动购买升级3", desc: "在达到指定倍率时自动购买升级3", unlockDesc: "第 8 次湮灭解锁", input: { id: "auto-up3-mult", label: "倍率", value: () => state.autoUp3Mult } },
+  { key: "ann", unlockState: "autoAnn", name: "自动湮灭", desc: "在可获取指定奇点数时自动湮灭", unlockDesc: "第 10 次湮灭解锁", input: { id: "auto-ann-sp", label: "Sp", value: () => state.autoAnnSp } },
+];
+
+function autoUnlocked(def) {
+  if (def.key === "wave") return state.autoWaveUpg >= 1;
+  if (def.key === "phonon") return state.autoPhononUpg >= 1;
+  if (def.key === "up3") return state.autoUp3 >= 1;
+  if (def.key === "ann") return state.autoAnn >= 1;
+  return false;
+}
+
+let autoBuilt = false, autoRefs = {}, batchRefs = null;
+function buildAutomationOnce() {
+  if (autoBuilt) return;
+  const list = document.getElementById("auto-list");
+  list.innerHTML = ""; autoRefs = {};
+  for (const def of AUTO_DEFS) {
+    const row = document.createElement("div");
+    row.className = "auto-row";
+    const left = document.createElement("div");
+    const nm = document.createElement("div"); nm.className = "auto-name"; nm.textContent = def.name;
+    const ds = document.createElement("div"); ds.className = "auto-desc"; ds.textContent = def.desc;
+    left.append(nm, ds);
+    const right = document.createElement("div"); right.className = "auto-controls";
+    const lock = document.createElement("div"); lock.className = "auto-lock";
+    const input = document.createElement("input"); input.type = "text"; input.classList.add("hidden"); // text 以允许 AeB 格式
+    input.addEventListener("change", () => {
+      const v = parseSciInput(input.value);
+      if (def.key === "up3") {
+        if (!isNaN(v)) state.autoUp3Mult = v;
+        // S13：在升级3的自动化中填入小于 1 的数字
+        if (!state.ach.hidden.includes("S13") && !isNaN(v) && v < 1) { grantHidden("S13"); updateAchievementsUI(); }
+      } else if (def.key === "ann") {
+        if (!isNaN(v)) state.autoAnnSp = v;
+      }
+      saveGame();
+    });
+    // AU21/AU22：模式切换按钮 + 时间间隔输入框
+    let modeBtn = null, timeInput = null;
+    if (def.key === "up3" || def.key === "ann") {
+      modeBtn = document.createElement("button"); modeBtn.className = "batch-btn single hidden";
+      modeBtn.addEventListener("click", () => {
+        if (def.key === "up3") state.autoUp3Mode = state.autoUp3Mode === "ratio" ? "time" : "ratio";
+        else state.autoAnnMode = state.autoAnnMode === "sp" ? "time" : "sp";
+        updateAutomationUI();
+      });
+      timeInput = document.createElement("input"); timeInput.type = "text"; timeInput.classList.add("hidden"); // text 以允许 AeB 格式
+      timeInput.addEventListener("change", () => {
+        const v = parseSciInput(timeInput.value);
+        if (def.key === "up3") state.autoUp3Interval = isNaN(v) || v < 1 ? 10 : v;
+        else state.autoAnnInterval = isNaN(v) || v < 1 ? 60 : v;
+        saveGame();
+      });
+    }
+    const btn = document.createElement("button"); btn.textContent = "开启";
+    btn.addEventListener("click", () => {
+      if (!autoUnlocked(def)) return;
+      state.autoOn[def.key] = !state.autoOn[def.key];
+      updateAutomationUI();
+    });
+    for (const el of [lock, input, timeInput, modeBtn, btn]) if (el) right.append(el);
+    // A34 奖励：前两个自动化的批量购买切换按钮
+    let batchBtn = null;
+    if (def.key === "wave" || def.key === "phonon") {
+      batchBtn = document.createElement("button"); batchBtn.className = "batch-btn single hidden";
+      batchBtn.addEventListener("click", () => {
+        state.batchMode[def.key] = !state.batchMode[def.key];
+        updateAutomationUI();
+      });
+      right.append(batchBtn);
+    }
+    row.append(left, right);
+    list.appendChild(row);
+    autoRefs[def.key] = { def, row, lockEl: lock, inputEl: input, btn, batchBtn, modeBtn, timeInput };
+  }
+  // 批量购买上限升级（A34 解锁，Sp 购买）
+  const bRow = document.createElement("div");
+  bRow.className = "sp-upgrade";
+  const bLeft = document.createElement("div");
+  const bNm = document.createElement("div"); bNm.className = "spu-name"; bNm.textContent = BATCH_UPG.name;
+  const bDs = document.createElement("div"); bDs.className = "spu-desc"; bDs.textContent = BATCH_UPG.desc;
+  bLeft.append(bNm, bDs);
+  const bRight = document.createElement("div"); bRight.className = "auto-controls";
+  const bCost = document.createElement("div"); bCost.className = "spu-cost";
+  const bBtn = document.createElement("button"); bBtn.textContent = "购买";
+  bBtn.addEventListener("click", buyBatchUpgrade);
+  bRight.append(bCost, bBtn);
+  bRow.append(bLeft, bRight);
+  list.appendChild(bRow);
+  batchRefs = { row: bRow, costEl: bCost, btn: bBtn };
+  autoBuilt = true;
+}
+// 解析 AeB 格式输入（"1e5"、"3.5e-2" 等；失败返回 NaN）
+function parseSciInput(str) {
+  if (typeof str !== "string") return parseFloat(str);
+  const s = str.trim().replace(/[eE]\+/, "e");
+  const v = parseFloat(s);
+  return v;
+}
+// 批量上限：初始 2，奇点升级每级翻倍；打破规则且 >128 时无限制（最大购买）
+function batchLimit() {
+  if (state.rulesBroken && state.batchMax > 128) return Infinity;
+  return state.batchMax;
+}
+function updateAutomationUI() {
+  if (state.annihilations < 1) return;
+  buildAutomationOnce();
+  for (const key in autoRefs) {
+    const r = autoRefs[key];
+    const unlocked = autoUnlocked(r.def);
+    r.lockEl.textContent = unlocked ? "" : r.def.unlockDesc;
+    if (r.def.input) {
+      const isTimeMode = (r.def.key === "up3" && state.autoUp3Mode === "time") || (r.def.key === "ann" && state.autoAnnMode === "time");
+      // 时间模式下隐藏比例/Sp 输入框（只留时间框）
+      const modeOwned = r.def.key === "up3" ? auOwned("au21") : auOwned("au22");
+      r.inputEl.classList.toggle("hidden", !unlocked || (modeOwned && isTimeMode));
+      if (unlocked && !r.inputEl.classList.contains("hidden") && document.activeElement !== r.inputEl) r.inputEl.value = r.def.input.value();
+    }
+    r.btn.textContent = state.autoOn[key] ? "开启中" : "已关闭";
+    r.btn.disabled = !unlocked;
+    r.row.classList.toggle("affordable", state.autoOn[key]);
+    // AU21/AU22 模式切换按钮
+    if (r.modeBtn) {
+      const modeUnlocked = r.def.key === "up3" ? auOwned("au21") : auOwned("au22");
+      const isTime = r.def.key === "up3" ? state.autoUp3Mode === "time" : state.autoAnnMode === "time";
+      r.modeBtn.classList.toggle("hidden", !modeUnlocked || !unlocked);
+      if (r.timeInput) r.timeInput.classList.toggle("hidden", !(modeUnlocked && unlocked && isTime));
+      if (modeUnlocked) {
+        if (r.def.key === "up3") {
+          r.modeBtn.textContent = isTime ? "类型：时间" : "类型：比例";
+          if (isTime && document.activeElement !== r.timeInput) r.timeInput.value = state.autoUp3Interval;
+        } else {
+          r.modeBtn.textContent = isTime ? "类型：时间" : "类型：奇点";
+          if (isTime && document.activeElement !== r.timeInput) r.timeInput.value = state.autoAnnInterval;
+        }
+      }
+    }
+    // 批量购买按钮（A34 奖励解锁）
+    if (r.batchBtn) {
+      const batchUnlocked = state.ach.normal.includes("A34");
+      if (batchUnlocked && unlocked) {
+        // 先定外观再控显隐（className 整体替换会清掉 hidden，顺序不能反）
+        const limit = batchLimit();
+        if (limit === Infinity) {
+          r.batchBtn.textContent = "最大购买";
+          r.batchBtn.className = "batch-btn max";
+        } else if (state.batchMode[key]) {
+          r.batchBtn.textContent = "批量购买 ×" + limit;
+          r.batchBtn.className = "batch-btn batch";
+        } else {
+          r.batchBtn.textContent = "单次购买";
+          r.batchBtn.className = "batch-btn single";
+        }
+        r.batchBtn.classList.remove("hidden");
+      } else {
+        r.batchBtn.classList.add("hidden");
+      }
+    }
+  }
+  // 批量购买上限升级卡（A34 解锁）
+  if (batchRefs) {
+    const unlocked = state.ach.normal.includes("A34");
+    batchRefs.row.classList.toggle("hidden", !unlocked);
+    if (unlocked) {
+      const cost = BATCH_UPG.cost();
+      batchRefs.row.classList.toggle("affordable", state.sp >= cost);
+      batchRefs.costEl.textContent = fmt(cost) + " Sp（等级 " + state.batchLvl + "）";
+      batchRefs.btn.disabled = state.sp < cost;
+    }
+  }
+}
+
+// 每帧自动购买/自动湮灭逻辑（游戏时间）
+// 注意：即使 spu1 已购（购买免费），自动化仍以"资源达到价格"为触发条件，
+// 防止免费升级被自动化每 tick 无限购买导致指数爆炸；手动购买不受此限制。
+// 批量执行：mode 下每 tick 最多买 batchLimit() 次（单次=1）
+function autoBuyTimes(key) {
+  if (state.ach.normal.includes("A34") && state.batchMode[key]) return batchLimit();
+  return 1;
+}
+// 自动湮灭统一入口：所有模式判断与时间戳更新集中在此（tick 与 rAF 共用，防双执行）
+function autoAnnTick() {
+  if (state.annihilations < 1 || !state.autoOn.ann || !state.autoAnn) return;
+  if (inDistort("narrow")) return;
+  if (state.distortActive) {
+    // 扭曲宇宙：达标即秒（不受模式影响）
+    if (annihilationReady() && doAnnihilation()) state.lastAutoAnnAt = Date.now();
+    return;
+  }
+  if (auOwned("au22") && state.autoAnnMode === "time") {
+    // 时间模式：距上次自动湮灭超过设定真实秒且达标
+    if (Date.now() - state.lastAutoAnnAt >= state.autoAnnInterval * 1000 && annihilationReady()) {
+      if (doAnnihilation()) state.lastAutoAnnAt = Date.now();
+    }
+  } else if (Date.now() - state.lastAutoAnnAt >= 1000 && annihilationReady() && spGainExact() >= state.autoAnnSp) {
+    // Sp 模式：1 秒防抖（rAF 与 tick 双入口下防止连环湮灭）
+    if (doAnnihilation()) state.lastAutoAnnAt = Date.now();
+  }
+}
+function runAutomation() {
+  if (state.annihilations < 1) return;
+  if (inDistort("narrow")) return; // 狭窄宇宙：禁用所有自动化
+  if (state.autoOn.wave && state.autoWaveUpg) {
+    const n = autoBuyTimes("wave");
+    for (let i = 0; i < n; i++) { if (F() >= up1Cost()) buyUp1(); else break; }
+    for (let i = 0; i < n; i++) { if (F() >= up2Cost()) buyUp2(); else break; }
+  }
+  if (state.autoOn.phonon && state.autoPhononUpg && state.phUnlocked) {
+    const n = autoBuyTimes("phonon");
+    for (let i = 0; i < n; i++) { if (F() >= pg1Cost()) buyPG1(); else break; }
+    for (let i = 0; i < n; i++) { if (state.phonons >= pg2Cost()) buyPG2(); else break; }
+    for (let i = 0; i < n; i++) { if (state.pg3 < pg3Cap() && state.phonons >= pg3Cost()) buyPG3(); else break; }
+  }
+  if (state.autoOn.up3 && state.autoUp3 && up3Card) {
+    if (auOwned("au21") && state.autoUp3Mode === "time") {
+      // 时间模式：距上次自动升级3超过设定秒数即触发（仍需 F 超过峰值）
+      if (Date.now() - state.lastAutoUp3At >= state.autoUp3Interval * 1000 && FLog() > Math.log10(Math.max(state.up3LastF, 1e-300))) {
+        if (buyUp3()) state.lastAutoUp3At = Date.now();
+      }
+    } else {
+      // 比例模式：在当前加成倍率达到设定值时购买升级3
+      const f = F();
+      const mult = state.L * up3Wavelength(f);
+      if (f > state.up3LastF && mult >= state.autoUp3Mult) buyUp3();
+    }
+  }
+  autoAnnTick();
+}
+
+// ---------- Rendering ----------
+// 快变显示：全局资源栏（频率/获取/冷却k/软上限提示）——由显示循环按高频率刷新
+// 显示插值：记录逻辑结算时刻的 U 与增速，显示层用真实时间外推，消除 100ms 阶跃感
+let dispUAt = 0, dispUBase = 0, dispGRate = 0;
+function updateDispAnchor() {
+  dispUAt = Date.now();
+  dispUBase = state.U;
+  dispGRate = gainRate() * timeRate(); // 实际每真实秒的 U 增量
+}
+function extrapolatedU() {
+  const dt = (Date.now() - dispUAt) / 1000;
+  if (dt < 0 || dt > 1 || !isFinite(dispGRate)) return state.U;
+  return dispUBase + dispGRate * dt;
+}
+function renderFast() {
+  // 膨胀宇宙下 distortLMod 可能超 double：借用 F() 的 log 域逻辑（此处用外推 U）
+  let f;
+  const ml3 = distortLModLog();
+  if (ml3 > 0) {
+    const logF = Math.log10(Math.max(Math.abs(extrapolatedU()), 1e-300)) - getLogL10() - ml3;
+    f = logF > 308 ? Infinity : (logF < -308 ? 0 : Math.pow(10, logF));
+  } else {
+    f = extrapolatedU() / state.L;
+  }
+  // F 超 double 时以 eN 格式显示（logF 直接可得）
+  document.getElementById("freq-value").textContent = (ml3 > 0 && f === Infinity)
+    ? "1e" + (Math.log10(Math.max(Math.abs(extrapolatedU()), 1e-300)) - getLogL10() - ml3).toFixed(0)
+    : fmt(Math.abs(f));
+  // Hz/s 显示：膨胀宇宙需除以含倍率的有效波长（log 域防溢出）
+  {
+    const gLog = Math.log10(Math.max(Math.abs(gainRate() * timeRate()), 1e-300)) - getLogL10() - distortLModLog();
+    const gainHz = gLog > 308 ? Infinity : (gLog < -308 ? 0 : Math.pow(10, gLog));
+    document.getElementById("freq-gain").textContent = (gainRate() > 0 ? "+" : "") + fmt(gainHz) + " Hz/s";
+  }
+  // 冷却宇宙：实时显示当前指数 k
+  const cdEl = document.getElementById("cooldown-display");
+  if (inDistort("cooldown")) {
+    cdEl.classList.remove("hidden");
+    cdEl.textContent = "当前指数 k = " + cooldownExp().toFixed(2);
+  } else {
+    cdEl.classList.add("hidden");
+  }
+  // 当前游戏速率（奇点下方）
+  const trEl = document.getElementById("timerate-display");
+  if (state.annihilations >= 1) {
+    trEl.classList.remove("hidden");
+    trEl.textContent = "当前游戏速率：×" + fmt(timeRate());
+  } else {
+    trEl.classList.add("hidden");
+  }
+  // 狭窄宇宙：剩余购买次数
+  const nwEl = document.getElementById("narrow-display");
+  if (inDistort("narrow")) {
+    nwEl.classList.remove("hidden");
+    nwEl.textContent = "剩余购买次数：" + Math.max(0, 10 - state.narrowPurchases);
+  } else {
+    nwEl.classList.add("hidden");
+  }
+  // e100 软上限提示 / 通胀宇宙提示（同一位置）
+  const scNote = document.getElementById("softcap-note");
+  if (inDistort("inflation")) {
+    scNote.classList.remove("hidden");
+    scNote.textContent = "你处于通胀宇宙，将始终遭受更强的折算";
+  } else {
+    scNote.classList.toggle("hidden", !softcapped());
+    scNote.textContent = "当频率超过 e100 Hz 时，升级的价格和效果将被软上限";
+  }
+  document.getElementById("u-value").textContent = fmt(Math.abs(extrapolatedU()));
+  // 波长显示：膨胀宇宙下用 log 域（倍率可能超 double）
+  const ml2 = distortLModLog();
+  document.getElementById("l-value").textContent = ml2 > 0
+    ? "1e" + (getLogL10() + ml2).toFixed(1)
+    : fmt(Math.pow(10, Math.max(getLogL10(), -320)));
+}
+function renderWave() {
+  renderFast();
+  updateUpgradesUI();
+}
+
+function renderStats() {
+  document.getElementById("stat-playtime").textContent = fmtTime(state.playTime);
+  document.getElementById("stat-realtime").textContent = fmtTime(state.realTime);
+  document.getElementById("stat-total").textContent = fmt(state.totalFGained) + " Hz";
+  document.getElementById("stat-maxf").textContent = fmt(state.maxF) + " Hz";
+  document.getElementById("stat-maxu").textContent = fmt(state.maxU) + " m/s";
+  document.getElementById("stat-minl").textContent = fmt(state.minL) + " m";
+  document.getElementById("stat-ach-n").textContent = `${state.ach.normal.length} / ${NORMAL_ACH.length}`;
+  document.getElementById("stat-ach-h").textContent = `${state.ach.hidden.length} / ${HIDDEN_ACH.length}`;
+  document.getElementById("stat-timerate").textContent = "×" + fmt(timeRate());
+  // 湮灭统计
+  const annReal = state.annihilations >= 1 ? (Date.now() - state.annStartReal) / 1000 : 0;
+  const annGame = state.annihilations >= 1 ? state.playTime - state.annStartGame : 0;
+  document.getElementById("stat-ann-time").textContent =
+    state.annihilations >= 1 ? `${fmtTime(annReal)} / ${fmtTime(annGame)}` : "— / —";
+  document.getElementById("stat-ann-total-sp").textContent = fmt(state.totalSp);
+  document.getElementById("stat-ann-best-sp").textContent = fmt(state.annBestSp);
+  document.getElementById("stat-ann-best-rate").textContent = fmt(state.annBestRate) + " Sp/min";
+  document.getElementById("stat-ann-fastest").textContent = state.annFastest > 0 ? fmtTime(state.annFastest) : "—";
+  document.getElementById("stat-ann-tp").textContent = fmt(temperatureCap()) + " K";
+  document.getElementById("stat-ann-distort").textContent = `${state.distortDone.length} / ${DISTORT_UNIVERSES.length}`;
+  // 挑战选项卡：各扭曲宇宙最佳完成时间与总完成时间
+  const chList = document.getElementById('challenge-list');
+  if (chList) {
+    chList.innerHTML = '';
+    for (const u of DISTORT_UNIVERSES) {
+      const best = state.distortBest[u.id];
+
+      const row = document.createElement('div');
+      row.className = 'stat-row' + (state.distortDone.includes(u.id) ? '' : ' muted');
+      const label = document.createElement('span'); label.className = 'stat-label';
+      label.textContent = u.name + '（' + (best ? '已湮灭' : '未湮灭') + '）';
+      const val = document.createElement('span'); val.className = 'stat-value';
+      val.textContent = '最佳 ' + (best ? fmtTime(best, true) : '—');
+      row.append(label, val);
+      chList.appendChild(row);
+    }
+    // 总和行：所有挑战时间之和
+    const sumRow = document.createElement('div');
+    sumRow.className = 'stat-row';
+    const sumLabel = document.createElement('span'); sumLabel.className = 'stat-label';
+    sumLabel.textContent = '所有挑战时间之和';
+    const sumVal = document.createElement('span'); sumVal.className = 'stat-value';
+    // 所有宇宙都已湮灭才显示总和；否则视为未定（+∞）
+    const allDone = DISTORT_UNIVERSES.every(u => state.distortBest[u.id]);
+    sumVal.textContent = allDone ? fmtTime(state.distortTotal || 0, true) : "+∞";
+    sumRow.append(sumLabel, sumVal);
+    chList.appendChild(sumRow);
+  }
+  // 最近十次湮灭（重置子页）
+  const hList = document.getElementById("ann-history-list");
+  if (hList) {
+    hList.innerHTML = "";
+    const rows = state.annHistory.slice(-10).reverse();
+    if (rows.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "stat-row muted";
+      empty.innerHTML = "<span class='stat-label'>暂无湮灭记录</span><span class='stat-value'>—</span>";
+      hList.appendChild(empty);
+    }
+    for (const r of rows) {
+      const row = document.createElement("div");
+      row.className = "ann-history-row" + (r.distort ? " distort-row" : "");
+      const label = document.createElement("span"); label.className = "ah-label";
+      label.textContent = `${r.label} · ${fmtTime(r.realDur)}（真实）/ ${fmtTime(r.gameDur)}（游戏）`;
+      const val = document.createElement("span"); val.className = "ah-val";
+      val.textContent = `${fmt(r.sp)} Sp · ${fmt(r.rate)} Sp/分`;
+      row.append(label, val);
+      hList.appendChild(row);
+    }
+  }
+}
+
+function renderAll() { applyPhononVisibility(); renderWave(); updatePhononUI(); renderStats(); renderSlots(); updateAchievementsUI(); updateDistortUI(); }
+function setAutosaveStatus(msg) { document.getElementById("autosave-status").textContent = msg; }
+
+// ---------- Achievements ----------
+const NORMAL_ACH = [
+  // 第 1 行 (A11-A15)
+  { id: "A11", name: "蓝移", desc: "购买第一个升级", check: () => state.up1 >= 1 },
+  { id: "A12", name: "协同", desc: "购买第一个单次升级", check: () => state.meta1 >= 1 },
+  { id: "A13", name: "超声", desc: "到达 20000 Hz", check: () => F() >= 20000 },
+  { id: "A14", name: "效率", desc: "第一次缩短波长", check: () => state.up3 >= 1 },
+  { id: "A15", name: "计算", desc: "到达 1 GHz", check: () => F() >= 1e9 },
+  // 第 2 行 (A21-A25) 声子
+  { id: "A21", name: "热学", desc: "启动声子发生器", star: true, reward: "up1 的效果变为 1.5 次方", check: () => !!state.phOn },
+  { id: "A22", name: "室温", desc: "到达 300 K", check: () => temperature() >= 300 },
+  { id: "A23", name: "耦合", desc: "购买声波耦合", check: () => state.phCoupling >= 1 },
+  { id: "A24", name: "聚变", desc: "到达 1.5e7 K", check: () => temperature() >= 1.5e7 },
+  { id: "A25", name: "湮灭", desc: "到达 1.42e32 K（普朗克温度）", star: true, reward: "各个重置后波速为 100 m/s", check: () => state.annihilations >= 1 },
+  // 第 3 行 (A31-A35) 湮灭
+  { id: "A31", name: "创生", desc: "购买第一个湮灭升级", check: () => state.spu1 >= 1 },
+  { id: "A32", name: "Qol", desc: "获得所有自动化", check: () => state.autoWaveUpg && state.autoPhononUpg && state.autoUp3 && state.autoAnn },
+  { id: "A33", name: "扭曲", desc: "解锁扭曲选项卡", check: () => state.annihilations >= 20 },
+  { id: "A34", name: "秩序", desc: "湮灭一个被扭曲的宇宙", star: true, reward: "解锁批量购买", check: () => state.distortDone.length >= 1 },
+  { id: "A35", name: "刻写", desc: "购买第一个奇点升级", star: true, reward: "奇点升级解锁", check: () => (state.sau1 + state.sau2 + state.sau3 > 0) || Object.keys(state.au).length > 0 },
+  // 第 4 行 (A41-A45) 奇点
+  { id: "A41", name: "视界", desc: "解锁黑洞", check: () => false }, // 待黑洞实装
+  { id: "A42", name: "烂柯", desc: "总时间倍率超过 3.65e6", check: () => timeRate() >= 3.65e6 },
+  { id: "A43", name: "无限", desc: "打破宇宙的规则", check: () => state.rulesBroken && !state.testBreakRules }, // 原 A35
+  { id: "A44", name: "永炽", desc: "温度超过 1.79e308 K", check: () => temperature() >= 1.79e308 },
+  { id: "A45", name: "???", desc: "（占位）", check: () => false },
+];
+const ACH_PER_ROW = 5;
+// 已定义行数；之后整行为未解锁 ???
+const NORMAL_ROWS = Math.ceil(NORMAL_ACH.length / ACH_PER_ROW);
+
+const HIDDEN_ACH = [
+  { id: "S1", name: "点击即送", check: () => false },
+  { id: "S2", name: "二游", check: () => false },
+  { id: "S3", name: "快点端上来罢", check: () => false }, // 价格不足时5秒点10次购买按钮
+  { id: "S4", name: "您来的真早！", check: () => {
+      // 00:00–00:59 打开游戏（"真早"指清早）；若指中午 12:00–13:00，改 h===12
+      const h = new Date().getHours();
+      return h === 0;
+  }},
+  { id: "S5", name: "哼哼哼啊——", check: () => false },
+  { id: "S6", name: "选择困难症", check: () => false },
+  { id: "S7", name: "请注意使用规范", check: () => false }, // 10秒内反复开关20次声子发生器
+  { id: "S8", name: "无用功", check: () => false }, // 加成小于1.1x时购买升级3
+  { id: "S9", name: "柚子厨蒸鹅心", check: () => false }, // 导入存档处输入0721并导入
+  { id: "S10", name: "歪了", check: () => false }, // 点击S2时每次有0.1%概率获得
+  { id: "S11", name: "踌躇不决", check: () => false }, // 达到当前普朗克温度后五分钟不湮灭
+  { id: "S12", name: "就你特殊？？！！", check: () => false }, // 点击Qol成就按钮10次
+  { id: "S13", name: "额，你知道这玩意怎么用吗", check: () => false }, // 升级3自动化填入小于1的数字
+  { id: "S14", name: "哦不我无疑是难过的", check: () => false }, // 扭曲宇宙中失败十次（退出计失败）
+  { id: "S15", name: "这是距离增量吗？", check: () => false }, // 达到 1e308 m 波长
+  { id: "S16", name: "硬核玩家", check: () => false }, // 已在扭曲宇宙中时点击另一个宇宙的进入
+  { id: "S17", name: "禅", check: () => false }, // 在扭曲宇宙中停留超过 1h 未完成
+  { id: "S18", name: "getting over it", check: () => false }, // 能完成后重试/退出而非完成
+  { id: "S19", name: "滚木", check: () => false }, // 生产为 0 Hz/s 超过 10 分钟
+  { id: "S20", name: "version control", check: () => false }, // 查看 changelog
+];
+// S5 目标序列：S1,S1,S4,S5,S1,S4
+const S5_SEQUENCE = ["S1", "S1", "S4", "S5", "S1", "S4"];
+
+function checkAchievements() {
+  for (const a of NORMAL_ACH) {
+    if (!state.ach.normal.includes(a.id) && a.check()) {
+      state.ach.normal.push(a.id);
+      setAutosaveStatus("成就达成：" + a.name);
+    }
+  }
+  for (const a of HIDDEN_ACH) {
+    if (!state.ach.hidden.includes(a.id) && a.check()) {
+      state.ach.hidden.push(a.id);
+    }
+  }
+}
+
+function isRowUnlocked(r) {
+  if (r === 0) return true;
+  // 第 r 行解锁条件：第 r-1 行全部完成
+  const prev = NORMAL_ACH.slice((r - 1) * ACH_PER_ROW, r * ACH_PER_ROW);
+  return prev.length === ACH_PER_ROW && prev.every(a => state.ach.normal.includes(a.id));
+}
+
+// ---------- 隐藏成就点击处理 ----------
+function grantHidden(id) {
+  if (!state.ach.hidden.includes(id)) {
+    const a = HIDDEN_ACH.find(x => x.id === id);
+    state.ach.hidden.push(id);
+    if (a) setAutosaveStatus("隐藏成就达成：" + a.name);
+  }
+}
+
+function onHiddenClick(id) {
+  const done = state.ach.hidden.includes(id);
+  const revealed = state.ach.hiddenRevealed.includes(id);
+  // S1：点击即送 —— 点击 S1 直接完成
+  if (id === "S1" && !done) { grantHidden("S1"); }
+
+  // S2：二游 —— 每次点击 S2 有 0.6% 概率获得
+  // S10：歪了 —— 点击 S2 时每次点击有 0.3% 概率获得（独立判定，不受 S2 已完成影响）
+  if (id === "S2") {
+    if (!done && Math.random() < 0.006) grantHidden("S2");
+    if (!state.ach.hidden.includes("S10") && Math.random() < 0.003) grantHidden("S10");
+  }
+
+  // S12：就你特殊？？！！ —— 点击 Qol（A32）成就单元格 10 次
+  // （在 buildAchievementsOnce 中给 A32 单元格绑定了点击计数）
+
+  // S5：哼哼哼啊—— 按序列 S1,S1,S4,S5,S1,S4 点击
+  // （即便目标单元格已完成或未揭示，点击均计入序列）
+  if (!state.ach.hidden.includes("S5")) {
+    state.hiddenClicks.push(id);
+    if (state.hiddenClicks.length > S5_SEQUENCE.length) state.hiddenClicks.shift();
+    if (state.hiddenClicks.length === S5_SEQUENCE.length &&
+        state.hiddenClicks.every((v, i) => v === S5_SEQUENCE[i])) {
+      grantHidden("S5");
+      state.hiddenClicks = [];
+    }
+  }
+
+  // 未揭示的常规揭示逻辑（点击后显示名称）
+  if (!done && !revealed) {
+    state.ach.hiddenRevealed.push(id);
+  }
+
+  // S4 不靠点击，但点击任何隐藏成就时顺便检查一次系统时间
+  if (!state.ach.hidden.includes("S4") && HIDDEN_ACH.find(x => x.id === "S4").check()) {
+    grantHidden("S4");
+  }
+
+  updateAchievementsUI();
+}
+
+// ---------- Achievements (build-once, in-place update) ----------
+let achBuilt = false;
+let normalCellRefs = [];
+let hiddenCellRefs = [];
+
+function buildAchievementsOnce() {
+  if (achBuilt) return;
+  const grid = document.getElementById("normal-ach-grid");
+  grid.innerHTML = "";
+  normalCellRefs = [];
+  // 已定义行 + 1 行锁定行（展示 ??? 结构）
+  for (let r = 0; r < NORMAL_ROWS + 1; r++) {
+    for (let c = 0; c < ACH_PER_ROW; c++) {
+      const idx = r * ACH_PER_ROW + c;
+      const a = NORMAL_ACH[idx];
+      const cell = document.createElement("div");
+      cell.className = "ach-cell";
+      const idEl = document.createElement("div"); idEl.className = "ach-id";
+      const nameEl = document.createElement("div"); nameEl.className = "ach-name";
+      const descEl = document.createElement("div"); descEl.className = "ach-desc";
+      const checkEl = document.createElement("div"); checkEl.className = "ach-check";
+      const lockEl = document.createElement("div"); lockEl.className = "ach-locked";
+      const starEl = document.createElement("div"); starEl.className = "ach-star"; starEl.textContent = "★";
+      // 特殊奖励 tooltip（小黑框，点击切换显示）
+      const tipEl = document.createElement("div"); tipEl.className = "ach-reward-tip";
+      cell.append(idEl, nameEl, descEl, checkEl, lockEl, starEl, tipEl);
+      if (a && a.reward) {
+        cell.classList.add("has-reward");
+        tipEl.textContent = a.id + "//" + a.reward;
+        cell.addEventListener("click", () => cell.classList.toggle("show-tip"));
+      }
+      // S12：就你特殊？？！！ —— 点击 Qol（A32）成就单元格 10 次
+      if (a && a.id === "A32") {
+        let qolClicks = 0;
+        cell.addEventListener("click", () => {
+          qolClicks++;
+          if (qolClicks >= 10 && !state.ach.hidden.includes("S12")) {
+            grantHidden("S12");
+            updateAchievementsUI();
+          }
+        });
+      }
+      grid.appendChild(cell);
+      normalCellRefs.push({ root: cell, a, row: r, idEl, nameEl, descEl, checkEl, lockEl, starEl, tipEl });
+    }
+  }
+  const hgrid = document.getElementById("hidden-ach-grid");
+  hgrid.innerHTML = "";
+  hiddenCellRefs = [];
+  for (const a of HIDDEN_ACH) {
+    const cell = document.createElement("div");
+    cell.className = "ach-cell hidden-ach";
+    const idEl = document.createElement("div"); idEl.className = "ach-id"; idEl.textContent = a.id;
+    const nameEl = document.createElement("div"); nameEl.className = "ach-name";
+    const descEl = document.createElement("div"); descEl.className = "ach-desc";
+    const lockEl = document.createElement("div"); lockEl.className = "ach-locked";
+    const starEl = document.createElement("div"); starEl.className = "ach-star"; starEl.textContent = "★";
+    cell.append(idEl, nameEl, descEl, lockEl, starEl);
+    // 点击处理器在构建时绑定一次，之后稳定不变
+    cell.addEventListener("click", () => onHiddenClick(a.id));
+    hgrid.appendChild(cell);
+    hiddenCellRefs.push({ root: cell, a, idEl, nameEl, descEl, lockEl, starEl });
+  }
+  achBuilt = true;
+}
+
+function updateAchievementsUI() {
+  buildAchievementsOnce();
+  document.getElementById("ach-time-rate").textContent = `你的成就将时间速率变为原来的${fmt(timeRate())}倍`;
+  // 普通成就
+  for (const ref of normalCellRefs) {
+    const { a, row, root, idEl, nameEl, descEl, checkEl, lockEl, starEl } = ref;
+    const unlocked = isRowUnlocked(row);
+    if (!a || !unlocked) {
+      root.classList.remove("completed");
+      idEl.style.display = "none";
+      nameEl.style.display = "none";
+      descEl.style.display = "none";
+      checkEl.style.display = "none";
+      starEl.style.display = "none";
+      lockEl.style.display = "";
+      lockEl.textContent = "???";
+      continue;
+    }
+    const done = state.ach.normal.includes(a.id);
+    root.classList.toggle("completed", done);
+    lockEl.style.display = "none";
+    starEl.style.display = (a.star && done) ? "" : "none";
+    idEl.style.display = ""; idEl.textContent = a.id;
+    nameEl.style.display = ""; nameEl.textContent = done ? a.name : "???";
+    descEl.style.display = ""; descEl.textContent = a.desc;
+    checkEl.style.display = ""; checkEl.textContent = done ? "✓ 已完成" : "未完成";
+  }
+  // 隐藏成就
+  for (const ref of hiddenCellRefs) {
+    const { a, root, idEl, nameEl, descEl, lockEl, starEl } = ref;
+    const done = state.ach.hidden.includes(a.id);
+    const revealed = state.ach.hiddenRevealed.includes(a.id);
+    root.classList.toggle("completed", done);
+    idEl.style.display = "";
+    starEl.style.display = "none"; // 隐藏成就无特殊奖励，星星不显示
+    if (done) {
+      nameEl.style.display = ""; nameEl.textContent = a.name;
+      descEl.style.display = ""; descEl.textContent = "✓ 已完成";
+      lockEl.style.display = "none";
+    } else if (revealed) {
+      nameEl.style.display = ""; nameEl.textContent = a.name;
+      descEl.style.display = ""; descEl.textContent = "未达成";
+      lockEl.style.display = "none";
+    } else {
+      nameEl.style.display = "none";
+      descEl.style.display = "none";
+      lockEl.style.display = ""; lockEl.textContent = "？？？";
+    }
+  }
+}
+
+// ---------- Game loop ----------
+function tick() {
+  const now = Date.now();
+  const realDt = (now - state.lastTick) / 1000;
+  const dt = realDt * timeRate();
+  state.lastTick = now;
+
+  state.playTime += dt;
+  state.realTime += realDt;
+
+  // 波速生产
+  const g = gainRate();
+  if (g !== 0) {
+    state.U += g * dt;
+    // 定向宇宙：波速硬下限 0（符号反转不允许把 U 推到负值）
+    if (inDistort("directed") && state.U < 0) state.U = 0;
+    state.totalFGained += (g / state.L) * dt;
+  }
+
+  // 声子生产（游戏时间；浮点累计，显示取整）
+  if (inDistort("simple")) {
+    setPhonons(1); // 简洁宇宙：声子数始终为 1
+  } else if (state.phOn) {
+    setPhonons(state.phonons + phononRate() * dt);
+  }
+
+  // 自动化解锁门槛（首次湮灭后生效）
+  if (state.annihilations >= 1) {
+    if (!state.autoWaveUpg && F() >= 1e10) { state.autoWaveUpg = 1; setAutosaveStatus("自动化解锁：主要页升级"); }
+    if (!state.autoPhononUpg && F() >= 1e20) { state.autoPhononUpg = 1; setAutosaveStatus("自动化解锁：声子页升级"); }
+    // 里程碑 8/10 的自动化授权（老存档补发；新档在 doAnnihilation 内授予）
+    if (!state.autoUp3 && hasMilestone(8)) state.autoUp3 = 1;
+    if (!state.autoAnn && hasMilestone(10)) state.autoAnn = 1;
+  }
+
+  // 更新统计极值
+  const f = F();
+  if (f > state.maxF) state.maxF = f;
+  if (state.U > state.maxU) state.maxU = state.U;
+  if (state.L < state.minL) state.minL = state.L;
+
+  checkAchievements();
+  // S4：在 00:00–00:59 打开游戏（每隔几秒检查一次即可，用 tick 节流）
+  if (!state.ach.hidden.includes("S4") && HIDDEN_ACH.find(x => x.id === "S4").check()) {
+    grantHidden("S4");
+  }
+  // S6：随时间推进检测（切换时也会检测）
+  checkS6();
+  // S17：禅 —— 在扭曲宇宙中停留超过 1h 未完成
+  if (!state.ach.hidden.includes("S17") && state.distortActive && state.annStartReal) {
+    if ((Date.now() - state.annStartReal) / 1000 >= 3600) grantHidden("S17");
+  }
+  // S19：滚木 —— 生产为 0 Hz/s 超过 10 分钟（连续）
+  {
+    const gain = gainRate() * timeRate() / Math.max(state.L, 1e-300) * (state.L > 0 ? 1 : 0);
+    const zero = Math.abs(gain) < 1e-30;
+    if (zero) {
+      if (!state.zeroGainSince) state.zeroGainSince = Date.now();
+      else if (!state.ach.hidden.includes("S19") && Date.now() - state.zeroGainSince >= 600000) grantHidden("S19");
+    } else {
+      state.zeroGainSince = 0;
+    }
+  }
+  // S15：这是距离增量吗？—— 有效波长达到 1e308 m（log 域判断）
+  if (!state.ach.hidden.includes("S15")) {
+    const effLogL = getLogL10() + distortLModLog();
+    if (effLogL >= 308) grantHidden("S15");
+  }
+  // S11：踌躇不决 —— 达到当前宇宙的温度上限后 5 分钟（真实时间）不湮灭
+  if (!state.ach.hidden.includes("S11") && state.annihilations >= 1) {
+    if (temperature() >= temperatureCap() * 0.999999) {
+      if (!state.capReachedAt) state.capReachedAt = Date.now();
+      else if (Date.now() - state.capReachedAt >= 300000) grantHidden("S11");
+    } else {
+      state.capReachedAt = 0;
+    }
+  }
+  dirty = true;
+
+  updateDispAnchor();
+  renderWave();
+  if (state.phUnlocked) updatePhononUI();
+  applyAnnihilationVisibility();
+  runAutomation();
+  if (state.annihilations >= 1) {
+    updateSpUI();
+    updateAutomationUI();
+    if (state.annihilations >= 20) updateDistortUI();
+  }
+  if (!document.getElementById("page-stats").classList.contains("hidden")) renderStats();
+  if (!document.getElementById("page-achievements").classList.contains("hidden")) updateAchievementsUI();
+}
+
+// ---------- Wire up UI ----------
+function setupUI() {
+  document.querySelectorAll(".tab").forEach(t => {
+    t.addEventListener("click", () => switchTab(t.dataset.tab));
+  });
+  document.querySelectorAll(".subtab").forEach(t => {
+    t.addEventListener("click", () => switchSubtab(t.dataset.subtab));
+  });
+
+  document.getElementById("theme-white").addEventListener("click", () => { applyTheme("white"); saveGame(); });
+  document.getElementById("theme-black").addEventListener("click", () => { applyTheme("black"); saveGame(); });
+
+  document.querySelectorAll("#notation-row button").forEach(b => {
+    b.addEventListener("click", () => {
+      const prev = state.settings.notation;
+      applyNotation(b.dataset.notation);
+      if (state.settings.notation !== prev) {
+        state.notationSwitches.push(Date.now());
+        checkS6();
+      }
+      saveGame(); renderAll();
+    });
+  });
+
+  const decInp = document.getElementById("decimals-input");
+  decInp.addEventListener("change", () => {
+    applyDecimals(decInp.value);
+    saveGame();
+    renderAll();
+  });
+
+  // 界面刷新频率
+  document.querySelectorAll("#uifps-row button").forEach(b => {
+    b.addEventListener("click", () => {
+      applyUiFps(b.dataset.uifps);
+      saveGame();
+      setAutosaveStatus("界面刷新频率已调整");
+    });
+  });
+
+  document.getElementById("save-export").addEventListener("click", () => {
+    state.lastTick = Date.now();
+    document.getElementById("save-io").value = encodeSave(state);
+    setAutosaveStatus("已导出存档");
+  });
+  document.getElementById("save-load-from-io").addEventListener("click", () => {
+    const str = document.getElementById("save-io").value;
+    if (!str.trim()) { setAutosaveStatus("文本框为空"); return; }
+    try {
+      // S9 柚子厨蒸鹅心：在导入存档处输入 0721 并导入
+      if (str.trim() === "0721") {
+        const newlyGranted = !state.ach.hidden.includes("S9");
+        grantHidden("S9");
+        updateAchievementsUI();
+        if (newlyGranted) setAutosaveStatus("隐藏成就达成：柚子厨蒸鹅心");
+        else setAutosaveStatus("导入失败：存档无效");
+        return;
+      }
+      const obj = decodeSave(str);
+      state = Object.assign(defaultState(), obj);
+      state.settings = Object.assign({ theme: "black", notation: "scientific", decimals: 3 }, obj.settings || {});
+      state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
+      migrateState();
+      if (obj.frequency !== undefined && obj.U === undefined) { state.U = obj.frequency; state.L = 1; state.logL10 = 0; }
+      if (obj.totalFrequency !== undefined && obj.totalFGained === undefined) state.totalFGained = obj.totalFrequency;
+      state.lastTick = Date.now();
+      applyTheme(state.settings.theme);
+      applyNotation(state.settings.notation);
+      applyDecimals(state.settings.decimals);
+      saveGame();
+      renderAll();
+      setAutosaveStatus("已导入存档");
+    } catch { setAutosaveStatus("导入失败：存档无效"); }
+  });
+  document.getElementById("save-import").addEventListener("click", () => {
+    const io = document.getElementById("save-io"); io.focus(); io.select();
+    setAutosaveStatus("请将存档粘贴到文本框后点“从文本框导入”");
+  });
+  document.getElementById("save-copy").addEventListener("click", async () => {
+    const io = document.getElementById("save-io");
+    if (!io.value) { setAutosaveStatus("文本框为空，先导出"); return; }
+    try { await navigator.clipboard.writeText(io.value); setAutosaveStatus("已复制到剪贴板"); }
+    catch { io.select(); document.execCommand("copy"); setAutosaveStatus("已复制（备用方式）"); }
+  });
+
+  document.getElementById("hard-reset").addEventListener("click", hardReset);
+
+  // 测试按钮：临时打破宇宙规则（取消温度上限，期间不获 Sp；v0.4.3 移除）
+  const testBtn = document.getElementById("test-break-rules");
+  const refreshTestBtn = () => {
+    testBtn.textContent = state.testBreakRules
+      ? "测试：恢复宇宙规则（温度上限回归，可正常获得奇点）"
+      : "测试：打破宇宙规则（取消温度上限，期间无法获得奇点）";
+  };
+  // 测试：重置奇点/累计奇点/频率到指定值（数值诊断用）
+  document.getElementById("test-reset-numbers").addEventListener("click", () => {
+    setSp(1e5);
+    setTotalSp(4e6);
+    state.U = 100; state.L = 1; state.logL10 = 0;
+    renderAll();
+    saveGame();
+    setAutosaveStatus("测试：数值已重置（Sp=1e5, 总Sp=4e6, F=100）");
+  });
+  testBtn.addEventListener("click", () => {
+    state.testBreakRules = !state.testBreakRules;
+    refreshTestBtn();
+    saveGame();
+    renderAll();
+    setAutosaveStatus(state.testBreakRules ? "测试模式：宇宙规则已打破（不获 Sp）" : "测试模式：规则已恢复");
+  });
+  refreshTestBtn();
+
+  // 湮灭按钮（首次湮灭后显示；点击直接湮灭）
+  document.getElementById("annihilate-btn").addEventListener("click", () => {
+    if (state.annihilations === 0) return;
+    // 扭曲宇宙中：达标 → 湮灭该宇宙；未达标 → 退出
+    if (state.distortActive) {
+      if (annihilationReady()) doAnnihilation();
+      else exitDistort();
+      switchTab("wave");
+      switchSubtab("main");
+      return;
+    }
+    doAnnihilation();
+    switchTab("wave");
+    switchSubtab("main");
+  });
+  // S20：version control —— 查看 changelog
+  const clLink = document.querySelector(".changelog-link");
+  if (clLink) clLink.addEventListener("click", () => {
+    if (!state.ach.hidden.includes("S20")) { grantHidden("S20"); updateAchievementsUI(); saveGame(); }
+  });
+  // 扭曲页重试/退出
+  document.getElementById("distort-retry-btn").addEventListener("click", retryDistort);
+  document.getElementById("distort-exit-btn").addEventListener("click", exitDistortBtn);
+  // 首次湮灭遮罩按钮
+  document.getElementById("ann-overlay-btn").addEventListener("click", confirmFirstAnnihilation);
+}
+
+// ---------- Boot ----------
+function init() {
+  const loaded = loadGame();
+  if (!loaded) state = defaultState();
+  // 重置瞬时成就状态（避免离线时间干扰 S3/S5/S6 的计时）
+  state.hiddenClicks = [];
+  state.metaClicks = [];
+  state.notationSwitches = [Date.now()];
+  state.phToggles = [];
+  applyTheme(state.settings.theme);
+  applyNotation(state.settings.notation);
+  applyDecimals(state.settings.decimals);
+  applyUiFps(state.settings.uiFps);
+  setupUI();
+  applyPhononVisibility();
+  applyAnnihilationVisibility();
+  if (state.annihilations >= 1 && !state.annStartReal) {
+    state.annStartReal = Date.now();
+    state.annStartGame = state.playTime;
+  }
+  switchTab("wave");
+  switchSubtab("main");
+  renderAll();
+
+  state.lastTick = Date.now();
+  setInterval(tick, 100); // 逻辑 tick 恒定 100ms（数值节奏不变）
+  // 显示循环：按所选频率刷新快变数字（全局资源栏 + 声子资源行）
+  const uiLoop = (t) => {
+    if (t - uiLastFrame >= uiFrameInterval) {
+      uiLastFrame = t;
+      renderFast();
+      if (state.phUnlocked && !document.getElementById("sub-phonon").classList.contains("hidden")) {
+        renderPhononFast();
+      }
+      // 自动湮灭高频检查：走统一入口（含时间模式节流与时间戳更新，防双执行）
+      autoAnnTick();
+    }
+    requestAnimationFrame(uiLoop);
+  };
+  requestAnimationFrame(uiLoop);
+  setInterval(() => { if (dirty) { saveGame(); dirty = false; } }, AUTOSAVE_INTERVAL);
+  window.addEventListener("beforeunload", () => saveGame());
+
+  setAutosaveStatus(loaded ? "存档已载入" : "新游戏开始");
+}
+
+init();

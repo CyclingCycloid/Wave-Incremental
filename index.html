@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wave Incremental</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body data-theme="black">
+  <div id="app">
+    <header id="topbar">
+      <div class="title">Wave Incremental</div>
+      <div class="version">v0.4.2.4</div>
+      <button id="annihilate-btn" class="annihilate-btn hidden">湮灭</button>
+    </header>
+
+    <div id="global-resource">
+      <div class="gr-freq-prefix" id="freq-prefix">你的波动的频率为：</div>
+      <span class="gr-freq" id="freq-value">10.00</span>
+      <span class="gr-unit">Hz &nbsp;<span class="abbrev">(F)</span></span>
+      <span class="gr-gain" id="freq-gain">+0.00 Hz/s</span>
+      <span class="gr-sp hidden" id="sp-display">奇点 <span id="sp-value">0</span></span>
+      <span class="gr-timerate hidden" id="timerate-display">当前游戏速率：×1.000</span>
+      <span class="gr-cooldown hidden" id="cooldown-display">当前指数 k = 1.00</span>
+      <span class="gr-cooldown hidden" id="narrow-display">剩余购买次数：10</span>
+    </div>
+
+    <!-- 首次湮灭遮罩 -->
+    <div id="first-annihilation-overlay" class="ann-overlay hidden">
+      <div class="ann-phase1" id="ann-phase1">你达到了普朗克温度</div>
+      <div class="ann-phase2" id="ann-phase2">
+        <div class="ann-overlay-text">现在的宇宙无法承载你的波动，<br />你需要<span class="purple">‘湮灭’</span>一切</div>
+        <button id="ann-overlay-btn" class="ann-overlay-btn">湮灭</button>
+      </div>
+    </div>
+    <div id="ann-flash" class="ann-flash hidden"></div>
+
+    <nav id="tabs">
+      <button class="tab active" data-tab="wave">波动</button>
+      <button class="tab ann-tab hidden" data-tab="annihilation" id="tab-annihilation">湮灭</button>
+      <button class="tab" data-tab="stats">统计</button>
+      <button class="tab hidden" data-tab="automation" id="tab-automation">自动化</button>
+      <button class="tab" data-tab="achievements">成就</button>
+      <button class="tab" data-tab="help">帮助</button>
+      <button class="tab" data-tab="settings">设置</button>
+    </nav>
+
+    <main id="content">
+      <!-- ===== 波动 ===== -->
+      <section class="page" id="page-wave">
+        <nav class="subtabs">
+          <button class="subtab active" data-subtab="main">主要</button>
+          <button class="subtab" data-subtab="upgrades">升级</button>
+          <button class="subtab hidden" data-subtab="phonon" id="subtab-phonon">声子</button>
+        </nav>
+
+        <!-- 主要 -->
+        <div class="subpage" id="sub-main">
+          <div class="stat-tri">
+            <div class="tri-cell">
+              <div class="tri-label">波速 U</div>
+              <div class="tri-value" id="u-value">10.00</div>
+              <div class="tri-unit">m/s</div>
+            </div>
+            <div class="tri-cell">
+              <div class="tri-label">波长 L</div>
+              <div class="tri-value" id="l-value">1.00</div>
+              <div class="tri-unit">m</div>
+            </div>
+          </div>
+
+          <div id="upgrades-list" class="upgrades"></div>
+          <div class="softcap-note hidden" id="softcap-note">当频率超过 e100 Hz 时，升级的价格和效果将被软上限</div>
+        </div>
+
+        <!-- 升级 -->
+        <div class="subpage hidden" id="sub-upgrades">
+          <h2 class="page-title">升级</h2>
+          <div id="meta-upgrades-list" class="upgrades"></div>
+        </div>
+
+        <!-- 声子 -->
+        <div class="subpage hidden" id="sub-phonon">
+          <h2 class="page-title">声子</h2>
+          <div class="ph-resources">
+            <div class="ph-res-text" id="ph-res-text">你拥有0声子，温度为0 K</div>
+            <div class="ph-thermal" id="ph-thermal">热涨落把你的波速获取变为原来的1.000倍</div>
+          </div>
+          <div class="btn-row ph-gen-row">
+            <button id="ph-gen-btn">启动声子发生器</button>
+          </div>
+          <div class="ph-section">
+            <h3>发生器升级（可重复）</h3>
+            <div id="ph-upg-list" class="upgrades"></div>
+          </div>
+          <div class="ph-section">
+            <h3>单次升级</h3>
+            <div id="ph-meta-list" class="upgrades"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 统计 ===== -->
+      <section class="page hidden" id="page-stats">
+        <nav class="subtabs">
+          <button class="subtab active" data-subtab="stats-data" data-stats-subtab>数据</button>
+          <button class="subtab" data-subtab="stats-reset" data-stats-subtab>重置</button>
+          <button class="subtab hidden" data-subtab="stats-challenge" data-stats-subtab id="subtab-stats-challenge">挑战</button>
+        </nav>
+
+        <!-- 数据 -->
+        <div class="subpage" id="sub-stats-data">
+          <div class="stat-group">
+            <h3 class="sg-title">通用</h3>
+            <div class="stat-list">
+              <div class="stat-row">
+                <span class="stat-label">游戏时间</span>
+                <span class="stat-value" id="stat-playtime">0s</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">真实时间</span>
+                <span class="stat-value" id="stat-realtime">0s</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">累计频率 (F)</span>
+                <span class="stat-value" id="stat-total">10.00 Hz</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">历史最高频率</span>
+                <span class="stat-value" id="stat-maxf">10.00 Hz</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">最高波速 (U)</span>
+                <span class="stat-value" id="stat-maxu">10.00 m/s</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">最低波长 (L)</span>
+                <span class="stat-value" id="stat-minl">1.00 m</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">完成普通成就</span>
+                <span class="stat-value" id="stat-ach-n">0 / 5</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">完成隐藏成就</span>
+                <span class="stat-value" id="stat-ach-h">0 / 9</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">时间速率（普通成就加成）</span>
+                <span class="stat-value" id="stat-timerate">×1.000</span>
+              </div>
+            </div>
+          </div>
+          <div class="stat-group ann-group hidden" id="stat-ann-group">
+            <h3 class="sg-title purple-title">湮灭</h3>
+            <div class="stat-list">
+              <div class="stat-row">
+                <span class="stat-label">本次湮灭所花费时间（真实/游戏）</span>
+                <span class="stat-value" id="stat-ann-time">— / —</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">总奇点获取</span>
+                <span class="stat-value" id="stat-ann-total-sp">0</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">最好单次奇点获取</span>
+                <span class="stat-value" id="stat-ann-best-sp">0</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">最好单次奇点/分</span>
+                <span class="stat-value" id="stat-ann-best-rate">0</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">最快湮灭时间</span>
+                <span class="stat-value" id="stat-ann-fastest">—</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">当前宇宙温度上限</span>
+                <span class="stat-value" id="stat-ann-tp">1.417e32 K</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">湮灭的扭曲宇宙数量</span>
+                <span class="stat-value" id="stat-ann-distort">0</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 重置 -->
+        <div class="subpage hidden" id="sub-stats-reset">
+          <h3 class="sg-title">最近十次湮灭</h3>
+          <div id="ann-history-list" class="ann-history-list"></div>
+        </div>
+
+        <!-- 挑战 -->
+        <div class="subpage hidden" id="sub-stats-challenge">
+          <div class="stat-list" id="challenge-list"></div>
+        </div>
+      </section>
+
+      <!-- ===== 设置 ===== -->
+      <section class="page hidden" id="page-settings">
+        <h2 class="page-title">设置</h2>
+
+        <div class="setting-group">
+          <h3>主题</h3>
+          <div class="btn-row">
+            <button id="theme-white">白色</button>
+            <button id="theme-black">黑色</button>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <h3>数值显示方式</h3>
+          <div class="btn-row" id="notation-row">
+            <button data-notation="scientific">科学</button>
+            <button data-notation="engineering">工程</button>
+            <button data-notation="log">对数</button>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <h3>小数位数</h3>
+          <div class="btn-row">
+            <label class="decimals-label">显示位数（3–6）：
+              <input type="number" id="decimals-input" min="3" max="6" step="1" value="3" />
+            </label>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <h3>界面刷新频率</h3>
+          <div class="btn-row" id="uifps-row">
+            <button data-uifps="16">流畅（60fps）</button>
+            <button data-uifps="33">平衡（30fps）</button>
+            <button data-uifps="100">省电（10fps）</button>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <h3>存档</h3>
+          <div class="btn-row">
+            <button id="save-export">导出存档</button>
+            <button id="save-import">导入存档</button>
+          </div>
+          <textarea id="save-io" placeholder="导出/导入的 base64 存档将显示在此处..." rows="3"></textarea>
+          <div class="btn-row">
+            <button id="save-copy">复制到剪贴板</button>
+            <button id="save-load-from-io">从文本框导入</button>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <h3>存档槽</h3>
+          <div id="slot-list"></div>
+        </div>
+
+        <div class="setting-group">
+          <h3>更新日志</h3>
+          <a href="CHANGELOG.md" target="_blank" class="changelog-link">查看 Changelog</a>
+        </div>
+
+        <div class="setting-group danger">
+          <h3>危险操作</h3>
+          <button id="hard-reset" class="danger-btn">硬重置（清除一切）</button>
+          <button id="test-break-rules" class="danger-btn">测试：打破宇宙规则（取消温度上限，期间无法获得奇点）</button>
+          <button id="test-reset-numbers" class="danger-btn">测试：重置数值（奇点→1e5，累计奇点→4e6，频率→100）</button>
+        </div>
+      </section>
+
+      <!-- ===== 成就 ===== -->
+      <section class="page hidden" id="page-achievements">
+        <h2 class="page-title">成就</h2>
+        <div class="ach-time-rate" id="ach-time-rate">你的成就将时间速率变为原来的1.000倍</div>
+        <div class="ach-hint">带五角星的成就具有特殊奖励，点击查看</div>
+
+        <div class="ach-section">
+          <h3>普通成就</h3>
+          <p class="muted small">每行 5 个；完成一整行后解锁下一行的达成条件。</p>
+          <div id="normal-ach-grid" class="ach-grid"></div>
+        </div>
+
+        <div class="ach-section">
+          <h3>隐藏成就</h3>
+          <p class="muted small">无明确达成条件。未解锁显示 ？？？，点击可查看名称。</p>
+          <div id="hidden-ach-grid" class="ach-grid hidden-grid"></div>
+        </div>
+      </section>
+
+      <!-- ===== 湮灭 ===== -->
+      <section class="page hidden" id="page-annihilation">
+        <nav class="subtabs">
+          <button class="subtab active" data-subtab="ann-milestones">里程碑</button>
+          <button class="subtab" data-subtab="ann-sp">奇点</button>
+          <button class="subtab hidden distort-subtab" data-subtab="ann-distort" id="subtab-distort">扭曲</button>
+        </nav>
+
+        <!-- 里程碑 -->
+        <div class="subpage" id="sub-ann-milestones">
+          <div class="milestone-list" id="milestone-list"></div>
+        </div>
+
+        <!-- 奇点 -->
+        <div class="subpage hidden" id="sub-ann-sp">
+          <div class="sp-bonus-panel" id="sp-bonus-panel"></div>
+          <div class="sp-upgrade-list" id="sp-upgrade-list"></div>
+        </div>
+
+        <!-- 扭曲（测试版） -->
+        <div class="subpage hidden" id="sub-ann-distort">
+          <p class="muted small">进入扭曲宇宙会立刻进行一次湮灭重置。达到该宇宙的普朗克温度即可湮灭它（每个宇宙仅首次给予奖励）；未达标时点击正上方湮灭按钮将退出该宇宙。</p>
+          <div class="distort-summary" id="distort-summary"></div>
+          <div class="distort-active-controls hidden" id="distort-active-controls">
+            <button id="distort-retry-btn">重试</button>
+            <button id="distort-exit-btn">退出</button>
+          </div>
+          <div id="distort-list" class="distort-grid"></div>
+        </div>
+      </section>
+
+      <!-- ===== 自动化 ===== -->
+      <section class="page hidden" id="page-automation">
+        <h2 class="page-title">自动化</h2>
+        <div class="auto-list" id="auto-list"></div>
+      </section>
+
+      <!-- ===== 帮助 ===== -->
+      <section class="page hidden" id="page-help">
+        <h2 class="page-title">帮助</h2>
+        <p class="muted small">机制讲解随游戏进度逐步开放：解锁对应页面后，相关章节会在此出现。</p>
+
+        <details class="help-section" id="help-wave">
+          <summary>波与频率 <span class="help-ver">v0.1–v0.2</span></summary>
+          <div class="help-body">
+            <p><strong>频率 F</strong> 是核心资源，由波速 U 与波长 L 决定：</p>
+            <p class="help-formula">F = U / L</p>
+            <ul>
+              <li><strong>波速 U</strong>（m/s）：随时间自动增长，增长快慢由升级决定。</li>
+              <li><strong>波长 L</strong>（m）：默认为 1。L 位于分母——波长越短，频率越高。</li>
+            </ul>
+            <p>波动页分为两个子页：<strong>主要</strong>（三个可重复升级）与<strong>升级</strong>（单次升级）。</p>
+            <p><strong>升级 1 / 升级 2</strong>：分别以 +1 与 ×2 提升波速获取速率。</p>
+            <p><strong>升级 3「缩短波长，但重置波速」</strong>：F ≥ 50000 Hz 后出现，首次购买后永久可见。它会记录购买时的频率峰值，仅当当前 F 超过历史峰值时才能再次购买；每次购买将波长替换为 1 / F^指数（指数可被声子升级提升），同时重置波速与升级 1/2。这是游戏内第一次小型重置，收益按“当前波长 ÷新波长”计算，替换而非叠加。</p>
+            <p><strong>单次升级</strong>：「频率加成波速获取」（5000 Hz，按当前频率的对数加成获取）、「解锁声子」（1e10 Hz，通向声子系统）。</p>
+          </div>
+        </details>
+
+        <details class="help-section hidden" id="help-phonon">
+          <summary>声子与温度 <span class="help-ver">v0.3</span></summary>
+          <div class="help-body">
+            <p>购买「解锁声子」后，波动标签下出现<strong>声子</strong>子页，游戏进入热力学阶段。</p>
+            <ul>
+              <li><strong>声子 n</strong>：声子发生器每游戏秒产出（初始 1/s），是“物质存量”，显示为整数。</li>
+              <li><strong>温度 T</strong>：由声子数与频率共同决定，采用真实物理常数：</li>
+            </ul>
+            <p class="help-formula">T = n · h · F / k_B</p>
+            <p><strong>热涨落</strong>：温度直接加成波速获取（×max(1,T)^0.2）。“造波”与“升温”互相喂养。</p>
+            <p><strong>发生器升级</strong>（可重复）：</p>
+            <ul>
+              <li>效率（花 F）：产出间隔 ÷1.5 每级</li>
+              <li>倍率（花声子）：第 n 级使产量 ×(n+1)²</li>
+              <li>指数加成（花声子）：升级 3 的波长指数 +0.01/级，上限 20 级</li>
+            </ul>
+            <p><strong>单次升级</strong>：声子涨落（1000 声子，温度加成声子产出）、声波耦合（10000 声子，波速加成声子产出）。</p>
+            <p class="muted">注意：花掉声子会立刻降低温度（T ∝ n），大额消费前请考虑时机。</p>
+          </div>
+        </details>
+
+        <details class="help-section hidden" id="help-annihilation">
+          <summary>湮灭与奇点 <span class="help-ver">v0.4</span></summary>
+          <div class="help-body">
+            <p>当温度逼近当前宇宙的极限——<strong>普朗克温度</strong>（初始 1.4168×10³² K，约为宇宙大爆炸后 10⁻⁴³ 秒的温度）——波本身将无法存在。此时你可以<strong>湮灭</strong>一切。</p>
+            <p><strong>湮灭重置</strong>：波速、波长、所有升级购买、声子数、发生器等级全部归零。保留：成就、已解锁页面，以及里程碑给予的保留项。</p>
+            <p><strong>奇点 Sp</strong>：湮灭的所得。你获得过的<strong>总奇点</strong>会改写新宇宙的物理常数：</p>
+            <ul>
+              <li>波速获取 ×(1+Sp)²</li>
+              <li>普朗克常数 ×(1+Sp)^1.5（等价于温度倍率）</li>
+              <li>温度上限 = 初始值 ×(1+Sp)^10</li>
+            </ul>
+            <p>Sp 获取量：在 T &lt; 1e50 K 时随指数线性增长到 10；1e50 ≤ T &lt; 1e100 K 时为 floor(lg(T)/5)（线性增长到 20）；T ≥ 1e100 K 时为 floor(2·T^0.01)。湮灭需要温度超过最初的普朗克温度（1.42e32 K）。</p>
+            <p><strong>湮灭升级</strong>（花 Sp）：如「奇点之前的升级不再消耗资源」（1 Sp）。</p>
+            <p><strong>里程碑</strong>（按湮灭次数）：1 次解锁自动化并保留声子解锁；2/3 次湮灭保留单次升级；5 次保留自动化开关且发生器常开；8 次解锁自动升级 3；10 次解锁自动湮灭；20 次解锁「扭曲」。</p>
+            <p><strong>自动化</strong>：主要页升级（F ≥ 1e10 Hz）与声子页升级（F ≥ 1e20 Hz）自动购买；后续可自动购买升级 3（可设倍率阈值）与自动湮灭（可设 Sp 阈值）。</p>
+          </div>
+        </details>
+
+        <details class="help-section hidden" id="help-distort">
+          <summary>扭曲 <span class="help-ver darkred-text">v0.4.2.1（测试）</span></summary>
+          <div class="help-body">
+            <p>第 20 次湮灭后解锁。扭曲将带你进入一系列更困难的宇宙，目标是达到该宇宙的普朗克温度——达到目标后湮灭该宇宙即可获得奖励；未达标时点击湮灭按钮会退出该宇宙。</p>
+            <p><strong>扭曲宇宙内的湮灭不获得 Sp</strong>；每湮灭一个扭曲宇宙，奇点获取 ×2。</p>
+            <p class="muted">当前为测试版本：宇宙温度与奖励数值待调整。</p>
+          </div>
+        </details>
+
+        <details class="help-section" id="help-general">
+          <summary>通用：时间速率、统计与存档 <span class="help-ver">v0.2–v0.4</span></summary>
+          <div class="help-body">
+            <p><strong>时间速率</strong>：每个普通成就使游戏时间流速 ×1.1（乘法叠加），作用于产出与声子发生器，不影响真实时间。</p>
+            <p><strong>统计</strong>：分「数据 / 重置」子页；数据页记录游戏/真实双时钟与各项极值，更多分区将随游戏进度开放。</p>
+            <p><strong>数值显示</strong>：设置页可选科学 / 工程 / 对数记数法与小数位数（3–6 位）。</p>
+            <p><strong>存档</strong>：每 15 秒自动保存，另有 3 个手动槽位与 base64 导出导入。</p>
+          </div>
+        </details>
+      </section>
+    </main>
+
+    <footer id="footer">
+      <span id="autosave-status">已自动保存</span>
+    </footer>
+  </div>
+
+  <script src="break_infinity.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
