@@ -2159,11 +2159,12 @@ function buildBlackholeOnce() {
 }
 
 function bhRadius() {
-  // 半径：max(0.1, min(0.6, lg(M)/50)) 倍页面宽度
+  // 直径比例 = max(0.1, min(0.6, lg(M)/50))（界面宽度的倍数）；返回半径
+  // 初始 M=1 时直径约为界面宽度的 0.1 倍，M=1e30 后封顶 0.6 倍
   const mLog = Math.max(0, getLogBhMass());
   const scale = Math.max(0.1, Math.min(0.6, mLog / 50));
   const pageW = document.getElementById("app").offsetWidth || 760;
-  return { r: pageW * scale, pageW };
+  return { r: pageW * scale / 2, pageW };
 }
 
 function drawBlackhole(state2) {
@@ -2174,7 +2175,8 @@ function drawBlackhole(state2) {
   ctx.clearRect(0, 0, w, h);
   const { r } = bhRadius();
   const cx = w / 2, cy = h / 2;
-  const R = Math.min(r, w * 0.3);
+  // 画布内截断：直径不超过画布宽（保留少量边距给事件视界光环）
+  const R = Math.min(r, w * 0.48);
   bhAngle += state2 === "distorl" ? 0.04 : (state2 === "pulse" ? 0.02 : 0.012);
   // 吸积盘环（多层）
   for (let ring = 0; ring < 4; ring++) {
