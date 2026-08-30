@@ -132,8 +132,8 @@ const DISTORT_UNIVERSES = [
     tp: 1e90,
   },
   {
-    id: "inflation", name: "通胀",
-    desc: "价格折算从 10 Hz 开始，并且变得更强，声子升级价格平方，频率获取变为原来的平方根",
+    id: "inflation", name: "滞涨",
+    desc: "价格折算从 10 Hz 开始，并且变得更强，声子升级价格平方，频率获取变为原来的 ^0.4；「奇点之前的升级不再消耗资源」在此失效",
     tp: Infinity, // 测试值，待调整
   },
   {
@@ -323,21 +323,24 @@ const LOG_H_OVER_KB = Math.log10(H_OVER_KB);
 function temperatureLog() {
   return clampLog(getLogPhonons() + LOG_H_OVER_KB + FLog() + planckMultLog());
 }
-function temperature() {
-  const rawLog = temperatureLog();
-  // 打破规则（正式 8DA 或测试按钮）后取消上限
-  if (state.rulesBroken || state.testBreakRules) {
-    return rawLog > 308 ? Infinity : (rawLog <= NLOG + 1 ? 0 : Math.pow(10, rawLog));
-  }
-  // 上限 log（扭曲宇宙用自己的普朗克温度，否则用 temperatureCapLog）
-  let capLog;
+// 当前生效的温度上限 log10：
+// 扭曲宇宙用自己的普朗克温度（用于「达到即完成」）；tp 为 Infinity 的测试宇宙
+// 回退到主宇宙上限——否则无上限会让「声子↔温度↔热涨落↔波速」正反馈循环失控爆炸。
+function effectiveCapLog() {
   if (state.distortActive) {
     const u = DISTORT_UNIVERSES.find(x => x.id === state.distortActive);
-    capLog = u ? Math.log10(Math.max(u.tp, 1e-300)) : temperatureCapLog();
-  } else {
-    capLog = temperatureCapLog();
+    if (u && isFinite(u.tp)) return Math.log10(Math.max(u.tp, 1e-300));
   }
-  const log = Math.min(rawLog, capLog);
+  return temperatureCapLog();
+}
+// 温度的 log10（经上限裁剪）：热涨落/声子涨落等增益计算必须用这个，
+// 与 double 版 temperature() 语义一致，否则 log 域会绕过上限引发数值爆炸。
+function temperatureCappedLog() {
+  if (state.rulesBroken || state.testBreakRules) return temperatureLog(); // 打破规则：无上限
+  return Math.min(temperatureLog(), effectiveCapLog());
+}
+function temperature() {
+  const log = temperatureCappedLog();
   return log > 308 ? Infinity : (log <= NLOG + 1 ? 0 : Math.pow(10, log));
 }
 // 热涨落：波速获取 ×= max(1, T)^0.2
@@ -346,9 +349,10 @@ function thermalMult() {
   if (inDistort("simple")) return 1; // 简洁：热涨落无效
   return Math.pow(Math.max(1, temperature()), thermalExp());
 }
-// 热涨落的 log10（幂项 → 指数乘；热寂为负、简洁为 0）。raw 未经上限裁剪的温度 log。
+// 热涨落的 log10（幂项 → 指数乘；热寂为负、简洁为 0）。必须用经上限裁剪的温度 log，
+// 否则 log 域会绕过温度上限，令「声子↔温度↔热涨落」正反馈失控（通胀/滞涨爆炸的根因）。
 function thermalMultLog() {
-  const tLog = Math.max(0, temperatureLog()); // max(1,T) 的 log
+  const tLog = Math.max(0, temperatureCappedLog()); // max(1,T) 的 log（已裁剪）
   if (inDistort("adiabatic")) return clampLog(-0.3 * tLog);
   if (inDistort("simple")) return 0;
   return clampLog(thermalExp() * tLog);
@@ -363,7 +367,7 @@ function fluctMult() {
 // 声子涨落的 log10：ceil(lg(max(1,T))^1.5) 本身在 double 范围（log 的幂），直接取 log10
 function fluctMultLog() {
   if (!state.phFluct || inDistort("adiabatic")) return 0;
-  const inner = isFinite(temperatureLog()) ? Math.max(0, temperatureLog()) : 0; // lg(max(1,T))，防 Infinity
+  const inner = Math.max(0, temperatureCappedLog()); // lg(max(1,T))（已裁剪）
   const v = Math.max(1, Math.ceil(Math.pow(inner, 1.5)));
   return clampLog(Math.log10(v));
 }
@@ -549,10 +553,10 @@ function spGain() {
   const base = Math.max(state.annihilations === 0 ? 1 : 0, baseSpGain(temperature())) * state.distortMult * Math.pow(2, state.sau4) * phononSpMult();
   return Math.floor(base);
 }
-// spGain 的 log10（用于 fmtNum 显示，超 double 时显示 1eN）
+// spGain 的 log10（用于 fmtNum 显示，超 double 时显示 1eN）。与 spGain() 一致用裁剪后温度。
 function spGainLog() {
   if (state.testBreakRules) return NLOG;
-  const tLog = temperatureLog();
+  const tLog = temperatureCappedLog();
   let baseLog;
   if (tLog < 50) {
     // baseSpGain 返回 1~10 区间（小数，log 域小）
@@ -600,8 +604,8 @@ function gainRate() {
   if (inDistort("directed") && Math.random() < 0.5) g = -g;
   // 冷却宇宙：波速获取量变为 A^k（k 随购买后时间线性 0→1）
   if (inDistort("cooldown")) g = Math.pow(Math.max(0, g), cooldownExp());
-  // 通胀宇宙：频率获取变为原来的 0.75 次方（v0.4.3：由平方根削弱为 ^0.75）
-  if (inDistort("inflation")) g = Math.pow(Math.max(0, g), 0.75);
+  // 滞涨宇宙（原通胀）：频率获取变为原来的 0.4 次方
+  if (inDistort("inflation")) g = Math.pow(Math.max(0, g), 0.4);
   // 膨胀宇宙：波速获取指数随时间下降（每秒 -0.1，到 0 为止）
   if (inDistort("expand")) g = Math.pow(Math.max(0, g), distortGainExp());
   return g;
@@ -642,7 +646,7 @@ function gainRateLog() {
     log *= cooldownExp();
   }
   // 通胀：^0.75 → log ×= 0.75（v0.4.3：由平方根削弱）
-  if (inDistort("inflation")) log *= 0.75;
+  if (inDistort("inflation")) log *= 0.4;
   // 膨胀：波速获取指数随时间下降 → log ×= distortGainExp（到 0 后 gain=0）
   if (inDistort("expand")) {
     const ge = distortGainExp();
@@ -674,16 +678,18 @@ const LOG_PH_UNLOCK_COST = Math.log10(PH_UNLOCK_COST);
 // 价格的 log10 getter（与 double 版 up*Cost() 并存，仅 cmp 在饱和时使用）
 function up1CostLog() {
   const n = state.up1 + 1;
-  if (inDistort("inflation")) return clampLog(costOfLog(n * Math.log10(100)));
+  // 滞涨宇宙：double 版直接 100^n（已含通胀，不叠 costOf），log 版必须一致 = 2n
+  if (inDistort("inflation")) return clampLog(n * Math.log10(100));
   let logP2 = Math.log10(5) + n * Math.log10(2) + (softcapped() ? Math.max(0, n - 332) * Math.log10(5) : 0);
   return clampLog(costOfLog(logP2));
 }
 function up2CostLog() {
   const n = state.up2 + 1;
   if (inDistort("inflation")) {
+    // double 版 1e6 × ∏max(k²,100) 已含通胀，不叠 costOf
     let lp = 6;
     for (let k = 1; k <= state.up2; k++) lp += Math.log10(Math.max(k * k, 100));
-    return clampLog(costOfLog(lp));
+    return clampLog(lp);
   }
   const k = state.up2;
   if (k <= 98) return clampLog(costOfLog(n + 1));
@@ -1415,8 +1421,9 @@ function applyPhononVisibility() {
 }
 
 // ---------- 湮灭 ----------
-// 奇点升级1：除升级3外的升级不再消耗资源
-function upgradesFree() { return state.spu1 >= 1; }
+// 奇点升级1：除升级3外的升级不再消耗资源。
+// 滞涨宇宙（原通胀）：价格是核心机制，spu1 免费效果失效（否则自动化免费连买导致数值失控）。
+function upgradesFree() { return state.spu1 >= 1 && !inDistort("inflation"); }
 
 const MILESTONES = [
   { n: 1,  desc: "保持解锁声子升级和声子页面的可见性，解锁「自动化」主选项卡" },
@@ -2816,18 +2823,23 @@ function updateDispAnchor() {
   dispUAt = Date.now();
   dispUBase = state.U;
   dispUBaseLog = getLogU10();
-  dispGRate = gainRate() * timeRate(); // 实际每真实秒的 U 增量
+  // 定向宇宙：获取每刻随机取反且 U 有 0 硬下限，外推会失真——不做外推
+  dispGRate = inDistort("directed") ? 0 : gainRate() * timeRate();
 }
 // 显示外推 U：double 在范围内走原路径；超范围（dispGRate 或 U 饱和）退 log 域外推
 function extrapolatedU() {
   const dt = (Date.now() - dispUAt) / 1000;
   if (dt < 0 || dt > 1) return state.U;
   if (isFinite(dispGRate) && isFinite(dispUBase) && Math.abs(dispUBase) < LOG_FALLBACK && Math.abs(dispGRate) < LOG_FALLBACK) {
-    return dispUBase + dispGRate * dt;
+    const v = dispUBase + dispGRate * dt;
+    // 定向宇宙：显示层同样遵守 0 硬下限
+    if (inDistort("directed") && v < 0) return 0;
+    return v;
   }
   // log 域外推：U ≈ U + (g·timeRate)·dt。log10(|g·dt|) = gainRateLog + log10(timeRate) + log10(dt)
   const gr = gainRateLog();
   const gdLog = gr.log + Math.log10(Math.max(timeRate(), 1e-300)) + Math.log10(Math.max(dt, 1e-300));
+  if (inDistort("directed") && gr.sign < 0) return state.U; // 定向负向不外推（硬下限 0）
   return logAddLogs(dispUBaseLog, gdLog) <= NLOG + 1 ? state.U : Infinity;
 }
 // 外推 U 的 log10（显示用，保证 F/U 在 >1e308 时仍可得正确 log）
@@ -2836,9 +2848,11 @@ function extrapolatedULog() {
   if (dt < 0 || dt > 1) return getLogU10();
   if (isFinite(dispGRate) && isFinite(dispUBase) && Math.abs(dispUBase) < LOG_FALLBACK && Math.abs(dispGRate) < LOG_FALLBACK) {
     const v = dispUBase + dispGRate * dt;
-    return v > 0 ? clampLog(Math.log10(v)) : NLOG;
+    if (v <= 0) return inDistort("directed") ? NLOG : clampLog(Math.log10(Math.max(v, 1e-300)));
+    return clampLog(Math.log10(v));
   }
   const gr = gainRateLog();
+  if (inDistort("directed") && gr.sign < 0) return getLogU10(); // 定向负向不外推
   const gdLog = gr.log + Math.log10(Math.max(timeRate(), 1e-300)) + Math.log10(Math.max(dt, 1e-300));
   return logAddLogs(dispUBaseLog, gdLog);
 }
