@@ -732,6 +732,16 @@ function fmtNum(doubleVal, logVal) {
   if (logVal !== undefined && isFinite(logVal)) return fmtLog(logVal);
   return "∞";
 }
+// 整数显示：double 在范围内取 floor 后走 fmt；超 1e308 走 fmtLog（虚粒子等计数类资源）
+function fmtInt(doubleVal, logVal) {
+  if (isFinite(doubleVal) && Math.abs(doubleVal) < LOG_FALLBACK) return fmt(Math.floor(doubleVal));
+  if (logVal !== undefined && isFinite(logVal)) {
+    // log 域下整数：取 logVal 的整数部分为 1eN，尾数 floor
+    if (logVal <= 15) return fmt(Math.floor(Math.pow(10, logVal)));
+    return fmtLog(logVal); // 超大时 1eN 格式（已是整数概念）
+  }
+  return "∞";
+}
 function fmtTime(seconds, precise) {
   // precise=true 时保留到 25ms 刻度的小数（挑战计时用）
   const total = precise ? seconds : Math.floor(seconds);
@@ -2116,7 +2126,7 @@ function bhAnimLoop() {
     const stNames = { accrete: "吸积", distorl: "扭曲", pulse: "脉冲" };
     stats.innerHTML =
       `<div class="bh-stat-row"><span>黑洞质量</span><span>${fmtNum(state.bhMass, getLogBhMass())} M☉</span></div>` +
-      `<div class="bh-stat-row"><span>虚粒子</span><span>${fmtNum(state.virtualParticles, getLogVP())}</span></div>` +
+      `<div class="bh-stat-row"><span>虚粒子</span><span>${fmtInt(state.virtualParticles, getLogVP())}</span></div>` +
       `<div class="bh-stat-row"><span>当前状态</span><span>${stNames[state.bhState] || "—"}</span></div>` +
       `<div class="bh-stat-row"><span>基础效果</span><span>×${fmtNum(bhEffect(), bhEffectLog())}</span></div>`;
   }
