@@ -3541,15 +3541,6 @@ function setupUI() {
       ? "测试：恢复宇宙规则（温度上限回归，可正常获得奇点）"
       : "测试：打破宇宙规则（取消温度上限，期间无法获得奇点）";
   };
-  // 测试：重置奇点/累计奇点/频率到指定值（数值诊断用）
-  document.getElementById("test-reset-numbers").addEventListener("click", () => {
-    setSp(1e5);
-    setTotalSp(4e6);
-    setU(100); state.L = 1; state.logL10 = 0;
-    renderAll();
-    saveGame();
-    setAutosaveStatus("测试：数值已重置（Sp=1e5, 总Sp=4e6, F=100）");
-  });
   testBtn.addEventListener("click", () => {
     state.testBreakRules = !state.testBreakRules;
     refreshTestBtn();
