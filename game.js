@@ -726,11 +726,16 @@ function fmt(num) {
 }
 
 function fmtLog(logV) {
-  // 以 log10 显示：e999999 以下用 double 指数，之上直接 eN 格式
+  // 以 log10 显示：logV < 308 用 double 指数；≥308 用 log 域还原尾数，显示 a.bbeN
   if (!isFinite(logV) || logV >= LOG_CAP) return "∞"; // LOG_CAP 钳制值视为无穷
   if (logV <= NLOG + 1) return "0";
   if (logV < 308) return Math.pow(10, logV).toExponential(3).replace("e+", "e");
-  return "1e" + logV.toFixed(0);
+  // log 域：logV = floor(logV) + frac；值 = 10^frac × 10^floor(logV)
+  const d = Math.min(6, Math.max(3, (state.settings && state.settings.decimals) || 3));
+  const exp = Math.floor(logV);
+  const frac = logV - exp;
+  const mant = Math.pow(10, frac);
+  return mant.toFixed(d) + "e" + exp;
 }
 // 统一显示：double 在范围内走 fmt（现状），饱和/超 1e308 走 fmtLog（输出 1eN）
 function fmtNum(doubleVal, logVal) {
@@ -2891,7 +2896,7 @@ function renderFast() {
   // 波长显示：膨胀宇宙下用 log 域（倍率可能超 double）
   const ml2 = distortLModLog();
   document.getElementById("l-value").textContent = ml2 > 0
-    ? "1e" + (getLogL10() + ml2).toFixed(1)
+    ? fmtLog(getLogL10() + ml2)
     : fmt(Math.pow(10, Math.max(getLogL10(), -320)));
 }
 function renderWave() {
