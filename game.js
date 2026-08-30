@@ -3053,7 +3053,7 @@ const NORMAL_ACH = [
   { id: "A32", name: "Qol", desc: "获得所有自动化", check: () => state.autoWaveUpg && state.autoPhononUpg && state.autoUp3 && state.autoAnn },
   { id: "A33", name: "扭曲", desc: "解锁扭曲选项卡", check: () => state.annihilations >= 20 },
   { id: "A34", name: "秩序", desc: "湮灭一个被扭曲的宇宙", star: true, reward: "解锁批量购买", check: () => state.distortDone.length >= 1 },
-  { id: "A35", name: "刻写", desc: "购买第一个奇点升级", star: true, reward: "奇点升级解锁", check: () => (state.sau1 + state.sau2 + state.sau3 > 0) || Object.keys(state.au).length > 0 },
+  { id: "A35", name: "刻写", desc: "购买第一个奇点升级", check: () => (state.sau1 + state.sau2 + state.sau3 > 0) || Object.keys(state.au).length > 0 },
   // 第 4 行 (A41-A45) 奇点
   { id: "A41", name: "视界", desc: "解锁黑洞", star: true, reward: "总时间倍率再 ^1.1", check: () => bhUnlocked() },
   { id: "A42", name: "烂柯", desc: "总时间倍率超过 3.65e6", check: () => timeRate() >= 3.65e6 },
@@ -3196,7 +3196,8 @@ function buildAchievementsOnce() {
       cell.append(idEl, nameEl, descEl, checkEl, lockEl, starEl, tipEl);
       if (a && a.reward) {
         cell.classList.add("has-reward");
-        tipEl.textContent = a.id + "//" + a.reward;
+        // 「//」原意是换行：第一行成就编号，第二行奖励描述
+        tipEl.textContent = a.id + "\n" + a.reward;
         cell.addEventListener("click", () => cell.classList.toggle("show-tip"));
       }
       // S12：就你特殊？？！！ —— 点击 Qol（A32）成就单元格 10 次
