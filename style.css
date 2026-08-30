@@ -454,26 +454,32 @@ textarea:focus { outline: none; border-color: var(--accent); }
 }
 
 /* ===== 黑洞（v0.4.3）===== */
-#subtab-blackhole { color: #e8e8e8; }
-#subtab-blackhole.active { color: #000; background: #444; border-color: #000; }
+#subtab-blackhole { color: var(--text); }
+#subtab-blackhole.active { color: #fff; background: #222; border-color: #000; }
 .subpage#sub-ann-blackhole { color: var(--text); }
 
 .bh-canvas-wrap { display: flex; justify-content: center; margin: 8px 0 4px; }
-#bh-canvas { background: #050505; border: 1px solid #222; border-radius: 6px; max-width: 100%; }
+/* canvas 始终保持深色太空背景（白主题下加边框增强可见性） */
+#bh-canvas { background: #050505; border: 1px solid var(--border); border-radius: 6px; max-width: 100%; }
+body[data-theme="white"] #bh-canvas { box-shadow: 0 0 0 2px #888, 0 2px 8px rgba(0,0,0,0.3); }
 
 .bh-stats { margin: 6px 0; }
 .bh-stat-row { display: flex; justify-content: space-between; padding: 3px 8px; border-bottom: 1px solid var(--border); font-size: 14px; }
 .bh-stat-row span:last-child { font-family: var(--font-num); }
 
 .bh-state-row { display: flex; gap: 6px; justify-content: center; margin: 8px 0; }
-.bh-state-btn { padding: 6px 18px; background: #1a1a1a; color: #ccc; border: 1px solid #333; border-radius: 4px; cursor: pointer; }
-.bh-state-btn:hover { background: #2a2a2a; }
+.bh-state-btn { padding: 6px 18px; background: var(--btn-bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; }
+.bh-state-btn:hover { background: var(--btn-bg-hover); }
 .bh-state-btn.active { background: #000; color: #fff; border-color: #555; box-shadow: 0 0 8px rgba(120,80,200,0.4); }
+body[data-theme="white"] .bh-state-btn.active { background: #222; color: #fff; }
 
 .bh-upg-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+/* 黑洞升级按钮：黑主题下深黑；白主题下深灰底白字（保持「黑色」质感但可见） */
 .bh-upg-btn { background: #0a0a0a !important; border: 1px solid #333 !important; color: #ddd !important; }
 .bh-upg-btn:hover { background: #1a1a1a !important; }
 .bh-upg-btn.affordable { border-color: #8b5cf6 !important; }
+body[data-theme="white"] .bh-upg-btn { background: #2a2a2a !important; border: 1px solid #555 !important; color: #f0f0f0 !important; box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
+body[data-theme="white"] .bh-upg-btn:hover { background: #3a3a3a !important; }
 
 /* 5DA 黑色里程碑 */
 .milestone.black { border-left: 3px solid #000; background: linear-gradient(90deg, rgba(0,0,0,0.15), transparent); }

@@ -1877,7 +1877,7 @@ function absZeroMult() {
 // ---------- 黑洞系统（v0.4.3 实装，5DA 解锁）----------
 // 黑洞：黑洞质量 M（太阳质量）、虚粒子 VP；基础效果 M^0.2 给予时间倍率加成（扭曲状态）
 // 三个状态：吸积（获取质量，无加成，虚粒子衰减）/ 扭曲（给时间倍率加成）/ 脉冲（失质量，获虚粒子）
-// 三个 SBU 升级：事件视界（吸积效率 ×2/级）/ 引力潮汐（效果 ×2/级）/ 霍金辐射（虚粒子获取 ×2/级）
+// 三个 SBU 升级：事件视界（吸积效率 ×2/级）/ 引力潮汐（效果指数 +0.01/级）/ 霍金辐射（虚粒子获取 ×2/级）
 function bhUnlocked() { return hasDistortMilestone(5); }
 function getLogBhMass() {
   if (state.logBhMass !== undefined && isFinite(state.logBhMass)) return state.logBhMass;
@@ -1905,18 +1905,20 @@ function setVPLog(logV) {
   state.logVP = isFinite(logV) ? logV : (logV === Infinity ? logV : NLOG);
   state.virtualParticles = (logV <= NLOG + 1) ? 0 : (logV > 308 ? Infinity : Math.pow(10, logV));
 }
-// 黑洞基础效果：M^0.2（引力潮汐 ×2^sbu2）；返回 double（扭曲状态给时间倍率）
+// 黑洞基础效果：M^（0.2 + sbu2·0.01）（引力潮汐：效果指数 +0.01/级）；返回 double（扭曲状态给时间倍率）
 function bhEffect() {
   const mLog = getLogBhMass();
   if (mLog <= 0) return 1;
-  const effLog = 0.2 * mLog + state.sbu2 * Math.log10(2);
+  const exp = 0.2 + state.sbu2 * 0.01;
+  const effLog = exp * mLog;
   return effLog > 308 ? Infinity : Math.pow(10, effLog);
 }
 // 黑洞效果 log10（log 域，防溢出）
 function bhEffectLog() {
   const mLog = getLogBhMass();
   if (mLog <= 0) return 0;
-  return 0.2 * mLog + state.sbu2 * Math.log10(2);
+  const exp = 0.2 + state.sbu2 * 0.01;
+  return exp * mLog;
 }
 // 黑洞对时间速率的加成（仅扭曲状态）：×(1 + bhEffect)
 function bhTimeMult() {
@@ -1944,7 +1946,7 @@ function bhVPGainLog() {
 // 黑洞升级定义
 const SBU_DEFS = [
   { id: "sbu1", key: "sbu1", name: "事件视界", desc: "每级使黑洞吸积效率 ×2", max: Infinity, cost: (n) => Math.pow(1e9, 1) * Math.pow(100, n - 1) },
-  { id: "sbu2", key: "sbu2", name: "引力潮汐", desc: "每级使黑洞效果 ×2", max: Infinity, cost: (n) => Math.pow(1e10, 1) * Math.pow(1000, n - 1) },
+  { id: "sbu2", key: "sbu2", name: "引力潮汐", desc: "每级使黑洞效果指数 +0.01", max: Infinity, cost: (n) => Math.pow(1e10, 1) * Math.pow(1000, n - 1) },
   { id: "sbu3", key: "sbu3", name: "霍金辐射", desc: "每级使虚粒子获取 ×2", max: Infinity, cost: (n) => Math.pow(1e11, 1) * Math.pow(100, n - 1) },
 ];
 function sbuCostLog(u, n) {
@@ -3209,8 +3211,8 @@ function tick() {
     }
   }
 
-  // 黑洞 tick（游戏时间）
-  tickBlackhole(dt);
+  // 黑洞 tick：吸积/脉冲用真实时间（不受时间倍率影响），扭曲状态只给加成（无 tick 效果）
+  tickBlackhole(realDt);
 
   // 自动化解锁门槛（首次湮灭后生效）
   if (state.annihilations >= 1) {
