@@ -1442,7 +1442,7 @@ function hasMilestone(n) { return effAnnihilations() >= n; }
 const DISTORT_MILESTONES = [
   { n: 1, desc: "" }, // 动态填充：基于扭曲宇宙湮灭数，将奇点效果变为 X 倍
   { n: 3, desc: "解锁更多的奇点升级" },
-  { n: 5, desc: "解锁黑洞：质量、虚粒子、三个状态与黑洞升级", black: true },
+  { n: 5, desc: "解锁黑洞选项卡", black: true },
   { n: 8, desc: "打破宇宙的规则：取消温度上限（WIP）" },
 ];
 function distortDA() { return state.distortDone.length; }
