@@ -9,6 +9,9 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Tool metadata
+.zcode/
+
 # Local node (if any tooling added later)
 node_modules/
 

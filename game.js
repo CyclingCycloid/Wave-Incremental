@@ -3,13 +3,14 @@
 // ---------- Save schema ----------
 function defaultState() {
   return {
-    version: "0.4.2.4",
+    version: "0.4.2.5",
     // 物理资源
-    U: 10,                 // 波速 m/s (默认国际单位制)
+    U: 10,                 // 波速 m/s (默认国际单位制，double 缓存；极端值看 logU10)
+    logU10: 1,             // log10(U) 权威表示（防溢出/下溢；U=0 时为 NLOG 哨兵）
     L: 1,                  // 波长 m（double 缓存；极端值看 logL10）
     logL10: 0,             // log10(L) 权威表示（防下溢）
     // up1 / up2 = 升级1/2 购买次数; up3 = 缩短波长次数; meta1 = 单次元升级(频率加成波速获取)是否已购
-    up1: 0, up2: 0, up3: 0, up3LastF: 0, meta1: 0,
+    up1: 0, up2: 0, up3: 0, up3LastF: 0, logUp3LastF: NLOG, meta1: 0,
     // 声子系统：声子数（浮点存储，显示取整）、发生器开关、页面解锁
     phonons: 0, phOn: false, phUnlocked: 0,
     pg1: 0,                // 声子发生器效率（间隔 ÷1.5/级）
@@ -58,8 +59,10 @@ function defaultState() {
     testBreakRules: false, // 测试按钮：临时打破规则（不获 Sp，v0.4.3 移除）
 
     // 统计
-    totalFGained: 10,      // 累计频率（生成总量）
+    totalFGained: 10,      // 累计频率（生成总量，double 缓存；极端值看 logTotalF）
+    logTotalF: 1,          // log10(totalFGained) 权威表示
     maxF: 10, maxU: 10, minL: 1,
+    logMaxF: 1, logMaxU: 1, logMinL: 0, // 各极值的 log10 权威表示（防溢出/下溢丢精度）
     playTime: 0,
     realTime: 0,           // 真实时间（未乘时间速率）
     // 成就
@@ -79,6 +82,12 @@ const SAVE_KEY = "waveIncremental_save";
 const SLOT_KEY_PREFIX = "waveIncremental_slot";
 const SLOT_COUNT = 3;
 const AUTOSAVE_INTERVAL = 15000;
+// log10 域的「零/无值」哨兵：用有限负数而非 -Infinity（JSON 无法存储 Infinity）。
+// 比较时任何正的 log 都 > NLOG，故「从未购买升级3」时 FLog() > NLOG 恒成立。
+const NLOG = -1e9;
+// double 饱和阈值：仅当数值非有限或超过此量级时才退化为 log 域比较/累积，
+// 保证 double 范围内的边界判定（如首个升级 F=10 vs cost=10）逐位不变。
+const LOG_FALLBACK = 1e290;
 
 let state = defaultState();
 let currentSlot = 0;
@@ -161,8 +170,82 @@ function getLogPhonons() {
 }
 function setPhonons(v) {
   state.phonons = v;
-  state.logDph = v > 0 ? Math.log10(v) : 0;
+  state.logDph = (v > 0 && isFinite(v)) ? Math.log10(v) : (v > 0 ? 308 : 0); // v>0 非有限（Infinity）→ log 308
 }
+// 由 log10(phonons) 直接设（log 域路径）
+function setPhononsLog(logP) {
+  state.logDph = isFinite(logP) ? logP : (logP === Infinity ? logP : 0);
+  state.phonons = (logP <= NLOG + 1) ? 0 : (logP > 308 ? Infinity : Math.pow(10, logP));
+}
+// ---------- U / 累计频率 / 极值 的双表示（v0.4.2.5 完整接入）----------
+// U：权威 logU10（U=0 时存 NLOG 哨兵）；double 缓存 U 在极端大时为 Infinity、极端小时为 0，读取走 log
+function getLogU10() {
+  if (state.logU10 !== undefined && isFinite(state.logU10)) return state.logU10;
+  return state.U > 0 ? Math.log10(state.U) : NLOG;
+}
+// 由 double 设 U（double 路径，值在范围内）
+function setU(v) {
+  state.U = v;
+  state.logU10 = (v > 0 && isFinite(v)) ? Math.log10(v) : (v > 0 ? 308 : NLOG); // v>0 但非有限（Infinity）→ log 308+
+}
+// 由 log10(U) 直接设 U（log 域路径，U 超 double 时 double 缓存为 Infinity）
+function setULog(logU) {
+  state.logU10 = isFinite(logU) ? logU : (logU === Infinity ? logU : NLOG);
+  state.U = (logU <= NLOG + 1) ? 0 : (logU > 308 ? Infinity : Math.pow(10, logU));
+}
+// 累计频率：权威 logTotalF
+function getLogTotalF() {
+  if (state.logTotalF !== undefined && isFinite(state.logTotalF)) return state.logTotalF;
+  return state.totalFGained > 0 ? Math.log10(state.totalFGained) : NLOG;
+}
+function setTotalFGained(v) {
+  state.totalFGained = v;
+  state.logTotalF = (v > 0 && isFinite(v)) ? Math.log10(v) : (v > 0 ? 308 : NLOG);
+}
+function setTotalFGainedLog(logF) {
+  state.logTotalF = isFinite(logF) ? logF : (logF === Infinity ? logF : NLOG);
+  state.totalFGained = (logF <= NLOG + 1) ? 0 : (logF > 308 ? Infinity : Math.pow(10, logF));
+}
+// 统计极值：log 权威（maxU 恒 Infinity / minL 下溢 0 的丢精度在此修复）
+function getLogMaxF() { return (state.logMaxF !== undefined && isFinite(state.logMaxF)) ? state.logMaxF : Math.log10(Math.max(state.maxF, 1e-300)); }
+function getLogMaxU() { return (state.logMaxU !== undefined && isFinite(state.logMaxU)) ? state.logMaxU : Math.log10(Math.max(state.maxU, 1e-300)); }
+function getLogMinL() { return (state.logMinL !== undefined && isFinite(state.logMinL)) ? state.logMinL : Math.log10(Math.max(state.minL || 1, 1e-300)); }
+// 升级3 历史峰值频率：权威 logUp3LastF（替代旧版用 Infinity 哨兵导致的 Infinity-vs-Infinity 死锁）
+function getLogUp3LastF() {
+  if (state.logUp3LastF !== undefined && isFinite(state.logUp3LastF) && state.logUp3LastF > NLOG + 1) return state.logUp3LastF;
+  return state.up3LastF > 0 ? (isFinite(state.up3LastF) ? Math.log10(state.up3LastF) : 308) : NLOG;
+}
+function setUp3LastF(fLog) {
+  // fLog：峰值的 log10（始终有限，FLog 不再返回 Infinity）
+  state.logUp3LastF = isFinite(fLog) ? fLog : 308;
+  state.up3LastF = fLog > 308 ? Infinity : (fLog <= 0 ? 0 : Math.pow(10, fLog)); // double 缓存（>1e308 存 Infinity）
+}
+// ---------- log 域算术助手 ----------
+// log10(a+b)，已知 la=log10(a)、lb=log10(b)（均含符号无关的量级）
+function logAddLogs(la, lb) {
+  if (la === -Infinity) return lb;
+  if (lb === -Infinity) return la;
+  if (!isFinite(la) && !isFinite(lb)) return Math.max(la, lb);
+  const mx = Math.max(la, lb), mn = Math.min(la, lb);
+  if (mn <= NLOG + 1) return mx; // 较小项可忽略
+  return mx + Math.log10(1 + Math.pow(10, mn - mx));
+}
+// 带符号的 log 加法：sa/sb 为 ±1，返回 {log, sign} 表示 log10(|a+b|) 与符号
+function logAddSigned(la, sa, lb, sb) {
+  if (la <= NLOG + 1) return { log: lb, sign: sb };
+  if (lb <= NLOG + 1) return { log: la, sign: sa };
+  if (sa === sb) return { log: logAddLogs(la, lb), sign: sa };
+  // 异号相减
+  if (la >= lb) return { log: la + Math.log10(1 - Math.pow(10, lb - la)), sign: sa };
+  return { log: lb + Math.log10(1 - Math.pow(10, la - lb)), sign: sb };
+}
+// 比较 helper：a、b 均有限且 < LOG_FALLBACK 时走原 double 比较（零回归），
+// 任一非有限或 ≥ LOG_FALLBACK 时退化为 log 域比较（aLog >= bLog）
+function cmpGE(a, b, aLog, bLog) {
+  if (isFinite(a) && isFinite(b) && a < LOG_FALLBACK && b < LOG_FALLBACK) return a >= b;
+  return aLog >= bLog;
+}
+function cmpLT(a, b, aLog, bLog) { return !cmpGE(a, b, aLog, bLog); }
 // log 域相加（对数加法 = 数值乘法），返回 double log10
 function logAdd(a, b) { return a + b; }
 // ---------- 派生物理量 ----------
@@ -187,7 +270,8 @@ function distortLModLog() {
   return 15 * (t - 1);
 }
 function FLog() {
-  return Math.log10(Math.max(Math.abs(state.U), 1e-300)) - getLogL10() - distortLModLog();
+  // log 域：getLogU10 权威（U 超 1e308 时仍有限），永不返回 Infinity
+  return getLogU10() - getLogL10() - distortLModLog();
 }
 function F() {
   const logF = FLog();
@@ -198,26 +282,40 @@ function F() {
 // 温度 T = n·h·F/k_B（声子数 × 普朗克常数 × 频率 / 玻尔兹曼常数），单位 K
 // 普朗克常数受总奇点 (1+Sp)^1.5 加成（等价于温度倍率）；温度受当前宇宙硬上限约束
 const H_OVER_KB = 6.62607015e-34 / 1.380649e-23; // ≈ 4.799e-11 K·s
+const LOG_H_OVER_KB = Math.log10(H_OVER_KB);
+// 温度的 log10（未裁剪，权威）：log10(n) + log10(h/k_B) + log10(F) + log10(planckMult)
+function temperatureLog() {
+  return getLogPhonons() + LOG_H_OVER_KB + FLog() + planckMultLog();
+}
 function temperature() {
-  // 打破规则：无上限；log 域乘积（phonons 用权威 log 表示）
-  const parts = [state.phonons, H_OVER_KB, F(), planckMult()];
-  if (parts.some(p => !isFinite(p))) return Infinity;
-  const logSum = parts.reduce((s, p) => s + Math.log10(Math.max(p, 1e-300)), 0);
-  const raw = logSum > 300 ? Infinity : Math.pow(10, logSum);
+  const rawLog = temperatureLog();
   // 打破规则（正式 8DA 或测试按钮）后取消上限
-  if (state.rulesBroken || state.testBreakRules) return raw;
-  // 扭曲宇宙：使用该宇宙自己的普朗克温度作为上限，而非住宇宙上限
+  if (state.rulesBroken || state.testBreakRules) {
+    return rawLog > 308 ? Infinity : (rawLog <= NLOG + 1 ? 0 : Math.pow(10, rawLog));
+  }
+  // 上限 log（扭曲宇宙用自己的普朗克温度，否则用 temperatureCapLog）
+  let capLog;
   if (state.distortActive) {
     const u = DISTORT_UNIVERSES.find(x => x.id === state.distortActive);
-    if (u) return Math.min(raw, u.tp);
+    capLog = u ? Math.log10(Math.max(u.tp, 1e-300)) : temperatureCapLog();
+  } else {
+    capLog = temperatureCapLog();
   }
-  return Math.min(raw, temperatureCap());
+  const log = Math.min(rawLog, capLog);
+  return log > 308 ? Infinity : (log <= NLOG + 1 ? 0 : Math.pow(10, log));
 }
 // 热涨落：波速获取 ×= max(1, T)^0.2
 function thermalMult() {
   if (inDistort("adiabatic")) return 1 / Math.pow(Math.max(1, temperature()), 0.3); // 热寂：温度反而削弱波速获取
   if (inDistort("simple")) return 1; // 简洁：热涨落无效
   return Math.pow(Math.max(1, temperature()), thermalExp());
+}
+// 热涨落的 log10（幂项 → 指数乘；热寂为负、简洁为 0）。raw 未经上限裁剪的温度 log。
+function thermalMultLog() {
+  const tLog = Math.max(0, temperatureLog()); // max(1,T) 的 log
+  if (inDistort("adiabatic")) return -0.3 * tLog;
+  if (inDistort("simple")) return 0;
+  return thermalExp() * tLog;
 }
 // 声子涨落（单次）：声子获取 ×= ceil(lg(max(1,T))^1.5)
 function fluctMult() {
@@ -226,14 +324,39 @@ function fluctMult() {
   if (inDistort("adiabatic")) return 1;
   return Math.max(1, Math.ceil(Math.pow(Math.log10(Math.max(1, temperature())), 1.5)));
 }
+// 声子涨落的 log10：ceil(lg(max(1,T))^1.5) 本身在 double 范围（log 的幂），直接取 log10
+function fluctMultLog() {
+  if (!state.phFluct || inDistort("adiabatic")) return 0;
+  const inner = Math.log10(Math.max(1, temperature())); // lg(max(1,T))，非有限时取 0
+  const v = Math.max(1, Math.ceil(Math.pow(Math.max(0, inner), 1.5)));
+  return Math.log10(v);
+}
 // 声波耦合（单次）：声子获取 ×= ceil(U^0.05)（定向宇宙中失效）
 function couplingMult() {
   if (!state.phCoupling || inDistort("directed") || inDistort("adiabatic")) return 1;
   return Math.ceil(Math.pow(Math.abs(state.U), 0.05));
 }
+// 声波耦合的 log10：log10(ceil(10^(0.05·logU10)))；结果幂 ≤ 0.05×logU10，始终 ≤ double
+function couplingMultLog() {
+  if (!state.phCoupling || inDistort("directed") || inDistort("adiabatic")) return 0;
+  const pow = 0.05 * Math.max(0, getLogU10()); // 10^(0.05·logU10)，可能 > 1e308
+  const v = Math.ceil(pow > 308 ? Infinity : Math.pow(10, pow));
+  return v === Infinity ? 308.2542 : Math.log10(Math.max(v, 1)); // 双精度上限 log
+}
 // 声子发生器产量（每游戏秒）
 function phononRate() {
   return Math.pow(1.5, state.pg1) * Math.pow(state.pg2 + 1 + pg2Free(), 2) * fluctMult() * couplingMult() * invLMult();
+}
+// 声子发生器产量的 log10（完整乘法链在 log 域，永不溢出）
+function phononRateLog() {
+  // Math.pow(1.5, pg1) 的 log = pg1·log10(1.5)
+  let log = state.pg1 * Math.log10(1.5);
+  // (pg2+1+pg2Free())^2 的 log = 2·log10(...)
+  log += 2 * Math.log10(Math.max(1, state.pg2 + 1 + pg2Free()));
+  log += fluctMultLog();
+  log += couplingMultLog();
+  log += invLMultLog();
+  return log;
 }
 // 升级3波长指数：0.25 基础 + pg3 每级 0.01（上限 20 级 → 0.45）
 // 扭曲：刚性 → 指数 ÷4；简洁 → 指数 ×1.5；冷却 → 指数受削弱倍率影响
@@ -337,30 +460,26 @@ function cooldownExp() {
 // ---------- 湮灭层 ----------
 const T_P0 = 1.4168e32; // 最初宇宙的普朗克温度
 // 普朗克常数受 (1+总Sp)^1.5 加成 → 等价于温度倍率（T = n·h·F/k_B 中 h 同倍放大）
-function planckMult() {
-  // log 域：log10((1+totalSp)^exp)，totalSp 超 double 时用 Decimal
+// log10 版本（权威，永不溢出）：log10((1+totalSp)^exp)
+function planckMultLog() {
   const exp = hasDistortMilestone(1) ? 1.5 * daExpMult() : 1.5;
-  if (getLogTotalSp() > 250) {
-    return Decimal.pow(10, getLogTotalSp() * exp).toNumber(); // (Sp)^exp ≈ 10^(logSp·exp)
-  }
-  return Math.pow(1 + state.totalSp, exp);
+  return exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp));
+}
+function planckMult() {
+  const l = planckMultLog();
+  return l > 308 ? Infinity : Math.pow(10, l);
 }
 // 当前宇宙温度硬上限：t·(1+总Sp)^10
-function temperatureCap() {
+// log10 版本（权威）：log10(T_P0) + exp·log10(1+totalSp)，含 250 软上限收敛
+function temperatureCapLog() {
   const exp = hasDistortMilestone(1) ? 10 * daExpMult() : 10;
-  // log 域原上限：log10(T_P0) + exp × log10(1+totalSp)
-  let logCap;
-  if (getLogTotalSp() > 250) {
-    logCap = Math.log10(T_P0) + exp * getLogTotalSp();
-  } else {
-    logCap = Math.log10(T_P0) + exp * Math.log10(1 + state.totalSp);
-  }
-  // 软上限：原上限超 1e250 的部分开十次方根（eff = 1e225 × Tp^0.1）
-  if (logCap > 250) {
-    logCap = 225 + 0.1 * logCap;
-  }
-  if (logCap > 308) return Decimal.pow(10, logCap).toNumber();
-  return Math.pow(10, logCap);
+  let logCap = Math.log10(T_P0) + exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp));
+  if (logCap > 250) logCap = 225 + 0.1 * logCap; // 软上限：超 1e250 部分开十次方根
+  return logCap;
+}
+function temperatureCap() {
+  const logCap = temperatureCapLog();
+  return logCap > 308 ? Infinity : Math.pow(10, logCap);
 }
 // 基础奇点获取：10 以下随温度指数线性增长（1 Sp @ T_P0，10 Sp @ 1e50 K），之后 10·(T/1e50)^0.024
 function baseSpGain(T) {
@@ -392,6 +511,23 @@ function spGain() {
   // distortMult 乘在 floor 内部：先乘后取整，数值连续（外部乘法会造成整数跳变）
   const base = Math.max(state.annihilations === 0 ? 1 : 0, baseSpGain(temperature())) * state.distortMult * Math.pow(2, state.sau4) * phononSpMult();
   return Math.floor(base);
+}
+// spGain 的 log10（用于 fmtNum 显示，超 double 时显示 1eN）
+function spGainLog() {
+  if (state.testBreakRules) return NLOG;
+  const tLog = temperatureLog();
+  let baseLog;
+  if (tLog < 50) {
+    // baseSpGain 返回 1~10 区间（小数，log 域小）
+    return Math.log10(Math.max(1, spGain()));
+  }
+  if (tLog < 100) {
+    baseLog = Math.log10(tLog / 5); // lg(T)/5 的 log
+  } else {
+    baseLog = Math.log10(2) + 0.01 * tLog; // 2·T^0.01 的 log
+  }
+  const mLog = Math.log10(state.distortMult) + state.sau4 * Math.log10(2) + Math.log10(Math.max(1, phononSpMult()));
+  return baseLog + mLog;
 }
 // gainRate 的 log10 版本（完整乘法链在 log 域，永不溢出）
 function gainRate() {
@@ -425,6 +561,43 @@ function gainRate() {
   if (inDistort("inflation")) g = Math.sqrt(Math.max(0, g));
   return g;
 }
+// gainRate 的 log10 版本（完整乘法链在 log 域，永不溢出）。
+// 仅在 gainRate() 的 double 链因中间项溢出而饱和（Infinity）时由 tick 调用，
+// 故 normal-play 下不参与计算（零回归）。返回 {log: log10(|g|), sign}。
+function gainRateLog() {
+  let log, sign = 1;
+  if (inDistort("simple")) {
+    log = 0; // 基础固定 1
+  } else {
+    // A21：up1 效果 1.5 次方；AU11：指数 up1Exp()
+    const up1ExpTotal = (state.ach.normal.includes("A21") ? 1.5 : 1) * up1Exp();
+    log = (state.up1 > 0 ? Math.log10(state.up1) : NLOG) * up1ExpTotal;
+    log += state.up2 * Math.log10(Math.max(1e-300, up2Base()));
+  }
+  // 单次升级"频率加成波速获取"：×(1 + lg(F+1))。该因子本身在 double 范围（lg(F+1) 是小数）。
+  if (state.meta1 >= 1) {
+    const lf = FLog(); // log10(F)
+    const inner = lf > 0 ? lf : Math.log10(Math.pow(10, lf) + 1); // lg(F+1)
+    log += Math.log10(1 + Math.pow(10, inner)); // log10(1 + 10^inner)
+  }
+  // 热涨落（幂项 → 指数乘；热寂为负、简洁为 0）
+  log += thermalMultLog();
+  // 奇点：×(1+总Sp)^exp；1DA 后指数 ×daExpMult()
+  {
+    const exp = hasDistortMilestone(1) ? 2 * daExpMult() : 2;
+    log += exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp));
+  }
+  // 定向：每刻 50% 概率取反
+  if (inDistort("directed") && Math.random() < 0.5) sign = -1;
+  // 冷却：g^cooldownExp → log ×= cooldownExp（仅 g>0；g≤0 时原代码 max(0,g) 归零）
+  if (inDistort("cooldown")) {
+    if (log <= NLOG + 1) return { log: NLOG, sign: 1 }; // g=0
+    log *= cooldownExp();
+  }
+  // 通胀：平方根 → log ÷ 2
+  if (inDistort("inflation")) log /= 2;
+  return { log, sign };
+}
 // 时间速率：每个普通成就给予 ×1.1 的游戏时间速率加成
 function timeRate() {
   return Math.pow(achTimeBase(), state.ach.normal.length) * timeArrowMult() * absZeroMult();
@@ -434,10 +607,43 @@ function resetU() { return state.ach.normal.includes("A25") ? 100 : 10; }
 // 升级价格（下一次购买）
 // 通胀宇宙：所有升级的价格变为原来的平方
 function costOf(c) { return inDistort("inflation") ? c * c : c; }
+// 通胀宇宙下价格的 log10 = 原价 log × 2，否则原价 log
+function costOfLog(cLog) { return inDistort("inflation") ? cLog * 2 : cLog; }
 function up3Visible() { return F() >= 50000 || state.up3 >= 1; }
 const META_COST = 5000; // 单次升级"频率加成波速获取"固定价格（单次购买）
 const PH_UNLOCK_COST = 1e10; // 单次升级"解锁声子"价格
+const LOG_META_COST = Math.log10(META_COST);
+const LOG_PH_UNLOCK_COST = Math.log10(PH_UNLOCK_COST);
 // 通胀宇宙下常量价格也需平方（costOf 定义在后，运行时无碍）
+// 价格的 log10 getter（与 double 版 up*Cost() 并存，仅 cmp 在饱和时使用）
+function up1CostLog() {
+  const n = state.up1 + 1;
+  if (inDistort("inflation")) return costOfLog(n * Math.log10(100));
+  let logP2 = Math.log10(5) + n * Math.log10(2) + (softcapped() ? Math.max(0, n - 332) * Math.log10(5) : 0);
+  return costOfLog(logP2);
+}
+function up2CostLog() {
+  const n = state.up2 + 1;
+  if (inDistort("inflation")) {
+    // 初始价 1e6，每级乘 max(k²,100)；log = 6 + Σ log10(max(k²,100))
+    let lp = 6;
+    for (let k = 1; k <= state.up2; k++) lp += Math.log10(Math.max(k * k, 100));
+    return costOfLog(lp);
+  }
+  const k = state.up2;
+  if (k <= 98) return costOfLog(n + 1); // 10^(n+1)
+  let logP;
+  if (k <= 300) {
+    logP = 100;
+    for (let i = 100; i <= k; i++) logP += Math.log10(i);
+  } else {
+    logP = 100 + lgamma10(k) - lgamma10(99);
+  }
+  return costOfLog(logP);
+}
+function pg1CostLog() { return costOfLog(Math.log10(1e10) + state.pg1 * Math.log10(100)); }
+function pg2CostLog() { return costOfLog(Math.log10(100) + state.pg2 * Math.log10(2)); }
+function pg3CostLog() { return costOfLog(4 + state.pg3); } // 1e4 × 10^pg3
 
 // ---------- Number / time formatting ----------
 function fmt(num) {
@@ -470,8 +676,15 @@ function fmt(num) {
 function fmtLog(logV) {
   // 以 log10 显示：e999999 以下用 double 指数，之上直接 eN 格式
   if (!isFinite(logV)) return "∞";
+  if (logV <= NLOG + 1) return "0";
   if (logV < 308) return Math.pow(10, logV).toExponential(3).replace("e+", "e");
   return "1e" + logV.toFixed(0);
+}
+// 统一显示：double 在范围内走 fmt（现状），饱和/超 1e308 走 fmtLog（输出 1eN）
+function fmtNum(doubleVal, logVal) {
+  if (isFinite(doubleVal) && Math.abs(doubleVal) < LOG_FALLBACK) return fmt(doubleVal);
+  if (logVal !== undefined && isFinite(logVal)) return fmtLog(logVal);
+  return "∞";
 }
 function fmtTime(seconds, precise) {
   // precise=true 时保留到 25ms 刻度的小数（挑战计时用）
@@ -509,8 +722,38 @@ function migrateState() {
   }
   // 存档若带有 logL10 且 L 已下溢为 0，则 L 以 log 为准
   if (state.L === 0 && isFinite(state.logL10)) state.L = 0; // 保持 0，读取走 getLogL10
-  if (state.up3 > 0 && !state.up3LastF) {
-    state.up3LastF = Math.pow(10, -getLogL10() / up3Exp()); // (1/L)^(1/e) 的 log 域形式
+  // v0.4.2.5：U/累计频率/极值/升级3峰值 的 log 权威字段回填
+  if (state.logU10 === undefined || state.logU10 === null || !isFinite(state.logU10)) {
+    state.logU10 = state.U > 0 ? Math.log10(state.U) : NLOG;
+  }
+  if (state.logTotalF === undefined || state.logTotalF === null || !isFinite(state.logTotalF)) {
+    state.logTotalF = state.totalFGained > 0 ? Math.log10(state.totalFGained) : NLOG;
+  }
+  if (state.logMaxF === undefined || state.logMaxF === null || !isFinite(state.logMaxF)) {
+    state.logMaxF = state.maxF > 0 ? (isFinite(state.maxF) ? Math.log10(state.maxF) : getLogU10()) : 1;
+  }
+  if (state.logMaxU === undefined || state.logMaxU === null || !isFinite(state.logMaxU)) {
+    state.logMaxU = state.maxU > 0 ? (isFinite(state.maxU) ? Math.log10(state.maxU) : getLogU10()) : 1;
+  }
+  if (state.logMinL === undefined || state.logMinL === null || !isFinite(state.logMinL)) {
+    state.logMinL = (state.minL > 0) ? Math.log10(state.minL) : getLogL10();
+  }
+  // 升级3 峰值：旧档 up3LastF 可能是 Infinity（JSON 存为 null）或 0；用 log 重建
+  if (state.logUp3LastF === undefined || state.logUp3LastF === null || !isFinite(state.logUp3LastF) || state.logUp3LastF <= NLOG + 1) {
+    if (state.up3LastF > 0) {
+      state.logUp3LastF = isFinite(state.up3LastF) ? Math.log10(state.up3LastF) : 308;
+    } else if (state.up3 > 0) {
+      // 旧版无 up3LastF 但有 up3：从波长反推等效峰值频率
+      state.logUp3LastF = -getLogL10() / up3Exp();
+      state.up3LastF = state.logUp3LastF > 308 ? Infinity : Math.pow(10, state.logUp3LastF);
+    } else {
+      state.logUp3LastF = NLOG;
+    }
+  }
+  // 旧档 up3 反推（logUp3LastF 已建好则跳过）
+  if (state.up3 > 0 && !state.up3LastF && state.logUp3LastF <= NLOG + 1) {
+    state.logUp3LastF = -getLogL10() / up3Exp();
+    state.up3LastF = state.logUp3LastF > 308 ? Infinity : Math.pow(10, state.logUp3LastF);
   }
   // 旧存档无 realTime：以 playTime 作为初始近似值
   if (!state.realTime) state.realTime = state.playTime;
@@ -535,16 +778,19 @@ function loadGame() {
     migrateState();
     // 迁移：v0.1 旧存档用 frequency 字段
     if (obj.frequency !== undefined && obj.U === undefined) {
-      state.U = obj.frequency;
+      setU(obj.frequency);
       state.L = 1; state.logL10 = 0;
     }
-    if (obj.totalFrequency !== undefined && obj.totalFGained === undefined) {
-      state.totalFGained = obj.totalFrequency;
+    if (obj.totalFrequency !== undefined && state.totalFGained === undefined) {
+      setTotalFGained(obj.totalFrequency);
     }
-    // 校正派生统计下限
-    state.maxF = Math.max(state.maxF, F());
-    state.maxU = Math.max(state.maxU, state.U);
-    state.minL = Math.min(state.minL, state.L);
+    // 校正派生统计下限（log 域，防 maxF/maxU 恒 Infinity、minL 下溢 0）
+    {
+      const fLog = FLog();
+      if (fLog > getLogMaxF()) { state.maxF = F(); state.logMaxF = fLog; }
+      if (getLogU10() > getLogMaxU()) { state.maxU = state.U; state.logMaxU = getLogU10(); }
+      if (getLogL10() < getLogMinL()) { state.minL = state.L; state.logMinL = getLogL10(); }
+    }
     applyTheme(state.settings.theme);
     applyNotation(state.settings.notation);
     state.lastTick = Date.now();
@@ -714,8 +960,9 @@ function buyUp1() {
   if (inDistort("simple")) return; // 简洁宇宙：波动升级1/2无效（不可购买）
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
   const c = up1Cost();
-  if (F() < c) return; // 资源必须达标（spu1 只免扣款，不免门槛）
-  if (!upgradesFree()) state.U -= c * state.L;
+  // 资源必须达标（spu1 只免扣款，不免门槛）；F/c 均 < LOG_FALLBACK 时走 double（零回归），饱和时退 log 域
+  if (cmpLT(F(), c, FLog(), up1CostLog())) return;
+  if (!upgradesFree()) setU(state.U - c * state.L);
   markPurchase();
   state.up1++;
   checkAchievements();
@@ -725,8 +972,8 @@ function buyUp2() {
   if (inDistort("simple")) return; // 简洁宇宙：波动升级1/2无效（不可购买）
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
   const c = up2Cost();
-  if (F() < c) return; // 资源必须达标（spu1 只免扣款，不免门槛）
-  if (!upgradesFree()) state.U -= c * state.L;
+  if (cmpLT(F(), c, FLog(), up2CostLog())) return; // 资源必须达标（spu1 只免扣款，不免门槛）
+  if (!upgradesFree()) setU(state.U - c * state.L);
   markPurchase();
   state.up2++;
   checkAchievements();
@@ -735,19 +982,19 @@ function buyUp2() {
 function buyUp3() {
   if (inDistort("rigid")) return; // 刚性宇宙：升级 3 无效
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
-  // 仅当当前频率超过上次记录的峰值时才更新（log 域比较，超 double 不截断）
+  // 仅当当前频率超过上次记录的峰值时才更新（log 域比较，超 double 不截断；不再用 Infinity 哨兵）
   const fLog = FLog();
-  const lastLog = state.up3LastF === Infinity ? Infinity : Math.log10(Math.max(state.up3LastF, 1e-300));
+  const lastLog = getLogUp3LastF();
   if (fLog <= lastLog) return;
   // e100 软上限 + 防下溢：log 域算波长缩减量与新 L
   const wLog = up3WavelengthFromFLog(fLog);
   // S8 无用功：加成小于 1.1 倍时购买（log 域：旧L × 缩减 < 1.1）
   if (getLogL10() + wLog < Math.log10(1.1)) grantHidden("S8");
-  state.up3LastF = fLog > 300 ? Infinity : Math.pow(10, fLog); // 超 double 存 Infinity
+  setUp3LastF(fLog); // 权威 log（替代旧版 Infinity 哨兵）
   state.logL10 = -wLog;
   state.L = wLog < 308 ? 1 / Math.pow(10, wLog) : 0; // 超 double 下溢为 0（读取走 log）
-  if (state.L > 0 && state.L < state.minL) state.minL = state.L;
-  state.U = resetU();
+  if (wLog < getLogMinL()) { state.minL = state.L; state.logMinL = wLog; } // 极值走 log
+  setU(resetU());
   state.up1 = 0;
   if (!auOwned("au23")) state.up2 = 0; // AU23 声纹记忆：购买升级3不再重置升级2
   markPurchase();
@@ -821,9 +1068,9 @@ function buildMetaOnce() {
     if (state.meta1 >= 1) return; // 已拥有
     if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
     const f = F();
-    if (f >= costOf(META_COST)) {
+    if (cmpGE(f, costOf(META_COST), FLog(), costOfLog(LOG_META_COST))) {
       // 价格充足（或奇点升级免费）：消耗并拥有
-      if (!upgradesFree()) state.U -= costOf(META_COST) * state.L;
+      if (!upgradesFree()) setU(state.U - costOf(META_COST) * state.L);
       markPurchase();
       state.meta1 = 1;
       checkAchievements(); // 触发 A12 协同
@@ -881,43 +1128,44 @@ function updateUpgradesUI() {
   const f = F();
   up1Card.update({
     level: `等级 ${state.up1}`,
-    effect: `当前获取速率: ${fmt(gainRate() * timeRate())} m/s²`,
-    cost: fmt(up1Cost()) + " Hz",
-    affordable: f >= up1Cost(),
+    effect: `当前获取速率: ${fmtNum(gainRate() * timeRate(), gainRateLog().log + Math.log10(timeRate()))} m/s²`,
+    cost: fmtNum(up1Cost(), up1CostLog()) + " Hz",
+    affordable: cmpGE(f, up1Cost(), FLog(), up1CostLog()),
   });
   up2Card.update({
     level: `等级 ${state.up2}`,
     effect: `当前倍率: ×${fmt(Math.pow(2, state.up2))}`,
-    cost: fmt(up2Cost()) + " Hz",
-    affordable: f >= up2Cost(),
+    cost: fmtNum(up2Cost(), up2CostLog()) + " Hz",
+    affordable: cmpGE(f, up2Cost(), FLog(), up2CostLog()),
   });
   if (up3Card) {
-    const affordable3 = FLog() > Math.log10(Math.max(state.up3LastF, 1e-300));
+    const lastLog = getLogUp3LastF();
+    const affordable3 = FLog() > lastLog;
     const wLog2 = up3WavelengthFromFLog(FLog());
-    const mult = Math.pow(10, getLogL10() + wLog2);
+    const multLog = getLogL10() + wLog2;
     up3Card.update({
-      level: `上次峰值: ${state.up3LastF > 0 ? fmt(state.up3LastF) + " Hz" : "—"}`,
+      level: `上次峰值: ${lastLog > NLOG + 1 ? fmtLog(lastLog) + " Hz" : "—"}`,
       effect: affordable3
-        ? `下次重置: ×${fmt(mult)}`
-        : `当前波长: ${fmt(Math.pow(10, Math.max(getLogL10(), -320)))} m`,
-      cost: state.up3LastF > 0 ? `需 F > ${fmt(state.up3LastF)}` : "首次",
+        ? `下次重置: ×${fmtLog(multLog)}`
+        : `当前波长: ${fmtLog(getLogL10())} m`,
+      cost: lastLog > NLOG + 1 ? `需 F > ${fmtLog(lastLog)}` : "首次",
       affordable: affordable3,
     });
   }
   buildMetaOnce();
   const eff = 1 + Math.log10(f + 1);
   const owned = state.meta1 >= 1;
-  const affordable = owned || f >= META_COST;
+  const affordable = owned || cmpGE(f, META_COST, FLog(), LOG_META_COST);
   metaRefs.root.className = "upgrade-card" + (affordable ? " affordable" : " locked");
   metaRefs.effectEl.textContent = `当前预期效果: ×${fmt(eff)}`;
-  metaRefs.costEl.textContent = fmt(costOf(META_COST)) + " Hz";
+  metaRefs.costEl.textContent = fmtNum(costOf(META_COST), costOfLog(LOG_META_COST)) + " Hz";
   metaRefs.btn.textContent = owned ? "已购买" : "购买";
   // 解锁声子卡
   const uOwned = state.phUnlocked >= 1;
-  const uAff = uOwned || f >= PH_UNLOCK_COST;
+  const uAff = uOwned || cmpGE(f, PH_UNLOCK_COST, FLog(), LOG_PH_UNLOCK_COST);
   unlockRefs.root.className = "upgrade-card" + (uAff ? " affordable" : " locked");
   unlockRefs.effectEl.textContent = uOwned ? "声子页面已解锁" : "解锁后可启动声子发生器";
-  unlockRefs.costEl.textContent = fmt(costOf(PH_UNLOCK_COST)) + " Hz";
+  unlockRefs.costEl.textContent = fmtNum(costOf(PH_UNLOCK_COST), costOfLog(LOG_PH_UNLOCK_COST)) + " Hz";
   unlockRefs.btn.textContent = uOwned ? "已购买" : "购买";
   unlockRefs.btn.disabled = !uAff;
 }
@@ -926,8 +1174,8 @@ function updateUpgradesUI() {
 function buyPhUnlock() {
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
   if (state.phUnlocked) return;
-  if (F() < costOf(PH_UNLOCK_COST)) return;
-  if (!upgradesFree()) state.U -= costOf(PH_UNLOCK_COST) * state.L;
+  if (cmpLT(F(), costOf(PH_UNLOCK_COST), FLog(), costOfLog(LOG_PH_UNLOCK_COST))) return;
+  if (!upgradesFree()) setU(state.U - costOf(PH_UNLOCK_COST) * state.L);
   markPurchase();
       state.phUnlocked = 1;
   applyPhononVisibility();
@@ -957,13 +1205,15 @@ function pg2Cost() { return costOf(100 * Math.pow(2, state.pg2)); }     // 花 P
 function pg3Cost() { return costOf(1e4 * Math.pow(10, state.pg3)); }    // 花 P，增速 ×10
 const FLUCT_COST = 1000;    // 声子涨落（P）
 const COUPLING_COST = 10000; // 声波耦合（P）
+const LOG_FLUCT_COST = Math.log10(FLUCT_COST);
+const LOG_COUPLING_COST = Math.log10(COUPLING_COST);
 
 function buyPG1() {
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
   if (inDistort("adiabatic")) return; // 绝热宇宙：无法购买声子发生器效率
   const c = pg1Cost();
-  if (F() < c) return; // 资源必须达标（spu1 只免扣款，不免门槛）
-  if (!upgradesFree()) state.U -= c * state.L;
+  if (cmpLT(F(), c, FLog(), pg1CostLog())) return; // 资源必须达标（spu1 只免扣款，不免门槛）
+  if (!upgradesFree()) setU(state.U - c * state.L);
   markPurchase();
       state.pg1++;
   renderWave(); updatePhononUI();
@@ -971,7 +1221,7 @@ function buyPG1() {
 function buyPG2() {
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
   const c = pg2Cost();
-  if (state.phonons < c) return;
+  if (cmpLT(state.phonons, c, getLogPhonons(), pg2CostLog())) return;
   if (!upgradesFree()) setPhonons(state.phonons - c);
   markPurchase();
       state.pg2++;
@@ -982,7 +1232,7 @@ function buyPG3() {
   if (state.pg3 >= pg3Cap()) return;
   if (inDistort("rigid") || inDistort("adiabatic") || inDistort("simple")) return; // 刚性/热寂/简洁：无法购买声子升级3
   const c = pg3Cost();
-  if (state.phonons < c) return;
+  if (cmpLT(state.phonons, c, getLogPhonons(), pg3CostLog())) return;
   if (!upgradesFree()) setPhonons(state.phonons - c);
   markPurchase();
       state.pg3++;
@@ -991,7 +1241,7 @@ function buyPG3() {
 function buyFluct() {
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
   if (state.phFluct) return;
-  if (state.phonons < costOf(FLUCT_COST)) return;
+  if (cmpLT(state.phonons, costOf(FLUCT_COST), getLogPhonons(), costOfLog(LOG_FLUCT_COST))) return;
   if (!upgradesFree()) setPhonons(state.phonons - FLUCT_COST);
   markPurchase();
       state.phFluct = 1;
@@ -1001,7 +1251,7 @@ function buyFluct() {
 function buyCoupling() {
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
   if (state.phCoupling) return;
-  if (state.phonons < costOf(COUPLING_COST)) return;
+  if (cmpLT(state.phonons, costOf(COUPLING_COST), getLogPhonons(), costOfLog(LOG_COUPLING_COST))) return;
   if (!upgradesFree()) setPhonons(state.phonons - COUPLING_COST);
   markPurchase();
       state.phCoupling = 1;
@@ -1033,9 +1283,9 @@ function renderPhononFast() {
   if (!state.phUnlocked) return;
   const T = temperature();
   document.getElementById("ph-res-text").textContent =
-    `你拥有${fmt(Math.floor(state.phonons))}声子，温度为${fmt(T)} K`;
+    `你拥有${fmtNum(Math.floor(state.phonons), getLogPhonons())}声子，温度为${fmtNum(T, temperatureLog())} K`;
   document.getElementById("ph-thermal").textContent =
-    `热涨落把你的波速获取变为原来的${fmt(thermalMult())}倍`;
+    `热涨落把你的波速获取变为原来的${fmtNum(thermalMult(), thermalMultLog())}倍`;
 }
 function updatePhononUI() {
   if (!state.phUnlocked) return;
@@ -1046,35 +1296,35 @@ function updatePhononUI() {
   const c1 = pg1Cost(), c2 = pg2Cost(), c3 = pg3Cost();
   phRefs.pg1.update({
     level: `等级 ${state.pg1}`,
-    effect: `当前产量: ${fmt(phononRate())} 声子/s（游戏时间）`,
-    cost: fmt(c1) + " Hz",
-    affordable: f >= c1,
+    effect: `当前产量: ${fmtNum(phononRate(), phononRateLog())} 声子/s（游戏时间）`,
+    cost: fmtNum(c1, pg1CostLog()) + " Hz",
+    affordable: cmpGE(f, c1, FLog(), pg1CostLog()),
   });
   phRefs.pg2.update({
     level: `等级 ${state.pg2}`,
     effect: `当前倍率: ×${fmt(Math.pow(state.pg2 + 1, 2))}`,
-    cost: fmt(c2) + " P",
-    affordable: state.phonons >= c2,
+    cost: fmtNum(c2, pg2CostLog()) + " P",
+    affordable: cmpGE(state.phonons, c2, getLogPhonons(), pg2CostLog()),
   });
   phRefs.pg3.update({
     level: `等级 ${state.pg3} / ${pg3Cap()}`,
     effect: `升级3当前指数: ${up3Exp().toFixed(2)}`,
-    cost: fmt(c3) + " P",
-    affordable: state.pg3 < pg3Cap() && state.phonons >= c3,
+    cost: fmtNum(c3, pg3CostLog()) + " P",
+    affordable: state.pg3 < pg3Cap() && cmpGE(state.phonons, c3, getLogPhonons(), pg3CostLog()),
   });
   const fOwn = state.phFluct >= 1, cOwn = state.phCoupling >= 1;
   phRefs.fluct.update({
     level: fOwn ? "已拥有" : "单次",
-    effect: `当前温度加成: ×${fmt(fluctMult())}`,
-    cost: fmt(costOf(FLUCT_COST)) + " P",
-    affordable: fOwn || state.phonons >= FLUCT_COST,
+    effect: `当前温度加成: ×${fmtNum(fluctMult(), fluctMultLog())}`,
+    cost: fmtNum(costOf(FLUCT_COST), costOfLog(LOG_FLUCT_COST)) + " P",
+    affordable: fOwn || cmpGE(state.phonons, FLUCT_COST, getLogPhonons(), costOfLog(LOG_FLUCT_COST)),
     btnText: fOwn ? "已购买" : "购买",
   });
   phRefs.coupling.update({
     level: cOwn ? "已拥有" : "单次",
-    effect: `当前波速加成: ×${fmt(couplingMult())}`,
-    cost: fmt(costOf(COUPLING_COST)) + " P",
-    affordable: cOwn || state.phonons >= COUPLING_COST,
+    effect: `当前波速加成: ×${fmtNum(couplingMult(), couplingMultLog())}`,
+    cost: fmtNum(costOf(COUPLING_COST), costOfLog(LOG_COUPLING_COST)) + " P",
+    affordable: cOwn || cmpGE(state.phonons, COUPLING_COST, getLogPhonons(), costOfLog(LOG_COUPLING_COST)),
     btnText: cOwn ? "已购买" : "购买",
   });
 }
@@ -1112,14 +1362,18 @@ function daExpMult() {
 }
 function hasDistortMilestone(n) { return distortDA() >= n; }
 
+const LOG_T_P0 = Math.log10(T_P0);
 function annihilationReady() {
+  // log 域比较：temperatureLog 与目标温度的 log10；double 路径不变（零回归）
+  const tLog = temperatureLog();
   // 扭曲宇宙：目标是该宇宙自己的普朗克温度（未知宇宙 id 视为不在扭曲中）
   if (state.distortActive) {
     const u = DISTORT_UNIVERSES.find(x => x.id === state.distortActive);
-    if (!u) { state.distortActive = ""; return temperature() >= T_P0; }
-    return temperature() >= u.tp;
+    if (!u) { state.distortActive = ""; return tLog >= LOG_T_P0; }
+    const tpLog = isFinite(u.tp) ? Math.log10(u.tp) : Infinity;
+    return tLog >= tpLog;
   }
-  return temperature() >= T_P0; // 只需超过最初的普朗克温度，无需到当前宇宙上限
+  return tLog >= LOG_T_P0; // 只需超过最初的普朗克温度，无需到当前宇宙上限
 }
 
 // 记录一次湮灭到历史（最近十次）
@@ -1158,9 +1412,9 @@ function doAnnihilation() {
   state.annihilations++;
 
   // 重置（几乎全部）
-  state.U = resetU(); state.L = 1; state.logL10 = 0;
-  state.up1 = 0; state.up2 = 0; state.up3 = 0; state.up3LastF = 0;
-  state.totalFGained = 10; state.maxF = 10; state.maxU = 10; state.minL = 1;
+  setU(resetU()); state.L = 1; state.logL10 = 0;
+  state.up1 = 0; state.up2 = 0; state.up3 = 0; state.up3LastF = 0; state.logUp3LastF = NLOG;
+  setTotalFGained(10); state.maxF = 10; state.maxU = 10; state.minL = 1; state.logMaxF = 1; state.logMaxU = 1; state.logMinL = 0;
   if (!auOwned("au24")) setPhonons(0); // AU24 量子涟漪：湮灭保留声子
   state.pg1 = 0; state.pg2 = 0; state.pg3 = 0; // 发生器重复升级等级总是重置
   if (!hasMilestone(1)) state.phUnlocked = 0;
@@ -1200,7 +1454,7 @@ function doAnnihilation() {
     }
     state.distortActive = "";
   } else {
-    setAutosaveStatus(`湮灭完成：获得 ${fmt(gained)} 奇点`);
+    setAutosaveStatus(`湮灭完成：获得 ${fmtNum(gained, gained > 0 ? Math.log10(gained) : NLOG)} 奇点`);
   }
 
   // 湮灭计时重置
@@ -1259,14 +1513,14 @@ function forceAnnihilationReset(gained) {
   pushAnnHistory({ label: `第 ${state.annihilations + 1} 次`, distort: "", sp: gained, realDur, gameDur, rate, at: realNow });
   state.annihilations++;
   applyAnnihilationResetBody(realNow);
-  setAutosaveStatus(gained > 0 ? `湮灭完成：获得 ${fmt(gained)} 奇点` : "湮灭完成");
+  setAutosaveStatus(gained > 0 ? `湮灭完成：获得 ${fmtNum(gained, gained > 0 ? Math.log10(gained) : NLOG)} 奇点` : "湮灭完成");
 }
 
 // 湮灭重置的主体（供 doAnnihilation 与 forceAnnihilationReset 共用）
 function applyAnnihilationResetBody(realNow) {
-  state.U = resetU(); state.L = 1; state.logL10 = 0;
-  state.up1 = 0; state.up2 = 0; state.up3 = 0; state.up3LastF = 0;
-  state.totalFGained = 10; state.maxF = 10; state.maxU = 10; state.minL = 1;
+  setU(resetU()); state.L = 1; state.logL10 = 0;
+  state.up1 = 0; state.up2 = 0; state.up3 = 0; state.up3LastF = 0; state.logUp3LastF = NLOG;
+  setTotalFGained(10); state.maxF = 10; state.maxU = 10; state.minL = 1; state.logMaxF = 1; state.logMaxU = 1; state.logMinL = 0;
   setPhonons(0);
   state.pg1 = 0; state.pg2 = 0; state.pg3 = 0;
   state.lastPurchaseAt = 0; state.narrowPurchases = 0;
@@ -1313,8 +1567,8 @@ function retryDistort() {
   }
   // 重置（不触发完成逻辑、不获 Sp、不计历史）
   state.distortActive = "";
-  state.U = resetU(); state.L = 1; state.logL10 = 0;
-  state.up1 = 0; state.up2 = 0; state.up3 = 0; state.up3LastF = 0;
+  setU(resetU()); state.L = 1; state.logL10 = 0;
+  state.up1 = 0; state.up2 = 0; state.up3 = 0; state.up3LastF = 0; state.logUp3LastF = NLOG;
   setPhonons(0);
   state.pg1 = 0; state.pg2 = 0; state.pg3 = 0;
   state.lastPurchaseAt = 0; state.narrowPurchases = 0;
@@ -1364,8 +1618,8 @@ function exitDistort() {
     updateAchievementsUI();
   }
   // 重置（与湮灭相同范围），不计入历史
-  state.U = resetU(); state.L = 1; state.logL10 = 0;
-  state.up1 = 0; state.up2 = 0; state.up3 = 0; state.up3LastF = 0;
+  setU(resetU()); state.L = 1; state.logL10 = 0;
+  state.up1 = 0; state.up2 = 0; state.up3 = 0; state.up3LastF = 0; state.logUp3LastF = NLOG;
   setPhonons(0);
   state.pg1 = 0; state.pg2 = 0; state.pg3 = 0;
   state.lastPurchaseAt = 0; state.narrowPurchases = 0;
@@ -1442,7 +1696,7 @@ function applyAnnihilationVisibility() {
   }
   btn.classList.remove("distort-mode");
   if (ready) {
-    btn.textContent = `湮灭 (+${fmt(spGain())} Sp)`;
+    btn.textContent = `湮灭 (+${fmtNum(spGain(), spGainLog())} Sp)`;
     btn.disabled = false;
   } else {
     btn.textContent = `湮灭 (须达到1.42e32K)`;
@@ -1544,6 +1798,8 @@ function pg2Free() { return auOwned("au12") ? state.pg1 * 2 : 0; }
 function up2Base() { return 2 + (auOwned("au13") ? Math.min(0.5, Math.log2(Math.max(1, state.up2)) / 30) : 0); }
 // AU14：波长倒数增强声子产生
 function invLMult() { return auOwned("au14") ? Math.max(1, Math.pow(10, -0.05 * getLogL10())) : 1; }
+// 波长倒数增强声子产生的 log10：max(0, -0.05·logL10)
+function invLMultLog() { return auOwned("au14") ? Math.max(0, -0.05 * getLogL10()) : 0; }
 // AU41：声子湮灭——声子加成奇点获取
 function phononSpMult() {
   if (!auOwned("au41")) return 1;
@@ -1816,10 +2072,10 @@ function updateSpUI() {
   // 总奇点加成面板
   const panel = document.getElementById("sp-bonus-panel");
   const rows = [
-    ["总奇点 (Sp)", fmt(state.totalSp)],
-    ["波速获取倍率", "×" + fmt(hasDistortMilestone(1) ? Decimal.pow(1 + state.totalSp, 2 * daExpMult()).toNumber() : Math.pow(1 + state.totalSp, 2))], // 1DA 后指数 ×daExpMult()
-    ["普朗克常数倍率", "×" + fmt(planckMult())],
-    ["当前宇宙普朗克温度", fmt(temperatureCap()) + " K"],
+    ["总奇点 (Sp)", fmtNum(state.totalSp, getLogTotalSp())],
+    ["波速获取倍率", "×" + fmtNum(hasDistortMilestone(1) ? Decimal.pow(1 + state.totalSp, 2 * daExpMult()).toNumber() : Math.pow(1 + state.totalSp, 2), 2 * daExpMult() * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp)))],
+    ["普朗克常数倍率", "×" + fmtNum(planckMult(), planckMultLog())],
+    ["当前宇宙普朗克温度", fmtNum(temperatureCap(), temperatureCapLog()) + " K"],
   ];
   panel.innerHTML = "";
   for (const [label, value] of rows) {
@@ -1840,7 +2096,7 @@ function updateSpUI() {
       panel.appendChild(warn);
     }
   }
-  document.getElementById("sp-value").textContent = fmt(state.sp);
+  document.getElementById("sp-value").textContent = fmtNum(state.sp, getLogSp());
 }
 
 // ---------- 扭曲宇宙 UI（build-once, in-place update）----------
@@ -1878,8 +2134,10 @@ function updateDistortUI() {
     const active = state.distortActive === r.u.id;
     r.card.classList.toggle("done", done && !active);
     r.card.classList.toggle("active", active);
+    const tpLog = isFinite(r.u.tp) ? Math.log10(r.u.tp) : Infinity;
+    const tpStr = isFinite(r.u.tp) ? fmt(r.u.tp) : "∞";
     if (active) {
-      r.statusEl.textContent = `进行中 · 目标 ${fmt(r.u.tp)} K`;
+      r.statusEl.textContent = `进行中 · 目标 ${tpStr} K`;
       r.btn.textContent = "进行中";
       r.btn.disabled = true;
     } else if (done) {
@@ -1887,7 +2145,7 @@ function updateDistortUI() {
       r.btn.textContent = "进入";
       r.btn.disabled = false;
     } else {
-      r.statusEl.textContent = `目标 ${fmt(r.u.tp)} K`;
+      r.statusEl.textContent = `目标 ${tpStr} K`;
       r.btn.textContent = "进入";
       r.btn.disabled = false;
     }
@@ -2103,26 +2361,27 @@ function runAutomation() {
   if (inDistort("narrow")) return; // 狭窄宇宙：禁用所有自动化
   if (state.autoOn.wave && state.autoWaveUpg) {
     const n = autoBuyTimes("wave");
-    for (let i = 0; i < n; i++) { if (F() >= up1Cost()) buyUp1(); else break; }
-    for (let i = 0; i < n; i++) { if (F() >= up2Cost()) buyUp2(); else break; }
+    for (let i = 0; i < n; i++) { if (cmpGE(F(), up1Cost(), FLog(), up1CostLog())) buyUp1(); else break; }
+    for (let i = 0; i < n; i++) { if (cmpGE(F(), up2Cost(), FLog(), up2CostLog())) buyUp2(); else break; }
   }
   if (state.autoOn.phonon && state.autoPhononUpg && state.phUnlocked) {
     const n = autoBuyTimes("phonon");
-    for (let i = 0; i < n; i++) { if (F() >= pg1Cost()) buyPG1(); else break; }
-    for (let i = 0; i < n; i++) { if (state.phonons >= pg2Cost()) buyPG2(); else break; }
-    for (let i = 0; i < n; i++) { if (state.pg3 < pg3Cap() && state.phonons >= pg3Cost()) buyPG3(); else break; }
+    for (let i = 0; i < n; i++) { if (cmpGE(F(), pg1Cost(), FLog(), pg1CostLog())) buyPG1(); else break; }
+    for (let i = 0; i < n; i++) { if (cmpGE(state.phonons, pg2Cost(), getLogPhonons(), pg2CostLog())) buyPG2(); else break; }
+    for (let i = 0; i < n; i++) { if (state.pg3 < pg3Cap() && cmpGE(state.phonons, pg3Cost(), getLogPhonons(), pg3CostLog())) buyPG3(); else break; }
   }
   if (state.autoOn.up3 && state.autoUp3 && up3Card) {
     if (auOwned("au21") && state.autoUp3Mode === "time") {
-      // 时间模式：距上次自动升级3超过设定秒数即触发（仍需 F 超过峰值）
-      if (Date.now() - state.lastAutoUp3At >= state.autoUp3Interval * 1000 && FLog() > Math.log10(Math.max(state.up3LastF, 1e-300))) {
+      // 时间模式：距上次自动升级3超过设定秒数即触发（仍需 F 超过峰值，log 域比较）
+      if (Date.now() - state.lastAutoUp3At >= state.autoUp3Interval * 1000 && FLog() > getLogUp3LastF()) {
         if (buyUp3()) state.lastAutoUp3At = Date.now();
       }
     } else {
-      // 比例模式：在当前加成倍率达到设定值时购买升级3
-      const f = F();
-      const mult = state.L * up3Wavelength(f);
-      if (f > state.up3LastF && mult >= state.autoUp3Mult) buyUp3();
+      // 比例模式：在当前加成倍率达到设定值时购买升级3（log 域，防 mult 溢出）
+      const fLog = FLog();
+      const multLog = getLogL10() + up3WavelengthFromFLog(fLog);
+      const autoMultLog = state.autoUp3Mult > 0 ? Math.log10(state.autoUp3Mult) : NLOG;
+      if (fLog > getLogUp3LastF() && multLog >= autoMultLog) buyUp3();
     }
   }
   autoAnnTick();
@@ -2131,36 +2390,55 @@ function runAutomation() {
 // ---------- Rendering ----------
 // 快变显示：全局资源栏（频率/获取/冷却k/软上限提示）——由显示循环按高频率刷新
 // 显示插值：记录逻辑结算时刻的 U 与增速，显示层用真实时间外推，消除 100ms 阶跃感
-let dispUAt = 0, dispUBase = 0, dispGRate = 0;
+let dispUAt = 0, dispUBase = 0, dispGRate = 0, dispUBaseLog = NLOG;
 function updateDispAnchor() {
   dispUAt = Date.now();
   dispUBase = state.U;
+  dispUBaseLog = getLogU10();
   dispGRate = gainRate() * timeRate(); // 实际每真实秒的 U 增量
 }
+// 显示外推 U：double 在范围内走原路径；超范围（dispGRate 或 U 饱和）退 log 域外推
 function extrapolatedU() {
   const dt = (Date.now() - dispUAt) / 1000;
-  if (dt < 0 || dt > 1 || !isFinite(dispGRate)) return state.U;
-  return dispUBase + dispGRate * dt;
+  if (dt < 0 || dt > 1) return state.U;
+  if (isFinite(dispGRate) && isFinite(dispUBase) && Math.abs(dispUBase) < LOG_FALLBACK && Math.abs(dispGRate) < LOG_FALLBACK) {
+    return dispUBase + dispGRate * dt;
+  }
+  // log 域外推：U ≈ U + (g·timeRate)·dt。log10(|g·dt|) = gainRateLog + log10(timeRate) + log10(dt)
+  const gr = gainRateLog();
+  const gdLog = gr.log + Math.log10(Math.max(timeRate(), 1e-300)) + Math.log10(Math.max(dt, 1e-300));
+  return logAddLogs(dispUBaseLog, gdLog) <= NLOG + 1 ? state.U : Infinity;
+}
+// 外推 U 的 log10（显示用，保证 F/U 在 >1e308 时仍可得正确 log）
+function extrapolatedULog() {
+  const dt = (Date.now() - dispUAt) / 1000;
+  if (dt < 0 || dt > 1) return getLogU10();
+  if (isFinite(dispGRate) && isFinite(dispUBase) && Math.abs(dispUBase) < LOG_FALLBACK && Math.abs(dispGRate) < LOG_FALLBACK) {
+    const v = dispUBase + dispGRate * dt;
+    return v > 0 ? Math.log10(v) : NLOG;
+  }
+  const gr = gainRateLog();
+  const gdLog = gr.log + Math.log10(Math.max(timeRate(), 1e-300)) + Math.log10(Math.max(dt, 1e-300));
+  return logAddLogs(dispUBaseLog, gdLog);
 }
 function renderFast() {
   // 膨胀宇宙下 distortLMod 可能超 double：借用 F() 的 log 域逻辑（此处用外推 U）
-  let f;
+  let f, fLog;
   const ml3 = distortLModLog();
   if (ml3 > 0) {
-    const logF = Math.log10(Math.max(Math.abs(extrapolatedU()), 1e-300)) - getLogL10() - ml3;
-    f = logF > 308 ? Infinity : (logF < -308 ? 0 : Math.pow(10, logF));
+    fLog = extrapolatedULog() - getLogL10() - ml3;
+    f = fLog > 308 ? Infinity : (fLog < -308 ? 0 : Math.pow(10, fLog));
   } else {
-    f = extrapolatedU() / state.L;
+    fLog = extrapolatedULog() - getLogL10();
+    f = (isFinite(extrapolatedU()) && state.L > 0) ? extrapolatedU() / state.L : Math.pow(10, fLog);
   }
-  // F 超 double 时以 eN 格式显示（logF 直接可得）
-  document.getElementById("freq-value").textContent = (ml3 > 0 && f === Infinity)
-    ? "1e" + (Math.log10(Math.max(Math.abs(extrapolatedU()), 1e-300)) - getLogL10() - ml3).toFixed(0)
-    : fmt(Math.abs(f));
+  // F 显示：超 double 走 fmtLog（1eN），否则 fmt（现状）
+  document.getElementById("freq-value").textContent = fmtNum(f, fLog);
   // Hz/s 显示：膨胀宇宙需除以含倍率的有效波长（log 域防溢出）
   {
-    const gLog = Math.log10(Math.max(Math.abs(gainRate() * timeRate()), 1e-300)) - getLogL10() - distortLModLog();
+    const gLog = gainRateLog().log + Math.log10(Math.max(timeRate(), 1e-300)) - getLogL10() - distortLModLog();
     const gainHz = gLog > 308 ? Infinity : (gLog < -308 ? 0 : Math.pow(10, gLog));
-    document.getElementById("freq-gain").textContent = (gainRate() > 0 ? "+" : "") + fmt(gainHz) + " Hz/s";
+    document.getElementById("freq-gain").textContent = (gainRateLog().sign > 0 ? "+" : "") + fmtNum(gainHz, gLog) + " Hz/s";
   }
   // 冷却宇宙：实时显示当前指数 k
   const cdEl = document.getElementById("cooldown-display");
@@ -2195,7 +2473,8 @@ function renderFast() {
     scNote.classList.toggle("hidden", !softcapped());
     scNote.textContent = "当频率超过 e100 Hz 时，升级的价格和效果将被软上限";
   }
-  document.getElementById("u-value").textContent = fmt(Math.abs(extrapolatedU()));
+  // U 显示：超 double 走 fmtLog（外推 U 的 log 权威）
+  document.getElementById("u-value").textContent = fmtNum(Math.abs(extrapolatedU()), extrapolatedULog());
   // 波长显示：膨胀宇宙下用 log 域（倍率可能超 double）
   const ml2 = distortLModLog();
   document.getElementById("l-value").textContent = ml2 > 0
@@ -2210,10 +2489,10 @@ function renderWave() {
 function renderStats() {
   document.getElementById("stat-playtime").textContent = fmtTime(state.playTime);
   document.getElementById("stat-realtime").textContent = fmtTime(state.realTime);
-  document.getElementById("stat-total").textContent = fmt(state.totalFGained) + " Hz";
-  document.getElementById("stat-maxf").textContent = fmt(state.maxF) + " Hz";
-  document.getElementById("stat-maxu").textContent = fmt(state.maxU) + " m/s";
-  document.getElementById("stat-minl").textContent = fmt(state.minL) + " m";
+  document.getElementById("stat-total").textContent = fmtNum(state.totalFGained, getLogTotalF()) + " Hz";
+  document.getElementById("stat-maxf").textContent = fmtNum(state.maxF, getLogMaxF()) + " Hz";
+  document.getElementById("stat-maxu").textContent = fmtNum(state.maxU, getLogMaxU()) + " m/s";
+  document.getElementById("stat-minl").textContent = fmtNum(state.minL, getLogMinL()) + " m";
   document.getElementById("stat-ach-n").textContent = `${state.ach.normal.length} / ${NORMAL_ACH.length}`;
   document.getElementById("stat-ach-h").textContent = `${state.ach.hidden.length} / ${HIDDEN_ACH.length}`;
   document.getElementById("stat-timerate").textContent = "×" + fmt(timeRate());
@@ -2222,11 +2501,11 @@ function renderStats() {
   const annGame = state.annihilations >= 1 ? state.playTime - state.annStartGame : 0;
   document.getElementById("stat-ann-time").textContent =
     state.annihilations >= 1 ? `${fmtTime(annReal)} / ${fmtTime(annGame)}` : "— / —";
-  document.getElementById("stat-ann-total-sp").textContent = fmt(state.totalSp);
-  document.getElementById("stat-ann-best-sp").textContent = fmt(state.annBestSp);
-  document.getElementById("stat-ann-best-rate").textContent = fmt(state.annBestRate) + " Sp/min";
+  document.getElementById("stat-ann-total-sp").textContent = fmtNum(state.totalSp, getLogTotalSp());
+  document.getElementById("stat-ann-best-sp").textContent = fmtNum(state.annBestSp, state.annBestSp > 0 ? Math.log10(state.annBestSp) : NLOG);
+  document.getElementById("stat-ann-best-rate").textContent = fmtNum(state.annBestRate, state.annBestRate > 0 ? Math.log10(state.annBestRate) : NLOG) + " Sp/min";
   document.getElementById("stat-ann-fastest").textContent = state.annFastest > 0 ? fmtTime(state.annFastest) : "—";
-  document.getElementById("stat-ann-tp").textContent = fmt(temperatureCap()) + " K";
+  document.getElementById("stat-ann-tp").textContent = fmtNum(temperatureCap(), temperatureCapLog()) + " K";
   document.getElementById("stat-ann-distort").textContent = `${state.distortDone.length} / ${DISTORT_UNIVERSES.length}`;
   // 挑战选项卡：各扭曲宇宙最佳完成时间与总完成时间
   const chList = document.getElementById('challenge-list');
@@ -2541,20 +2820,68 @@ function tick() {
   state.playTime += dt;
   state.realTime += realDt;
 
-  // 波速生产
+  // 波速生产（double 链不溢出时走原路径，零回归；饱和时退 log 域累积）
   const g = gainRate();
+  const gFinite = isFinite(g) && Math.abs(g) < LOG_FALLBACK;
+  const uFinite = Math.abs(state.U) < LOG_FALLBACK;
   if (g !== 0) {
-    state.U += g * dt;
-    // 定向宇宙：波速硬下限 0（符号反转不允许把 U 推到负值）
-    if (inDistort("directed") && state.U < 0) state.U = 0;
-    state.totalFGained += (g / state.L) * dt;
+    const gd = g * dt;
+    if (gFinite && uFinite && isFinite(gd) && Math.abs(gd) < LOG_FALLBACK) {
+      // double 路径（现状）
+      setU(state.U + gd);
+    } else {
+      // log 域累积：U_new = U_old + g·dt（U≥0；定向 0 下限）
+      const { log: gLog, sign } = gainRateLog();
+      const gdLog = gLog + Math.log10(Math.max(dt, 1e-300)); // log10(|g·dt|)
+      let newLogU = logAddLogs(getLogU10(), gdLog);
+      if (inDistort("directed") && sign < 0) {
+        // 定向：U 可能被减到 0。log 域相减：max(0, U - |gd|)
+        const sub = logAddSigned(getLogU10(), 1, gdLog, -1);
+        newLogU = sub.sign > 0 ? sub.log : NLOG;
+      }
+      setULog(newLogU); // double 缓存自动处理超 1e308（存 Infinity，log 权威）
+    }
+    // 定向宇宙：波速硬下限 0
+    if (inDistort("directed") && state.U < 0) setU(0);
+
+    // 累计频率 F 增量 = (g/L)·dt；log 域：gLog + log10(dt) - log10(L)
+    const gOverLLog = (gFinite ? Math.log10(Math.max(Math.abs(g), 1e-300)) : gainRateLog().log) + Math.log10(Math.max(dt, 1e-300)) - getLogL10();
+    if (gFinite && uFinite && isFinite(state.totalFGained) && state.totalFGained < LOG_FALLBACK && Math.abs(state.totalFGained + gd / Math.max(state.L, 1e-300)) < LOG_FALLBACK) {
+      state.totalFGained += (g / state.L) * dt;
+      state.logTotalF = state.totalFGained > 0 ? Math.log10(state.totalFGained) : NLOG;
+    } else {
+      // log 域：logTotalF 与 gOverLLog·sign 累积（带符号）
+      const sgn = g < 0 ? -1 : 1;
+      const r = logAddSigned(getLogTotalF(), 1, gOverLLog, sgn);
+      if (r.sign < 0) {
+        // 累计频率为负（定向大幅取反）：存 0
+        setTotalFGainedLog(NLOG);
+      } else {
+        setTotalFGainedLog(r.log);
+      }
+    }
   }
 
-  // 声子生产（游戏时间；浮点累计，显示取整）
+  // 声子生产（游戏时间；浮点累计，显示取整）。phononRate 过大时走 log 域。
   if (inDistort("simple")) {
     setPhonons(1); // 简洁宇宙：声子数始终为 1
   } else if (state.phOn) {
-    setPhonons(state.phonons + phononRate() * dt);
+    const pr = phononRate();
+    const prFinite = isFinite(pr) && pr < LOG_FALLBACK;
+    if (prFinite && state.phonons < LOG_FALLBACK) {
+      setPhonons(state.phonons + pr * dt);
+    } else {
+      // log 域：logPhonons + log10(pr·dt)（pr·dt 可能为 0 当 pr=0）
+      const prLog = phononRateLog() + Math.log10(Math.max(dt, 1e-300));
+      if (prLog <= NLOG + 1) {
+        // pr·dt ≈ 0，保持原值（double 微调）
+        setPhonons(state.phonons + (prFinite ? pr * dt : 0));
+      } else {
+        const curLog = getLogPhonons() === -Infinity ? NLOG : getLogPhonons();
+        const newLog = logAddLogs(curLog, prLog);
+        setPhononsLog(newLog); // double 缓存自动处理超 1e308
+      }
+    }
   }
 
   // 自动化解锁门槛（首次湮灭后生效）
@@ -2566,11 +2893,12 @@ function tick() {
     if (!state.autoAnn && hasMilestone(10)) state.autoAnn = 1;
   }
 
-  // 更新统计极值
+  // 更新统计极值（log 域 max/min，防 maxU 恒 Infinity、minL 下溢 0 丢精度）
   const f = F();
-  if (f > state.maxF) state.maxF = f;
-  if (state.U > state.maxU) state.maxU = state.U;
-  if (state.L < state.minL) state.minL = state.L;
+  const fLog = FLog();
+  if (fLog > getLogMaxF()) { state.maxF = f; state.logMaxF = fLog; }
+  if (getLogU10() > getLogMaxU()) { state.maxU = state.U; state.logMaxU = getLogU10(); }
+  if (getLogL10() < getLogMinL()) { state.minL = state.L; state.logMinL = getLogL10(); }
 
   checkAchievements();
   // S4：在 00:00–00:59 打开游戏（每隔几秒检查一次即可，用 tick 节流）
@@ -2687,8 +3015,8 @@ function setupUI() {
       state.settings = Object.assign({ theme: "black", notation: "scientific", decimals: 3 }, obj.settings || {});
       state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
       migrateState();
-      if (obj.frequency !== undefined && obj.U === undefined) { state.U = obj.frequency; state.L = 1; state.logL10 = 0; }
-      if (obj.totalFrequency !== undefined && obj.totalFGained === undefined) state.totalFGained = obj.totalFrequency;
+      if (obj.frequency !== undefined && obj.U === undefined) { setU(obj.frequency); state.L = 1; state.logL10 = 0; }
+      if (obj.totalFrequency !== undefined && state.totalFGained === undefined) setTotalFGained(obj.totalFrequency);
       state.lastTick = Date.now();
       applyTheme(state.settings.theme);
       applyNotation(state.settings.notation);
@@ -2722,7 +3050,7 @@ function setupUI() {
   document.getElementById("test-reset-numbers").addEventListener("click", () => {
     setSp(1e5);
     setTotalSp(4e6);
-    state.U = 100; state.L = 1; state.logL10 = 0;
+    setU(100); state.L = 1; state.logL10 = 0;
     renderAll();
     saveGame();
     setAutosaveStatus("测试：数值已重置（Sp=1e5, 总Sp=4e6, F=100）");

@@ -1,8 +1,20 @@
 # Changelog
 
+## v0.4.2.5 补充：break_infinity 完整接入（log 域全量扩展）
+
+- 资源双表示扩展到 U / 累计频率 / 统计极值 / 升级3峰值：logU10、logTotalF、logMaxF、logMaxU、logMinL、logUp3LastF 全部成为权威 log10 表示，对应 double 字段为缓存。
+- log 域公式链补全：planckMultLog、temperatureCapLog、temperatureLog、thermalMultLog、fluctMultLog、couplingMultLog、invLMultLog、phononRateLog、gainRateLog、spGainLog。
+- 价格 log getter：up1CostLog/up2CostLog/pg1CostLog/pg2CostLog/pg3CostLog + costOfLog。
+- 比较 helper cmpGE/cmpLT：double 范围内逐位不变（零回归），仅在双方饱和（≥1e290 或非有限）时退化为 log 域比较——修复 Infinity vs Infinity 死锁（升级3峰值超 1e308 后永久不可购买 / 自动化失效）。
+- tick 累积（U / 累计频率 / 声子）在 double 饱和时自动切换 log 域累积（logAddLogs / logAddSigned），数值可越过 1e308 继续增长到 1e400、1e600…
+- 升级3 历史峰值改用 logUp3LastF 权威存储，取代旧版 Infinity 哨兵。
+- 显示层接入 fmtLog：U / F / 获取/Hz/s / 温度 / 累计频率 / 最高频率·波速 / 最低波长 / sp / 总sp / 普朗克倍率 / 温度上限 / 各价格 / 升级3峰值 / 扭曲宇宙目标温度 在超 1e308 时显示为 1eN（而非 ∞）；下溢侧波长不再丢精度。
+- 修复统计 maxU 恒为 Infinity、minL 下溢为 0 丢精度的问题（log 域 max/min）。
+- 旧存档 migrateState 自动回填全部新 log 字段。
+
 ## 已知限制（待下版本处理）
 
-- 频率/波速超过 1e308 时会出现 Infinity（完全 Decimal 化需要系统性重构，回滚了本次不完整的接入，保留 logL10/logDsp/logDtotal/logDph 双表示基础）。
+- 完整 Decimal 对象化重构仍为待办：当前 log 域表示在比较/累积/显示上覆盖了所有 >1e308 / <1e-308 场景，但若需直接对超 double 数值做减法/取模等非线性运算，仍需 Decimal。
 
 ## v0.4.2.4 补充：break_infinity 接入（3DA）
 
