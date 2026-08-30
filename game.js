@@ -3,7 +3,7 @@
 // ---------- Save schema ----------
 function defaultState() {
   return {
-    version: "0.4.2.5",
+    version: "0.4.3",
     // 物理资源
     U: 10,                 // 波速 m/s (默认国际单位制，double 缓存；极端值看 logU10)
     logU10: 1,             // log10(U) 权威表示（防溢出/下溢；U=0 时为 NLOG 哨兵）
@@ -58,6 +58,14 @@ function defaultState() {
     au: {},                                 // 奇点单次升级已购标记（id→1）
     testBreakRules: false, // 测试按钮：临时打破规则（不获 Sp，v0.4.3 移除）
 
+    // 黑洞系统（v0.4.3 实装，5DA 解锁）
+    bhMass: 1,             // 黑洞质量（太阳质量，double 缓存）
+    logBhMass: 0,          // log10(M) 权威
+    bhState: "accrete",    // 黑洞状态：accrete/distorl/pulse（吸积/扭曲/脉冲）
+    virtualParticles: 0,   // 虚粒子数（double 缓存）
+    logVP: NLOG,           // log10(虚粒子) 权威
+    sbu1: 0, sbu2: 0, sbu3: 0, // 黑洞升级：事件视界/引力潮汐/霍金辐射
+
     // 统计
     totalFGained: 10,      // 累计频率（生成总量，double 缓存；极端值看 logTotalF）
     logTotalF: 1,          // log10(totalFGained) 权威表示
@@ -104,8 +112,8 @@ const DISTORT_UNIVERSES = [
   },
   {
     id: "expand", name: "膨胀",
-    desc: "波长随时间指数增长",
-    tp: Infinity, // 测试值，待调整
+    desc: "波速获取指数随时间下降（每秒 -0.1，到 0 为止），波长每秒 ×1e20",
+    tp: 1e300,
   },
   {
     id: "directed", name: "定向",
@@ -183,15 +191,29 @@ function getLogU10() {
   if (state.logU10 !== undefined && isFinite(state.logU10)) return state.logU10;
   return state.U > 0 ? Math.log10(state.U) : NLOG;
 }
-// 由 double 设 U（double 路径，值在范围内）
+// 由 double 设 U（double 路径，值在范围内）。v 非有限正数时仅刷新 double 缓存，保留 logU10 权威（不压成 308）
 function setU(v) {
   state.U = v;
-  state.logU10 = (v > 0 && isFinite(v)) ? Math.log10(v) : (v > 0 ? 308 : NLOG); // v>0 但非有限（Infinity）→ log 308+
+  if (v > 0 && isFinite(v)) state.logU10 = Math.log10(v);
+  else if (v <= 0) state.logU10 = NLOG;
+  // v>0 但非有限（Infinity）：不改动 logU10，保留先前权威值，仅 double 缓存为 Infinity
 }
 // 由 log10(U) 直接设 U（log 域路径，U 超 double 时 double 缓存为 Infinity）
 function setULog(logU) {
   state.logU10 = isFinite(logU) ? logU : (logU === Infinity ? logU : NLOG);
   state.U = (logU <= NLOG + 1) ? 0 : (logU > 308 ? Infinity : Math.pow(10, logU));
+}
+// 购买扣款 U -= cost·L（costLog 为 log10(cost)）。U 在范围内走 double；否则 log 域减法
+function subULog(costLog) {
+  const uLog = getLogU10();
+  if (isFinite(state.U) && state.U < LOG_FALLBACK && uLog < LOG_FALLBACK) {
+    setU(state.U - Math.pow(10, costLog) * state.L);
+  } else {
+    // log 域：log10(cost·L) = costLog + logL10；U - cost·L（同号相减）
+    const subLog = costLog + getLogL10();
+    const r = logAddSigned(uLog, 1, subLog, -1);
+    if (r.sign < 0) setULog(NLOG); else setULog(r.log);
+  }
 }
 // 累计频率：权威 logTotalF
 function getLogTotalF() {
@@ -260,14 +282,21 @@ function distortLMod() {
   if (!inDistort("expand")) return 1;
   const t = (Date.now() - distortEnterAt) / 1000;
   if (t <= 1) return 1;
-  return Math.pow(1e15, t - 1); // 进入 1 秒后，每秒波长膨胀 1e15 倍
+  return Math.pow(1e20, t - 1); // 进入 1 秒后，每秒波长 ×1e20
 }
 // 波长倍率的 log10（代数式，避免 double 溢出）
 function distortLModLog() {
   if (!inDistort("expand")) return 0;
   const t = (Date.now() - distortEnterAt) / 1000;
   if (t <= 1) return 0;
-  return 15 * (t - 1);
+  return 20 * (t - 1);
+}
+// 膨胀宇宙：波速获取指数随时间下降，每秒 -0.1，到 0 为止（gain^exp → log *= exp）
+function distortGainExp() {
+  if (!inDistort("expand")) return 1;
+  const t = (Date.now() - distortEnterAt) / 1000;
+  if (t <= 1) return 1;
+  return Math.max(0, 1 - 0.1 * (t - 1));
 }
 function FLog() {
   // log 域：getLogU10 权威（U 超 1e308 时仍有限），永不返回 Infinity
@@ -462,6 +491,7 @@ const T_P0 = 1.4168e32; // 最初宇宙的普朗克温度
 // 普朗克常数受 (1+总Sp)^1.5 加成 → 等价于温度倍率（T = n·h·F/k_B 中 h 同倍放大）
 // log10 版本（权威，永不溢出）：log10((1+totalSp)^exp)
 function planckMultLog() {
+  if (inDistort("simple")) return 0; // 简洁宇宙：普朗克常数倍率始终为 1
   const exp = hasDistortMilestone(1) ? 1.5 * daExpMult() : 1.5;
   return exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp));
 }
@@ -540,13 +570,19 @@ function gainRate() {
     const base = Math.pow(state.up1, (state.ach.normal.includes("A21") ? 1.5 : 1) * up1Exp());
     g = base * Math.pow(up2Base(), state.up2);
   }
-  // 单次升级"频率加成波速获取"：拥有后 ×(1 + lg(F+1))
-  if (state.meta1 >= 1) g *= 1 + Math.log10(F() + 1);
+  // 单次升级"频率加成波速获取"：拥有后 ×(1 + lg(F+1))；F 超 double 时用 FLog（防 Infinity 污染）
+  if (state.meta1 >= 1) {
+    const lf = FLog(); // log10(F)，始终有限
+    const factor = lf > 0 ? (1 + lf) : (1 + Math.log10(Math.pow(10, lf) + 1));
+    g *= factor;
+  }
   // 热涨落：波速获取 ×= max(1, T)^0.2
   g *= thermalMult();
   // 奇点：波速获取 ×= (1+总Sp)^2；1DA 后指数 ×daExpMult()
+  // 简洁宇宙：第一个奇点效果平方根（指数 ÷2，即 ^2 → ^1）
   {
-    const exp = hasDistortMilestone(1) ? 2 * daExpMult() : 2;
+    let exp = hasDistortMilestone(1) ? 2 * daExpMult() : 2;
+    if (inDistort("simple")) exp /= 2;
     if (getLogTotalSp() > 250) {
       g *= Decimal.pow(10, getLogTotalSp() * exp).toNumber();
     } else {
@@ -557,8 +593,10 @@ function gainRate() {
   if (inDistort("directed") && Math.random() < 0.5) g = -g;
   // 冷却宇宙：波速获取量变为 A^k（k 随购买后时间线性 0→1）
   if (inDistort("cooldown")) g = Math.pow(Math.max(0, g), cooldownExp());
-  // 通胀宇宙：频率获取变为原来的平方根
-  if (inDistort("inflation")) g = Math.sqrt(Math.max(0, g));
+  // 通胀宇宙：频率获取变为原来的 0.75 次方（v0.4.3：由平方根削弱为 ^0.75）
+  if (inDistort("inflation")) g = Math.pow(Math.max(0, g), 0.75);
+  // 膨胀宇宙：波速获取指数随时间下降（每秒 -0.1，到 0 为止）
+  if (inDistort("expand")) g = Math.pow(Math.max(0, g), distortGainExp());
   return g;
 }
 // gainRate 的 log10 版本（完整乘法链在 log 域，永不溢出）。
@@ -574,17 +612,19 @@ function gainRateLog() {
     log = (state.up1 > 0 ? Math.log10(state.up1) : NLOG) * up1ExpTotal;
     log += state.up2 * Math.log10(Math.max(1e-300, up2Base()));
   }
-  // 单次升级"频率加成波速获取"：×(1 + lg(F+1))。该因子本身在 double 范围（lg(F+1) 是小数）。
+  // 单次升级"频率加成波速获取"：×(1 + lg(F+1))。因子 = 1 + lg(F+1)；lg(F+1)≈FLog（F 大时）
+  // 该因子是"小数"量级（lg(F+1)），其 log10 = log10(1 + lg(F+1))，恒在 double 范围。
   if (state.meta1 >= 1) {
-    const lf = FLog(); // log10(F)
-    const inner = lf > 0 ? lf : Math.log10(Math.pow(10, lf) + 1); // lg(F+1)
-    log += Math.log10(1 + Math.pow(10, inner)); // log10(1 + 10^inner)
+    const lf = FLog();
+    const lgF1 = lf > 15 ? lf : Math.log10(Math.pow(10, lf) + 1); // F 大时 lg(F+1)≈lf；否则精确
+    log += Math.log10(1 + lgF1);
   }
   // 热涨落（幂项 → 指数乘；热寂为负、简洁为 0）
   log += thermalMultLog();
-  // 奇点：×(1+总Sp)^exp；1DA 后指数 ×daExpMult()
+  // 奇点：×(1+总Sp)^exp；1DA 后指数 ×daExpMult()；简洁：指数 ÷2
   {
-    const exp = hasDistortMilestone(1) ? 2 * daExpMult() : 2;
+    let exp = hasDistortMilestone(1) ? 2 * daExpMult() : 2;
+    if (inDistort("simple")) exp /= 2;
     log += exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp));
   }
   // 定向：每刻 50% 概率取反
@@ -594,13 +634,19 @@ function gainRateLog() {
     if (log <= NLOG + 1) return { log: NLOG, sign: 1 }; // g=0
     log *= cooldownExp();
   }
-  // 通胀：平方根 → log ÷ 2
-  if (inDistort("inflation")) log /= 2;
+  // 通胀：^0.75 → log ×= 0.75（v0.4.3：由平方根削弱）
+  if (inDistort("inflation")) log *= 0.75;
+  // 膨胀：波速获取指数随时间下降 → log ×= distortGainExp（到 0 后 gain=0）
+  if (inDistort("expand")) {
+    const ge = distortGainExp();
+    if (ge <= 0) return { log: NLOG, sign: 1 };
+    log *= ge;
+  }
   return { log, sign };
 }
-// 时间速率：每个普通成就给予 ×1.1 的游戏时间速率加成
+// 时间速率：每个普通成就给予 ×1.1 的游戏时间速率加成；黑洞扭曲状态给予 ×(1+bhEffect)
 function timeRate() {
-  return Math.pow(achTimeBase(), state.ach.normal.length) * timeArrowMult() * absZeroMult();
+  return Math.pow(achTimeBase(), state.ach.normal.length) * timeArrowMult() * absZeroMult() * bhTimeMult();
 }
 // A25 奖励：每次重置后初始波速 100 m/s（否则 10）
 function resetU() { return state.ach.normal.includes("A25") ? 100 : 10; }
@@ -766,6 +812,15 @@ function migrateState() {
   // v0.4.2.x：批量升级改版（增速 ×20），一次性清除旧价格体系的等级（标记防重复）
   if (!state.batchResetDone && state.batchLvl > 0) { state.batchLvl = 0; state.batchMax = 2; state.batchResetDone = 1; }
   else if (!state.batchResetDone) state.batchResetDone = 1;
+  // v0.4.3 黑洞字段回填（旧档无 bhMass/bhState/sbu*）
+  if (state.bhMass === undefined || state.bhMass === null) { state.bhMass = 1; state.logBhMass = 0; }
+  if (state.logBhMass === undefined || !isFinite(state.logBhMass)) state.logBhMass = state.bhMass > 0 ? Math.log10(state.bhMass) : NLOG;
+  if (!state.bhState) state.bhState = "accrete";
+  if (state.virtualParticles === undefined || state.virtualParticles === null) { state.virtualParticles = 0; state.logVP = NLOG; }
+  if (state.logVP === undefined || !isFinite(state.logVP)) state.logVP = state.virtualParticles > 0 ? Math.log10(state.virtualParticles) : NLOG;
+  if (state.sbu1 === undefined) state.sbu1 = 0;
+  if (state.sbu2 === undefined) state.sbu2 = 0;
+  if (state.sbu3 === undefined) state.sbu3 = 0;
 }
 function loadGame() {
   try {
@@ -944,7 +999,7 @@ function switchTab(name) {
   if (DEFAULT_SUBTAB[name]) switchSubtab(DEFAULT_SUBTAB[name]);
   if (name === "settings") renderSlots();
   if (name === "achievements") updateAchievementsUI();
-  if (name === "annihilation") { updateSpUI(); updateDistortUI(); }
+  if (name === "annihilation") { updateSpUI(); updateDistortUI(); updateBlackholeUI(); }
   if (name === "automation") updateAutomationUI();
 }
 function switchSubtab(name) {
@@ -953,6 +1008,7 @@ function switchSubtab(name) {
   document.getElementById("sub-" + name).classList.remove("hidden");
   if (name === "ann-sp") updateSpUI();
   if (name === "ann-distort") updateDistortUI();
+  if (name === "ann-blackhole") updateBlackholeUI();
 }
 
 // ---------- Purchase ----------
@@ -962,7 +1018,7 @@ function buyUp1() {
   const c = up1Cost();
   // 资源必须达标（spu1 只免扣款，不免门槛）；F/c 均 < LOG_FALLBACK 时走 double（零回归），饱和时退 log 域
   if (cmpLT(F(), c, FLog(), up1CostLog())) return;
-  if (!upgradesFree()) setU(state.U - c * state.L);
+  if (!upgradesFree()) subULog(up1CostLog());
   markPurchase();
   state.up1++;
   checkAchievements();
@@ -973,7 +1029,7 @@ function buyUp2() {
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
   const c = up2Cost();
   if (cmpLT(F(), c, FLog(), up2CostLog())) return; // 资源必须达标（spu1 只免扣款，不免门槛）
-  if (!upgradesFree()) setU(state.U - c * state.L);
+  if (!upgradesFree()) subULog(up2CostLog());
   markPurchase();
   state.up2++;
   checkAchievements();
@@ -1070,7 +1126,7 @@ function buildMetaOnce() {
     const f = F();
     if (cmpGE(f, costOf(META_COST), FLog(), costOfLog(LOG_META_COST))) {
       // 价格充足（或奇点升级免费）：消耗并拥有
-      if (!upgradesFree()) setU(state.U - costOf(META_COST) * state.L);
+      if (!upgradesFree()) subULog(costOfLog(LOG_META_COST));
       markPurchase();
       state.meta1 = 1;
       checkAchievements(); // 触发 A12 协同
@@ -1175,7 +1231,7 @@ function buyPhUnlock() {
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
   if (state.phUnlocked) return;
   if (cmpLT(F(), costOf(PH_UNLOCK_COST), FLog(), costOfLog(LOG_PH_UNLOCK_COST))) return;
-  if (!upgradesFree()) setU(state.U - costOf(PH_UNLOCK_COST) * state.L);
+  if (!upgradesFree()) subULog(costOfLog(LOG_PH_UNLOCK_COST));
   markPurchase();
       state.phUnlocked = 1;
   applyPhononVisibility();
@@ -1213,7 +1269,7 @@ function buyPG1() {
   if (inDistort("adiabatic")) return; // 绝热宇宙：无法购买声子发生器效率
   const c = pg1Cost();
   if (cmpLT(F(), c, FLog(), pg1CostLog())) return; // 资源必须达标（spu1 只免扣款，不免门槛）
-  if (!upgradesFree()) setU(state.U - c * state.L);
+  if (!upgradesFree()) subULog(pg1CostLog());
   markPurchase();
       state.pg1++;
   renderWave(); updatePhononUI();
@@ -1352,7 +1408,7 @@ function hasMilestone(n) { return state.annihilations >= n; }
 const DISTORT_MILESTONES = [
   { n: 1, desc: "" }, // 动态填充：基于扭曲宇宙湮灭数，将奇点效果变为 X 倍
   { n: 3, desc: "解锁更多的奇点升级" },
-  { n: 5, desc: "解锁黑洞（WIP）" },
+  { n: 5, desc: "解锁黑洞：质量、虚粒子、三个状态与黑洞升级", black: true },
   { n: 8, desc: "打破宇宙的规则：取消温度上限（WIP）" },
 ];
 function distortDA() { return state.distortDone.length; }
@@ -1668,6 +1724,7 @@ function applyAnnihilationVisibility() {
   document.getElementById("tab-annihilation").classList.toggle("hidden", !done);
   document.getElementById("tab-automation").classList.toggle("hidden", !done);
   document.getElementById("subtab-distort").classList.toggle("hidden", state.annihilations < 20);
+  document.getElementById("subtab-blackhole").classList.toggle("hidden", !bhUnlocked());
   const ready = annihilationReady();
   if (!done) {
     // 首次湮灭：全屏遮罩接管（类似第一次大塌缩）；序列进行中不重复拉起
@@ -1725,7 +1782,7 @@ const SAU_DEFS = [
     cost: (n) => Math.pow(10, 2 + 2 * n) }, // 第n次（1起）10^(2+2n)
   { id: "sau2", key: "sau2", name: "奇点凝聚", desc: "第 n 级使奇点效果指数额外乘以 (1+n/10)", max: Infinity,
     cost: (n) => Math.pow(10, 5 * n) },
-  { id: "sau3", key: "sau3", name: "霍金辐射", desc: "热涨落效果指数 +0.015/级", max: 10,
+  { id: "sau3", key: "sau3", name: "紫外灾难", desc: "热涨落效果指数 +0.015/级", max: 10,
     cost: (n) => Math.pow(10, 3 + 2 * n) },
 ];
 // 真空衰变（独立行，位于 spu1 下方、SAU 行上方）：每级奇点获取 ×2，价 10^(3+n)
@@ -1817,6 +1874,274 @@ function absZeroMult() {
   return Math.max(1, Math.min(100, 30 / T));
 }
 
+// ---------- 黑洞系统（v0.4.3 实装，5DA 解锁）----------
+// 黑洞：黑洞质量 M（太阳质量）、虚粒子 VP；基础效果 M^0.2 给予时间倍率加成（扭曲状态）
+// 三个状态：吸积（获取质量，无加成，虚粒子衰减）/ 扭曲（给时间倍率加成）/ 脉冲（失质量，获虚粒子）
+// 三个 SBU 升级：事件视界（吸积效率 ×2/级）/ 引力潮汐（效果 ×2/级）/ 霍金辐射（虚粒子获取 ×2/级）
+function bhUnlocked() { return hasDistortMilestone(5); }
+function getLogBhMass() {
+  if (state.logBhMass !== undefined && isFinite(state.logBhMass)) return state.logBhMass;
+  return state.bhMass > 0 ? Math.log10(state.bhMass) : NLOG;
+}
+function setBhMass(v) {
+  state.bhMass = v;
+  if (v > 0 && isFinite(v)) state.logBhMass = Math.log10(v);
+  else if (v <= 0) state.logBhMass = NLOG;
+}
+function setBhMassLog(logM) {
+  state.logBhMass = isFinite(logM) ? logM : (logM === Infinity ? logM : NLOG);
+  state.bhMass = (logM <= NLOG + 1) ? 0 : (logM > 308 ? Infinity : Math.pow(10, logM));
+}
+function getLogVP() {
+  if (state.logVP !== undefined && isFinite(state.logVP)) return state.logVP;
+  return state.virtualParticles > 0 ? Math.log10(state.virtualParticles) : NLOG;
+}
+function setVP(v) {
+  state.virtualParticles = v;
+  if (v > 0 && isFinite(v)) state.logVP = Math.log10(v);
+  else if (v <= 0) state.logVP = NLOG;
+}
+function setVPLog(logV) {
+  state.logVP = isFinite(logV) ? logV : (logV === Infinity ? logV : NLOG);
+  state.virtualParticles = (logV <= NLOG + 1) ? 0 : (logV > 308 ? Infinity : Math.pow(10, logV));
+}
+// 黑洞基础效果：M^0.2（引力潮汐 ×2^sbu2）；返回 double（扭曲状态给时间倍率）
+function bhEffect() {
+  const mLog = getLogBhMass();
+  if (mLog <= 0) return 1;
+  const effLog = 0.2 * mLog + state.sbu2 * Math.log10(2);
+  return effLog > 308 ? Infinity : Math.pow(10, effLog);
+}
+// 黑洞效果 log10（log 域，防溢出）
+function bhEffectLog() {
+  const mLog = getLogBhMass();
+  if (mLog <= 0) return 0;
+  return 0.2 * mLog + state.sbu2 * Math.log10(2);
+}
+// 黑洞对时间速率的加成（仅扭曲状态）：×(1 + bhEffect)
+function bhTimeMult() {
+  if (!bhUnlocked() || state.bhState !== "distorl") return 1;
+  const el = bhEffectLog();
+  return el > 0 ? (1 + (el > 308 ? Infinity : Math.pow(10, el))) : 1;
+}
+// 吸积效率倍率（SBU1 事件视界 ×2/级）
+function bhAccretionMult() { return Math.pow(2, state.sbu1); }
+// 虚粒子获取倍率（SBU3 霍金辐射 ×2/级）
+function bhVPMult() { return Math.pow(2, state.sbu3); }
+// 吸积状态：质量获取速率 log10(dM/dt)。M^0.75 × (F/1e200)^0.01 × accretionMult
+// → log = 0.75*logM + 0.01*(FLog-200) + log2(sbu1)
+function bhAccretionRateLog() {
+  const mLog = getLogBhMass();
+  const fLog = FLog();
+  return 0.75 * mLog + 0.01 * (fLog - 200) + state.sbu1 * Math.log10(2);
+}
+// 脉冲状态：虚粒子获取速率（每秒）= floor(M^0.1 × vpMult)；返回 log10
+function bhVPGainLog() {
+  const mLog = getLogBhMass();
+  if (mLog <= 0) return NLOG; // M=1 停止获取
+  return 0.1 * mLog + state.sbu3 * Math.log10(2);
+}
+// 黑洞升级定义
+const SBU_DEFS = [
+  { id: "sbu1", key: "sbu1", name: "事件视界", desc: "每级使黑洞吸积效率 ×2", max: Infinity, cost: (n) => Math.pow(1e9, 1) * Math.pow(100, n - 1) },
+  { id: "sbu2", key: "sbu2", name: "引力潮汐", desc: "每级使黑洞效果 ×2", max: Infinity, cost: (n) => Math.pow(1e10, 1) * Math.pow(1000, n - 1) },
+  { id: "sbu3", key: "sbu3", name: "霍金辐射", desc: "每级使虚粒子获取 ×2", max: Infinity, cost: (n) => Math.pow(1e11, 1) * Math.pow(100, n - 1) },
+];
+function sbuCostLog(u, n) {
+  if (u.id === "sbu1") return 9 + (n - 1) * 2;       // 1e9 × 100^(n-1)
+  if (u.id === "sbu2") return 10 + (n - 1) * 3;      // 1e10 × 1000^(n-1)
+  if (u.id === "sbu3") return 11 + (n - 1) * 2;      // 1e11 × 100^(n-1)
+  return 0;
+}
+function buySBU(id) {
+  if (!bhUnlocked()) return;
+  const u = SBU_DEFS.find(x => x.id === id);
+  if (!u) return;
+  const n = state[u.key] + 1;
+  const c = u.cost(n);
+  if (state.sp < c) return;
+  setSp(state.sp - c);
+  state[u.key]++;
+  updateBlackholeUI();
+  setAutosaveStatus("已购买黑洞升级：" + u.name);
+}
+function setBhState(s) {
+  if (!bhUnlocked()) return;
+  state.bhState = s;
+  updateBlackholeUI();
+}
+// 黑洞 tick（游戏时间）：处理质量/虚粒子/时间倍率由 timeRate() 调用，此处仅处理质量与虚粒子
+function tickBlackhole(dt) {
+  if (!bhUnlocked()) return;
+  const mLog = getLogBhMass();
+  if (state.bhState === "accrete") {
+    // 质量获取：dM/dt = M^0.75 × (F/1e200)^0.01 × accretionMult（log 域累积）
+    const rateLog = bhAccretionRateLog() + Math.log10(Math.max(dt, 1e-300));
+    if (rateLog > NLOG + 1) {
+      setBhMassLog(logAddLogs(mLog, rateLog));
+    }
+    // 虚粒子衰减：每秒 ×(9/10) → logVP += log10(0.9)·dt（负数，故衰减）
+    const vpLog = getLogVP();
+    if (vpLog > NLOG + 1) {
+      setVPLog(vpLog + Math.log10(0.9) * dt);
+      if (getLogVP() <= NLOG + 1) setVPLog(NLOG); // 衰减到 0 停止
+    }
+  } else if (state.bhState === "distorl") {
+    // 扭曲：无质量变化，无虚粒子（时间倍率由 bhTimeMult 给予）
+  } else if (state.bhState === "pulse") {
+    // 脉冲：每秒质量 ×0.5（损失一半，到 1 停）
+    if (mLog > 0) {
+      const halfLife = Math.log10(0.5) * dt; // 每秒 -log10(2)
+      let newLog = mLog + halfLife;
+      if (newLog < 0) newLog = 0; // 到 1（log 0）为止
+      setBhMassLog(newLog);
+    }
+    // 虚粒子获取：floor(M^0.1 × vpMult)/秒（乘数乘在 floor 内部 → log 域先算再 floor）
+    const vpGainLog = bhVPGainLog() + Math.log10(Math.max(dt, 1e-300));
+    if (vpGainLog > NLOG + 1) {
+      // floor：取整数部分。log 域累积后，显示时 floor。
+      const gain = Math.pow(10, vpGainLog - Math.floor(vpGainLog)); // 尾数
+      const totalGain = Math.floor(gain) * Math.pow(10, Math.floor(vpGainLog));
+      if (totalGain > 0) setVPLog(logAddLogs(getLogVP(), Math.log10(totalGain)));
+    }
+  }
+}
+
+// ---------- 黑洞 UI（build-once, in-place update）+ 旋转动画 ----------
+let bhBuilt = false, bhRefs = {}, bhStateBtns = [], bhAnimRAF = 0, bhAngle = 0, bhParticles = [];
+
+function buildBlackholeOnce() {
+  if (bhBuilt) return;
+  const list = document.getElementById("bh-upg-list");
+  list.innerHTML = "";
+  bhRefs = {};
+  for (const u of SBU_DEFS) {
+    const btn = document.createElement("button");
+    btn.className = "sau-btn bh-upg-btn";
+    const nm = document.createElement("div"); nm.className = "sau-name"; nm.textContent = u.name;
+    const ds = document.createElement("div"); ds.className = "sau-desc";
+    const ct = document.createElement("div"); ct.className = "sau-cost";
+    btn.append(nm, ds, ct);
+    btn.addEventListener("click", () => buySBU(u.id));
+    list.appendChild(btn);
+    bhRefs[u.id] = { u, btn, descEl: ds, costEl: ct };
+  }
+  bhStateBtns = [];
+  document.querySelectorAll(".bh-state-btn").forEach(b => {
+    b.addEventListener("click", () => setBhState(b.dataset.bhState));
+    bhStateBtns.push(b);
+  });
+  // 动画初始化：粒子池
+  bhParticles = [];
+  for (let i = 0; i < 60; i++) bhParticles.push({ a: Math.random() * Math.PI * 2, r: 0.3 + Math.random() * 0.6, s: 0.5 + Math.random(), life: Math.random() });
+  bhBuilt = true;
+}
+
+function bhRadius() {
+  // 半径：基础宽度 0.1 倍，随 1+lg(M) 增大，上限 0.6 倍页面宽度
+  const mLog = Math.max(0, getLogBhMass());
+  const scale = Math.min(0.6, 0.1 * (1 + mLog));
+  const pageW = document.getElementById("app").offsetWidth || 760;
+  return { r: pageW * scale, pageW };
+}
+
+function drawBlackhole(state2) {
+  const canvas = document.getElementById("bh-canvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  const { r } = bhRadius();
+  const cx = w / 2, cy = h / 2;
+  const R = Math.min(r, w * 0.3);
+  bhAngle += state2 === "distorl" ? 0.04 : (state2 === "pulse" ? 0.02 : 0.012);
+  // 吸积盘环（多层）
+  for (let ring = 0; ring < 4; ring++) {
+    const rr = R * (1.2 + ring * 0.25);
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(bhAngle * (1 - ring * 0.15));
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rr, rr * 0.32, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(255, ${120 - ring * 20}, 40, ${0.5 - ring * 0.1})`;
+    ctx.lineWidth = 2 + ring;
+    ctx.stroke();
+    ctx.restore();
+  }
+  // 黑洞本体（径向渐变）
+  const grad = ctx.createRadialGradient(cx, cy, R * 0.2, cx, cy, R);
+  if (state2 === "pulse") {
+    grad.addColorStop(0, "#7a0a0a");
+    grad.addColorStop(0.5, "#3a0000");
+    grad.addColorStop(1, "#000");
+  } else {
+    grad.addColorStop(0, "#000");
+    grad.addColorStop(0.7, "#0a0a0a");
+    grad.addColorStop(1, "#1a1a2a");
+  }
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+  // 事件视界光环
+  ctx.beginPath();
+  ctx.arc(cx, cy, R * 1.05, 0, Math.PI * 2);
+  ctx.strokeStyle = state2 === "pulse" ? "rgba(255,60,60,0.6)" : "rgba(120,80,200,0.4)";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  // 粒子
+  for (const p of bhParticles) {
+    p.a += (state2 === "distorl" ? 0.06 : 0.03) * p.s;
+    p.life += 0.01;
+    if (p.life > 1) { p.life = 0; p.r = 0.3 + Math.random() * 0.6; }
+    const dist = state2 === "accrete" ? (1 - p.life) : p.life; // 吸积向内、脉冲向外
+    const pr = R * (1.1 + dist * 1.5);
+    const px = cx + Math.cos(p.a) * pr;
+    const py = cy + Math.sin(p.a) * pr * 0.32;
+    ctx.beginPath();
+    ctx.arc(px, py, 1.5, 0, Math.PI * 2);
+    ctx.fillStyle = state2 === "pulse" ? `rgba(255,80,80,${1 - p.life})` : `rgba(180,150,255,${0.3 + (1 - p.life) * 0.5})`;
+    ctx.fill();
+  }
+}
+
+function bhAnimLoop() {
+  if (!bhBuilt) { bhAnimRAF = requestAnimationFrame(bhAnimLoop); return; }
+  drawBlackhole(state.bhState);
+  // 快变数字刷新（黑洞状态行）
+  const stats = document.getElementById("bh-stats");
+  if (stats) {
+    const stNames = { accrete: "吸积", distorl: "扭曲", pulse: "脉冲" };
+    stats.innerHTML =
+      `<div class="bh-stat-row"><span>黑洞质量</span><span>${fmtNum(state.bhMass, getLogBhMass())} M☉</span></div>` +
+      `<div class="bh-stat-row"><span>虚粒子</span><span>${fmtNum(state.virtualParticles, getLogVP())}</span></div>` +
+      `<div class="bh-stat-row"><span>当前状态</span><span>${stNames[state.bhState] || "—"}</span></div>` +
+      `<div class="bh-stat-row"><span>基础效果</span><span>×${fmtNum(bhEffect(), bhEffectLog())}</span></div>`;
+  }
+  bhAnimRAF = requestAnimationFrame(bhAnimLoop);
+}
+
+function updateBlackholeUI() {
+  if (!bhUnlocked()) return;
+  buildBlackholeOnce();
+  document.getElementById("subtab-blackhole").classList.toggle("hidden", !bhUnlocked());
+  // 状态按钮高亮
+  for (const b of bhStateBtns) {
+    b.classList.toggle("active", b.dataset.bhState === state.bhState);
+  }
+  // SBU 升级
+  for (const id in bhRefs) {
+    const r = bhRefs[id];
+    const n = state[r.u.key] + 1;
+    const cLog = sbuCostLog(r.u, n);
+    const c = r.u.cost(n);
+    r.descEl.textContent = r.u.desc + "（等级 " + state[r.u.key] + "）";
+    r.costEl.textContent = fmtNum(c, cLog) + " Sp";
+    r.btn.disabled = state.sp < c;
+    r.btn.classList.toggle("affordable", state.sp >= c);
+  }
+}
+
 // 批量购买上限升级（A34 解锁，位于自动化页）
 const BATCH_UPG = { id: "batch", name: "批量购买上限翻倍", desc: "批量购买的每次上限翻倍（初始 2）；打破规则且上限超过 128 后变为「最大购买」", key: "batchLvl", repeat: true, cost: () => Math.pow(20, state.batchLvl) };
 function buyBatchUpgrade() {
@@ -1885,7 +2210,7 @@ function buildAnnihilationOnce() {
   mSection.appendChild(dtTitle);
   for (const m of DISTORT_MILESTONES) {
     const row = document.createElement("div");
-    row.className = "milestone distort hidden distort-ms";
+    row.className = "milestone distort hidden distort-ms" + (m.black ? " black" : "");
     const d = document.createElement("div"); d.className = "ms-desc";
     d.textContent = m.n + " DA：" + m.desc; // 1DA 描述在 updateSpUI 动态刷新
     const c = document.createElement("div"); c.className = "ms-count";
@@ -2559,7 +2884,7 @@ function renderStats() {
   }
 }
 
-function renderAll() { applyPhononVisibility(); renderWave(); updatePhononUI(); renderStats(); renderSlots(); updateAchievementsUI(); updateDistortUI(); }
+function renderAll() { applyPhononVisibility(); renderWave(); updatePhononUI(); renderStats(); renderSlots(); updateAchievementsUI(); updateDistortUI(); updateBlackholeUI(); }
 function setAutosaveStatus(msg) { document.getElementById("autosave-status").textContent = msg; }
 
 // ---------- Achievements ----------
@@ -2884,6 +3209,9 @@ function tick() {
     }
   }
 
+  // 黑洞 tick（游戏时间）
+  tickBlackhole(dt);
+
   // 自动化解锁门槛（首次湮灭后生效）
   if (state.annihilations >= 1) {
     if (!state.autoWaveUpg && F() >= 1e10) { state.autoWaveUpg = 1; setAutosaveStatus("自动化解锁：主要页升级"); }
@@ -2947,6 +3275,7 @@ function tick() {
     updateSpUI();
     updateAutomationUI();
     if (state.annihilations >= 20) updateDistortUI();
+    if (bhUnlocked()) updateBlackholeUI();
   }
   if (!document.getElementById("page-stats").classList.contains("hidden")) renderStats();
   if (!document.getElementById("page-achievements").classList.contains("hidden")) updateAchievementsUI();
@@ -3131,6 +3460,8 @@ function init() {
     requestAnimationFrame(uiLoop);
   };
   requestAnimationFrame(uiLoop);
+  // 黑洞旋转动画循环（仅解锁后绘制，未解锁时低频空转）
+  requestAnimationFrame(bhAnimLoop);
   setInterval(() => { if (dirty) { saveGame(); dirty = false; } }, AUTOSAVE_INTERVAL);
   window.addEventListener("beforeunload", () => saveGame());
 

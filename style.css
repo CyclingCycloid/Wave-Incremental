@@ -452,3 +452,31 @@ textarea:focus { outline: none; border-color: var(--accent); }
   .upgrade-card { flex-direction: column; align-items: stretch; }
   .up-card-right { text-align: left; }
 }
+
+/* ===== 黑洞（v0.4.3）===== */
+#subtab-blackhole { color: #e8e8e8; }
+#subtab-blackhole.active { color: #000; background: #444; border-color: #000; }
+.subpage#sub-ann-blackhole { color: var(--text); }
+
+.bh-canvas-wrap { display: flex; justify-content: center; margin: 8px 0 4px; }
+#bh-canvas { background: #050505; border: 1px solid #222; border-radius: 6px; max-width: 100%; }
+
+.bh-stats { margin: 6px 0; }
+.bh-stat-row { display: flex; justify-content: space-between; padding: 3px 8px; border-bottom: 1px solid var(--border); font-size: 14px; }
+.bh-stat-row span:last-child { font-family: var(--font-num); }
+
+.bh-state-row { display: flex; gap: 6px; justify-content: center; margin: 8px 0; }
+.bh-state-btn { padding: 6px 18px; background: #1a1a1a; color: #ccc; border: 1px solid #333; border-radius: 4px; cursor: pointer; }
+.bh-state-btn:hover { background: #2a2a2a; }
+.bh-state-btn.active { background: #000; color: #fff; border-color: #555; box-shadow: 0 0 8px rgba(120,80,200,0.4); }
+
+.bh-upg-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.bh-upg-btn { background: #0a0a0a !important; border: 1px solid #333 !important; color: #ddd !important; }
+.bh-upg-btn:hover { background: #1a1a1a !important; }
+.bh-upg-btn.affordable { border-color: #8b5cf6 !important; }
+
+/* 5DA 黑色里程碑 */
+.milestone.black { border-left: 3px solid #000; background: linear-gradient(90deg, rgba(0,0,0,0.15), transparent); }
+.milestone.black.done .ms-count { color: #000; font-weight: bold; }
+body[data-theme="black"] .milestone.black { border-left-color: #555; }
+body[data-theme="black"] .milestone.black.done .ms-count { color: #aaa; }

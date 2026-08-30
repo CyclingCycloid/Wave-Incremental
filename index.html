@@ -10,7 +10,7 @@
   <div id="app">
     <header id="topbar">
       <div class="title">Wave Incremental</div>
-      <div class="version">v0.4.2.5</div>
+      <div class="version">v0.4.3</div>
       <button id="annihilate-btn" class="annihilate-btn hidden">湮灭</button>
     </header>
 
@@ -293,6 +293,7 @@
           <button class="subtab active" data-subtab="ann-milestones">里程碑</button>
           <button class="subtab" data-subtab="ann-sp">奇点</button>
           <button class="subtab hidden distort-subtab" data-subtab="ann-distort" id="subtab-distort">扭曲</button>
+          <button class="subtab hidden blackhole-subtab" data-subtab="ann-blackhole" id="subtab-blackhole">黑洞</button>
         </nav>
 
         <!-- 里程碑 -->
@@ -315,6 +316,20 @@
             <button id="distort-exit-btn">退出</button>
           </div>
           <div id="distort-list" class="distort-grid"></div>
+        </div>
+
+        <!-- 黑洞 -->
+        <div class="subpage hidden" id="sub-ann-blackhole">
+          <div class="bh-canvas-wrap">
+            <canvas id="bh-canvas" width="600" height="360"></canvas>
+          </div>
+          <div class="bh-stats" id="bh-stats"></div>
+          <div class="bh-state-row" id="bh-state-row">
+            <button class="bh-state-btn" data-bh-state="accrete">吸积</button>
+            <button class="bh-state-btn" data-bh-state="distorl">扭曲</button>
+            <button class="bh-state-btn" data-bh-state="pulse">脉冲</button>
+          </div>
+          <div class="bh-upg-list" id="bh-upg-list"></div>
         </div>
       </section>
 
