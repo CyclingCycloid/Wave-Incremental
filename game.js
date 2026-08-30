@@ -3197,7 +3197,8 @@ function buildAchievementsOnce() {
 
 function updateAchievementsUI() {
   buildAchievementsOnce();
-  document.getElementById("ach-time-rate").textContent = `你的成就将时间速率变为原来的${fmt(timeRate())}倍`;
+  // 成就页只显示成就本身的乘数（1.1 或 1.2/个），不含时间之矢/成就刻印以外的升级、黑洞与 A41 加成
+  document.getElementById("ach-time-rate").textContent = `你的成就将时间速率变为原来的${fmt(Math.pow(achTimeBase(), state.ach.normal.length))}倍`;
   // 普通成就
   for (const ref of normalCellRefs) {
     const { a, row, root, idEl, nameEl, descEl, checkEl, lockEl, starEl } = ref;
