@@ -96,6 +96,11 @@ const NLOG = -1e9;
 // double 饱和阈值：仅当数值非有限或超过此量级时才退化为 log 域比较/累积，
 // 保证 double 范围内的边界判定（如首个升级 F=10 vs cost=10）逐位不变。
 const LOG_FALLBACK = 1e290;
+// log 域上界哨兵：log 值永远不允许为 +Infinity（会污染所有 log 域算术）。
+// 用一个远超任何可达量级的有限数钳制；任何超此的值都视为「无限大」但有限可算。
+const LOG_CAP = 1e15;
+// 钳制 log 值到 [NLOG, LOG_CAP]，防 +Infinity 污染 log 域算术
+function clampLog(v) { return (!isFinite(v) || v > LOG_CAP) ? LOG_CAP : (v < NLOG ? NLOG : v); }
 
 let state = defaultState();
 let currentSlot = 0;
@@ -154,53 +159,53 @@ function inDistort(id) { return state.distortActive === id; }
 // ---------- 资源 Decimal 双表示（3DA 起）----------
 // 权威 log10 表示，永不溢出；state.X 为 double 缓存（超 ±1.8e308 时失真但不崩）
 function getLogSp() {
-  if (state.logDsp !== undefined && isFinite(state.logDsp)) return state.logDsp;
-  return state.sp > 0 ? Math.log10(state.sp) : 0;
+  if (state.logDsp !== undefined && isFinite(state.logDsp)) return clampLog(state.logDsp);
+  return state.sp > 0 ? clampLog(Math.log10(state.sp)) : 0;
 }
 function setSp(v) {
   state.sp = v;
-  state.logDsp = v > 0 ? Math.log10(v) : 0;
+  state.logDsp = v > 0 ? clampLog(Math.log10(v)) : 0;
 }
 function getLogTotalSp() {
-  if (state.logDtotal !== undefined && isFinite(state.logDtotal)) return state.logDtotal;
-  return state.totalSp > 0 ? Math.log10(state.totalSp) : 0;
+  if (state.logDtotal !== undefined && isFinite(state.logDtotal)) return clampLog(state.logDtotal);
+  return state.totalSp > 0 ? clampLog(Math.log10(state.totalSp)) : 0;
 }
 function setTotalSp(v) {
   state.totalSp = v;
-  state.logDtotal = v > 0 ? Math.log10(v) : 0;
+  state.logDtotal = v > 0 ? clampLog(Math.log10(v)) : 0;
 }
 function getLogPhonons() {
   // 声子为 0 时返回 -Infinity（乘积为 0），而非 0（会被当作 1）
   if (state.logDph !== undefined && isFinite(state.logDph)) {
-    return state.phonons > 0 ? state.logDph : -Infinity;
+    return state.phonons > 0 ? clampLog(state.logDph) : -Infinity;
   }
-  return state.phonons > 0 ? Math.log10(state.phonons) : -Infinity;
+  return state.phonons > 0 ? clampLog(Math.log10(state.phonons)) : -Infinity;
 }
 function setPhonons(v) {
   state.phonons = v;
-  state.logDph = (v > 0 && isFinite(v)) ? Math.log10(v) : (v > 0 ? 308 : 0); // v>0 非有限（Infinity）→ log 308
+  state.logDph = (v > 0 && isFinite(v)) ? clampLog(Math.log10(v)) : (v > 0 ? LOG_CAP : 0);
 }
 // 由 log10(phonons) 直接设（log 域路径）
 function setPhononsLog(logP) {
-  state.logDph = isFinite(logP) ? logP : (logP === Infinity ? logP : 0);
+  state.logDph = clampLog(logP);
   state.phonons = (logP <= NLOG + 1) ? 0 : (logP > 308 ? Infinity : Math.pow(10, logP));
 }
 // ---------- U / 累计频率 / 极值 的双表示（v0.4.2.5 完整接入）----------
 // U：权威 logU10（U=0 时存 NLOG 哨兵）；double 缓存 U 在极端大时为 Infinity、极端小时为 0，读取走 log
 function getLogU10() {
-  if (state.logU10 !== undefined && isFinite(state.logU10)) return state.logU10;
-  return state.U > 0 ? Math.log10(state.U) : NLOG;
+  if (state.logU10 !== undefined && isFinite(state.logU10)) return clampLog(state.logU10);
+  return state.U > 0 ? clampLog(Math.log10(state.U)) : NLOG;
 }
 // 由 double 设 U（double 路径，值在范围内）。v 非有限正数时仅刷新 double 缓存，保留 logU10 权威（不压成 308）
 function setU(v) {
   state.U = v;
-  if (v > 0 && isFinite(v)) state.logU10 = Math.log10(v);
+  if (v > 0 && isFinite(v)) state.logU10 = clampLog(Math.log10(v));
   else if (v <= 0) state.logU10 = NLOG;
   // v>0 但非有限（Infinity）：不改动 logU10，保留先前权威值，仅 double 缓存为 Infinity
 }
 // 由 log10(U) 直接设 U（log 域路径，U 超 double 时 double 缓存为 Infinity）
 function setULog(logU) {
-  state.logU10 = isFinite(logU) ? logU : (logU === Infinity ? logU : NLOG);
+  state.logU10 = clampLog(logU);
   state.U = (logU <= NLOG + 1) ? 0 : (logU > 308 ? Infinity : Math.pow(10, logU));
 }
 // 购买扣款 U -= cost·L（costLog 为 log10(cost)）。U 在范围内走 double；否则 log 域减法
@@ -217,15 +222,15 @@ function subULog(costLog) {
 }
 // 累计频率：权威 logTotalF
 function getLogTotalF() {
-  if (state.logTotalF !== undefined && isFinite(state.logTotalF)) return state.logTotalF;
-  return state.totalFGained > 0 ? Math.log10(state.totalFGained) : NLOG;
+  if (state.logTotalF !== undefined && isFinite(state.logTotalF)) return clampLog(state.logTotalF);
+  return state.totalFGained > 0 ? clampLog(Math.log10(state.totalFGained)) : NLOG;
 }
 function setTotalFGained(v) {
   state.totalFGained = v;
-  state.logTotalF = (v > 0 && isFinite(v)) ? Math.log10(v) : (v > 0 ? 308 : NLOG);
+  state.logTotalF = (v > 0 && isFinite(v)) ? clampLog(Math.log10(v)) : (v > 0 ? LOG_CAP : NLOG);
 }
 function setTotalFGainedLog(logF) {
-  state.logTotalF = isFinite(logF) ? logF : (logF === Infinity ? logF : NLOG);
+  state.logTotalF = clampLog(logF);
   state.totalFGained = (logF <= NLOG + 1) ? 0 : (logF > 308 ? Infinity : Math.pow(10, logF));
 }
 // 统计极值：log 权威（maxU 恒 Infinity / minL 下溢 0 的丢精度在此修复）
@@ -245,21 +250,22 @@ function setUp3LastF(fLog) {
 // ---------- log 域算术助手 ----------
 // log10(a+b)，已知 la=log10(a)、lb=log10(b)（均含符号无关的量级）
 function logAddLogs(la, lb) {
+  la = clampLog(la); lb = clampLog(lb);
   if (la === -Infinity) return lb;
   if (lb === -Infinity) return la;
-  if (!isFinite(la) && !isFinite(lb)) return Math.max(la, lb);
   const mx = Math.max(la, lb), mn = Math.min(la, lb);
   if (mn <= NLOG + 1) return mx; // 较小项可忽略
-  return mx + Math.log10(1 + Math.pow(10, mn - mx));
+  return clampLog(mx + Math.log10(1 + Math.pow(10, mn - mx)));
 }
 // 带符号的 log 加法：sa/sb 为 ±1，返回 {log, sign} 表示 log10(|a+b|) 与符号
 function logAddSigned(la, sa, lb, sb) {
+  la = clampLog(la); lb = clampLog(lb);
   if (la <= NLOG + 1) return { log: lb, sign: sb };
   if (lb <= NLOG + 1) return { log: la, sign: sa };
   if (sa === sb) return { log: logAddLogs(la, lb), sign: sa };
   // 异号相减
-  if (la >= lb) return { log: la + Math.log10(1 - Math.pow(10, lb - la)), sign: sa };
-  return { log: lb + Math.log10(1 - Math.pow(10, la - lb)), sign: sb };
+  if (la >= lb) return { log: clampLog(la + Math.log10(1 - Math.pow(10, lb - la))), sign: sa };
+  return { log: clampLog(lb + Math.log10(1 - Math.pow(10, la - lb))), sign: sb };
 }
 // 比较 helper：a、b 均有限且 < LOG_FALLBACK 时走原 double 比较（零回归），
 // 任一非有限或 ≥ LOG_FALLBACK 时退化为 log 域比较（aLog >= bLog）
@@ -300,7 +306,7 @@ function distortGainExp() {
 }
 function FLog() {
   // log 域：getLogU10 权威（U 超 1e308 时仍有限），永不返回 Infinity
-  return getLogU10() - getLogL10() - distortLModLog();
+  return clampLog(getLogU10() - getLogL10() - distortLModLog());
 }
 function F() {
   const logF = FLog();
@@ -314,7 +320,7 @@ const H_OVER_KB = 6.62607015e-34 / 1.380649e-23; // ≈ 4.799e-11 K·s
 const LOG_H_OVER_KB = Math.log10(H_OVER_KB);
 // 温度的 log10（未裁剪，权威）：log10(n) + log10(h/k_B) + log10(F) + log10(planckMult)
 function temperatureLog() {
-  return getLogPhonons() + LOG_H_OVER_KB + FLog() + planckMultLog();
+  return clampLog(getLogPhonons() + LOG_H_OVER_KB + FLog() + planckMultLog());
 }
 function temperature() {
   const rawLog = temperatureLog();
@@ -342,9 +348,9 @@ function thermalMult() {
 // 热涨落的 log10（幂项 → 指数乘；热寂为负、简洁为 0）。raw 未经上限裁剪的温度 log。
 function thermalMultLog() {
   const tLog = Math.max(0, temperatureLog()); // max(1,T) 的 log
-  if (inDistort("adiabatic")) return -0.3 * tLog;
+  if (inDistort("adiabatic")) return clampLog(-0.3 * tLog);
   if (inDistort("simple")) return 0;
-  return thermalExp() * tLog;
+  return clampLog(thermalExp() * tLog);
 }
 // 声子涨落（单次）：声子获取 ×= ceil(lg(max(1,T))^1.5)
 function fluctMult() {
@@ -356,9 +362,9 @@ function fluctMult() {
 // 声子涨落的 log10：ceil(lg(max(1,T))^1.5) 本身在 double 范围（log 的幂），直接取 log10
 function fluctMultLog() {
   if (!state.phFluct || inDistort("adiabatic")) return 0;
-  const inner = Math.log10(Math.max(1, temperature())); // lg(max(1,T))，非有限时取 0
-  const v = Math.max(1, Math.ceil(Math.pow(Math.max(0, inner), 1.5)));
-  return Math.log10(v);
+  const inner = isFinite(temperatureLog()) ? Math.max(0, temperatureLog()) : 0; // lg(max(1,T))，防 Infinity
+  const v = Math.max(1, Math.ceil(Math.pow(inner, 1.5)));
+  return clampLog(Math.log10(v));
 }
 // 声波耦合（单次）：声子获取 ×= ceil(U^0.05)（定向宇宙中失效）
 function couplingMult() {
@@ -385,7 +391,7 @@ function phononRateLog() {
   log += fluctMultLog();
   log += couplingMultLog();
   log += invLMultLog();
-  return log;
+  return clampLog(log);
 }
 // 升级3波长指数：0.25 基础 + pg3 每级 0.01（上限 20 级 → 0.45）
 // 扭曲：刚性 → 指数 ÷4；简洁 → 指数 ×1.5；冷却 → 指数受削弱倍率影响
@@ -493,7 +499,7 @@ const T_P0 = 1.4168e32; // 最初宇宙的普朗克温度
 function planckMultLog() {
   if (inDistort("simple")) return 0; // 简洁宇宙：普朗克常数倍率始终为 1
   const exp = hasDistortMilestone(1) ? 1.5 * daExpMult() : 1.5;
-  return exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp));
+  return clampLog(exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp)));
 }
 function planckMult() {
   const l = planckMultLog();
@@ -505,7 +511,7 @@ function temperatureCapLog() {
   const exp = hasDistortMilestone(1) ? 10 * daExpMult() : 10;
   let logCap = Math.log10(T_P0) + exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp));
   if (logCap > 250) logCap = 225 + 0.1 * logCap; // 软上限：超 1e250 部分开十次方根
-  return logCap;
+  return clampLog(logCap);
 }
 function temperatureCap() {
   const logCap = temperatureCapLog();
@@ -557,7 +563,7 @@ function spGainLog() {
     baseLog = Math.log10(2) + 0.01 * tLog; // 2·T^0.01 的 log
   }
   const mLog = Math.log10(state.distortMult) + state.sau4 * Math.log10(2) + Math.log10(Math.max(1, phononSpMult()));
-  return baseLog + mLog;
+  return clampLog(baseLog + mLog);
 }
 // gainRate 的 log10 版本（完整乘法链在 log 域，永不溢出）
 function gainRate() {
@@ -642,7 +648,7 @@ function gainRateLog() {
     if (ge <= 0) return { log: NLOG, sign: 1 };
     log *= ge;
   }
-  return { log, sign };
+  return { log: clampLog(log), sign };
 }
 // 时间速率：每个普通成就给予 ×1.1 的游戏时间速率加成；黑洞扭曲状态给予 ×(1+bhEffect)
 function timeRate() {
@@ -664,20 +670,19 @@ const LOG_PH_UNLOCK_COST = Math.log10(PH_UNLOCK_COST);
 // 价格的 log10 getter（与 double 版 up*Cost() 并存，仅 cmp 在饱和时使用）
 function up1CostLog() {
   const n = state.up1 + 1;
-  if (inDistort("inflation")) return costOfLog(n * Math.log10(100));
+  if (inDistort("inflation")) return clampLog(costOfLog(n * Math.log10(100)));
   let logP2 = Math.log10(5) + n * Math.log10(2) + (softcapped() ? Math.max(0, n - 332) * Math.log10(5) : 0);
-  return costOfLog(logP2);
+  return clampLog(costOfLog(logP2));
 }
 function up2CostLog() {
   const n = state.up2 + 1;
   if (inDistort("inflation")) {
-    // 初始价 1e6，每级乘 max(k²,100)；log = 6 + Σ log10(max(k²,100))
     let lp = 6;
     for (let k = 1; k <= state.up2; k++) lp += Math.log10(Math.max(k * k, 100));
-    return costOfLog(lp);
+    return clampLog(costOfLog(lp));
   }
   const k = state.up2;
-  if (k <= 98) return costOfLog(n + 1); // 10^(n+1)
+  if (k <= 98) return clampLog(costOfLog(n + 1));
   let logP;
   if (k <= 300) {
     logP = 100;
@@ -685,11 +690,11 @@ function up2CostLog() {
   } else {
     logP = 100 + lgamma10(k) - lgamma10(99);
   }
-  return costOfLog(logP);
+  return clampLog(costOfLog(logP));
 }
-function pg1CostLog() { return costOfLog(Math.log10(1e10) + state.pg1 * Math.log10(100)); }
-function pg2CostLog() { return costOfLog(Math.log10(100) + state.pg2 * Math.log10(2)); }
-function pg3CostLog() { return costOfLog(4 + state.pg3); } // 1e4 × 10^pg3
+function pg1CostLog() { return clampLog(costOfLog(Math.log10(1e10) + state.pg1 * Math.log10(100))); }
+function pg2CostLog() { return clampLog(costOfLog(Math.log10(100) + state.pg2 * Math.log10(2))); }
+function pg3CostLog() { return clampLog(costOfLog(4 + state.pg3)); }
 
 // ---------- Number / time formatting ----------
 function fmt(num) {
@@ -721,7 +726,7 @@ function fmt(num) {
 
 function fmtLog(logV) {
   // 以 log10 显示：e999999 以下用 double 指数，之上直接 eN 格式
-  if (!isFinite(logV)) return "∞";
+  if (!isFinite(logV) || logV >= LOG_CAP) return "∞"; // LOG_CAP 钳制值视为无穷
   if (logV <= NLOG + 1) return "0";
   if (logV < 308) return Math.pow(10, logV).toExponential(3).replace("e+", "e");
   return "1e" + logV.toFixed(0);
@@ -1192,6 +1197,7 @@ function updateUpgradesUI() {
     up3Card = null;
   }
   const f = F();
+  const fLog = FLog();
   up1Card.update({
     level: `等级 ${state.up1}`,
     effect: `当前获取速率: ${fmtNum(gainRate() * timeRate(), gainRateLog().log + Math.log10(timeRate()))} m/s²`,
@@ -1219,7 +1225,7 @@ function updateUpgradesUI() {
     });
   }
   buildMetaOnce();
-  const eff = 1 + Math.log10(f + 1);
+  const eff = 1 + (fLog > 0 ? fLog : Math.log10(Math.pow(10, fLog) + 1)); // meta1 效果因子，防 F=Infinity 污染
   const owned = state.meta1 >= 1;
   const affordable = owned || cmpGE(f, META_COST, FLog(), LOG_META_COST);
   metaRefs.root.className = "upgrade-card" + (affordable ? " affordable" : " locked");
@@ -1892,29 +1898,29 @@ function absZeroMult() {
 // 三个 SBU 升级：事件视界（吸积效率 ×2/级）/ 引力潮汐（效果指数 +0.01/级）/ 霍金辐射（虚粒子获取 ×2/级）
 function bhUnlocked() { return hasDistortMilestone(5); }
 function getLogBhMass() {
-  if (state.logBhMass !== undefined && isFinite(state.logBhMass)) return state.logBhMass;
-  return state.bhMass > 0 ? Math.log10(state.bhMass) : NLOG;
+  if (state.logBhMass !== undefined && isFinite(state.logBhMass)) return clampLog(state.logBhMass);
+  return state.bhMass > 0 ? clampLog(Math.log10(state.bhMass)) : NLOG;
 }
 function setBhMass(v) {
   state.bhMass = v;
-  if (v > 0 && isFinite(v)) state.logBhMass = Math.log10(v);
+  if (v > 0 && isFinite(v)) state.logBhMass = clampLog(Math.log10(v));
   else if (v <= 0) state.logBhMass = NLOG;
 }
 function setBhMassLog(logM) {
-  state.logBhMass = isFinite(logM) ? logM : (logM === Infinity ? logM : NLOG);
+  state.logBhMass = clampLog(logM);
   state.bhMass = (logM <= NLOG + 1) ? 0 : (logM > 308 ? Infinity : Math.pow(10, logM));
 }
 function getLogVP() {
-  if (state.logVP !== undefined && isFinite(state.logVP)) return state.logVP;
-  return state.virtualParticles > 0 ? Math.log10(state.virtualParticles) : NLOG;
+  if (state.logVP !== undefined && isFinite(state.logVP)) return clampLog(state.logVP);
+  return state.virtualParticles > 0 ? clampLog(Math.log10(state.virtualParticles)) : NLOG;
 }
 function setVP(v) {
   state.virtualParticles = v;
-  if (v > 0 && isFinite(v)) state.logVP = Math.log10(v);
+  if (v > 0 && isFinite(v)) state.logVP = clampLog(Math.log10(v));
   else if (v <= 0) state.logVP = NLOG;
 }
 function setVPLog(logV) {
-  state.logVP = isFinite(logV) ? logV : (logV === Infinity ? logV : NLOG);
+  state.logVP = clampLog(logV);
   state.virtualParticles = (logV <= NLOG + 1) ? 0 : (logV > 308 ? Infinity : Math.pow(10, logV));
 }
 // 黑洞基础效果：M^（0.2 + sbu2·0.01）（引力潮汐：效果指数 +0.01/级）；返回 double（扭曲状态给时间倍率）
@@ -1930,7 +1936,7 @@ function bhEffectLog() {
   const mLog = getLogBhMass();
   if (mLog <= 0) return 0;
   const exp = 0.2 + state.sbu2 * 0.01;
-  return exp * mLog;
+  return clampLog(exp * mLog);
 }
 // 黑洞对时间速率的加成（仅扭曲状态）：×(1 + bhEffect)
 function bhTimeMult() {
@@ -1947,13 +1953,13 @@ function bhVPMult() { return Math.pow(2, state.sbu3); }
 function bhAccretionRateLog() {
   const mLog = getLogBhMass();
   const fLog = FLog();
-  return 0.75 * mLog + 0.01 * (fLog - 200) + state.sbu1 * Math.log10(2);
+  return clampLog(0.75 * mLog + 0.01 * (fLog - 200) + state.sbu1 * Math.log10(2));
 }
 // 脉冲状态：虚粒子获取速率（每秒）= floor(M^0.1 × vpMult)；返回 log10
 function bhVPGainLog() {
   const mLog = getLogBhMass();
   if (mLog <= 0) return NLOG; // M=1 停止获取
-  return 0.1 * mLog + state.sbu3 * Math.log10(2);
+  return clampLog(0.1 * mLog + state.sbu3 * Math.log10(2));
 }
 // 黑洞升级定义
 const SBU_DEFS = [
@@ -2754,7 +2760,7 @@ function extrapolatedULog() {
   if (dt < 0 || dt > 1) return getLogU10();
   if (isFinite(dispGRate) && isFinite(dispUBase) && Math.abs(dispUBase) < LOG_FALLBACK && Math.abs(dispGRate) < LOG_FALLBACK) {
     const v = dispUBase + dispGRate * dt;
-    return v > 0 ? Math.log10(v) : NLOG;
+    return v > 0 ? clampLog(Math.log10(v)) : NLOG;
   }
   const gr = gainRateLog();
   const gdLog = gr.log + Math.log10(Math.max(timeRate(), 1e-300)) + Math.log10(Math.max(dt, 1e-300));
@@ -2765,17 +2771,17 @@ function renderFast() {
   let f, fLog;
   const ml3 = distortLModLog();
   if (ml3 > 0) {
-    fLog = extrapolatedULog() - getLogL10() - ml3;
+    fLog = clampLog(extrapolatedULog() - getLogL10() - ml3);
     f = fLog > 308 ? Infinity : (fLog < -308 ? 0 : Math.pow(10, fLog));
   } else {
-    fLog = extrapolatedULog() - getLogL10();
+    fLog = clampLog(extrapolatedULog() - getLogL10());
     f = (isFinite(extrapolatedU()) && state.L > 0) ? extrapolatedU() / state.L : Math.pow(10, fLog);
   }
   // F 显示：超 double 走 fmtLog（1eN），否则 fmt（现状）
   document.getElementById("freq-value").textContent = fmtNum(f, fLog);
   // Hz/s 显示：膨胀宇宙需除以含倍率的有效波长（log 域防溢出）
   {
-    const gLog = gainRateLog().log + Math.log10(Math.max(timeRate(), 1e-300)) - getLogL10() - distortLModLog();
+    const gLog = clampLog(gainRateLog().log + Math.log10(Math.max(timeRate(), 1e-300)) - getLogL10() - distortLModLog());
     const gainHz = gLog > 308 ? Infinity : (gLog < -308 ? 0 : Math.pow(10, gLog));
     document.getElementById("freq-gain").textContent = (gainRateLog().sign > 0 ? "+" : "") + fmtNum(gainHz, gLog) + " Hz/s";
   }
