@@ -138,7 +138,7 @@ const DISTORT_UNIVERSES = [
   },
   {
     id: "adiabatic", name: "热寂",
-    desc: "热涨落与声子涨落无效，声波耦合无效，无法购买声子发生器效率，温度以 ^0.3 的倍率除波速获取",
+    desc: "热涨落与声子涨落无效，声波耦合无效，无法购买声子发生器效率，温度以 ^-0.5 的倍率除波速获取",
     tp: Infinity, // 测试值，待调整
   },
   {
@@ -345,7 +345,7 @@ function temperature() {
 }
 // 热涨落：波速获取 ×= max(1, T)^0.2
 function thermalMult() {
-  if (inDistort("adiabatic")) return 1 / Math.pow(Math.max(1, temperature()), 0.3); // 热寂：温度反而削弱波速获取
+  if (inDistort("adiabatic")) return 1 / Math.pow(Math.max(1, temperature()), 0.5); // 热寂：温度反而削弱波速获取
   if (inDistort("simple")) return 1; // 简洁：热涨落无效
   return Math.pow(Math.max(1, temperature()), thermalExp());
 }
@@ -353,7 +353,7 @@ function thermalMult() {
 // 否则 log 域会绕过温度上限，令「声子↔温度↔热涨落」正反馈失控（通胀/滞涨爆炸的根因）。
 function thermalMultLog() {
   const tLog = Math.max(0, temperatureCappedLog()); // max(1,T) 的 log（已裁剪）
-  if (inDistort("adiabatic")) return clampLog(-0.3 * tLog);
+  if (inDistort("adiabatic")) return clampLog(-0.5 * tLog);
   if (inDistort("simple")) return 0;
   return clampLog(thermalExp() * tLog);
 }
@@ -2086,6 +2086,22 @@ function buildBlackholeOnce() {
   const list = document.getElementById("bh-upg-list");
   list.innerHTML = "";
   bhRefs = {};
+  // 两组升级：各自三个一排，标题居中
+  const mkTitle = (text) => {
+    const t = document.createElement("div");
+    t.className = "bh-row-title";
+    t.textContent = text;
+    return t;
+  };
+  const mkRow = () => {
+    const row = document.createElement("div");
+    row.className = "bh-upg-row";
+    return row;
+  };
+  // 奇点升级（花 Sp）
+  list.appendChild(mkTitle("奇点升级"));
+  const sbuRow = mkRow();
+  list.appendChild(sbuRow);
   for (const u of SBU_DEFS) {
     const btn = document.createElement("button");
     btn.className = "sau-btn bh-upg-btn";
@@ -2094,14 +2110,13 @@ function buildBlackholeOnce() {
     const ct = document.createElement("div"); ct.className = "sau-cost";
     btn.append(nm, ds, ct);
     btn.addEventListener("click", () => buySBU(u.id));
-    list.appendChild(btn);
+    sbuRow.appendChild(btn);
     bhRefs[u.id] = { u, btn, descEl: ds, costEl: ct };
   }
-  // SVPU 虚粒子升级（花 VP）
-  const svpuTitle = document.createElement("div");
-  svpuTitle.className = "bh-vp-title";
-  svpuTitle.textContent = "虚粒子升级";
-  list.appendChild(svpuTitle);
+  // 虚粒子升级（花 VP）
+  list.appendChild(mkTitle("虚粒子升级"));
+  const svpuRow = mkRow();
+  list.appendChild(svpuRow);
   for (const u of SVPU_DEFS) {
     const btn = document.createElement("button");
     btn.className = "sau-btn bh-upg-btn svpu-btn";
@@ -2110,7 +2125,7 @@ function buildBlackholeOnce() {
     const ct = document.createElement("div"); ct.className = "sau-cost";
     btn.append(nm, ds, ct);
     btn.addEventListener("click", () => buySVPU(u.id));
-    list.appendChild(btn);
+    svpuRow.appendChild(btn);
     bhRefs[u.id] = { u, btn, descEl: ds, costEl: ct, vp: true };
   }
   bhStateBtns = [];

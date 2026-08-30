@@ -474,9 +474,12 @@ body[data-theme="white"] #bh-canvas { box-shadow: 0 0 0 2px #888, 0 2px 8px rgba
 .bh-state-btn:hover { background: var(--btn-bg-hover); }
 .bh-state-btn.active { background: var(--black); color: #fff; border-color: var(--black); box-shadow: 0 0 8px rgba(60,60,60,0.6); }
 
-.bh-upg-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
-/* 黑洞升级按钮：使用 --black 代表色（黑主题深灰、白主题近黑） */
-.bh-upg-btn { background: var(--black) !important; border: 1px solid var(--black) !important; color: #fff !important; }
+/* 两组升级：标题居中加大，各自三个一排 */
+.bh-upg-list { margin-top: 10px; }
+.bh-row-title { text-align: center; font-size: 17px; font-weight: 700; color: var(--text); margin: 14px 0 8px; }
+.bh-upg-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+/* 黑洞升级按钮：黑色边框 + --black 代表色底（黑主题深灰、白主题近黑） */
+.bh-upg-btn { background: var(--black) !important; border: 2px solid #000 !important; color: #fff !important; }
 .bh-upg-btn:hover { filter: brightness(1.2); }
 .bh-upg-btn.affordable { border-color: #8b5cf6 !important; }
 
