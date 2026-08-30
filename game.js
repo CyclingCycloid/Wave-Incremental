@@ -65,6 +65,7 @@ function defaultState() {
     virtualParticles: 0,   // 虚粒子数（double 缓存）
     logVP: NLOG,           // log10(虚粒子) 权威
     sbu1: 0, sbu2: 0, sbu3: 0, // 黑洞升级：事件视界/引力潮汐/霍金辐射
+    svpu1: 0, svpu2: 0, svpu3: 0, // 黑洞虚粒子升级：全息原理/虚幻湮灭/非欧几何
 
     // 统计
     totalFGained: 10,      // 累计频率（生成总量，double 缓存；极端值看 logTotalF）
@@ -445,12 +446,12 @@ function up2Cost() {
   if (logP > 300) return costOf(Decimal.pow(10, logP).toNumber()); // 超 double 返回 Infinity
   return costOf(Math.pow(10, logP));
 }
-// 升级3实际波长缩减（软上限）：e100 以下 1/F^e；超出部分指数 × 5/√(log10 F)
+// 升级3实际波长缩减（软上限）：e100 以下 1/F^e；超出部分指数 × scale，scale 受 SVPU3 非欧几何削弱
 function up3Wavelength(f) {
   const e = up3Exp();
   if (f <= SOFTCAP_F || !isFinite(f)) return Math.pow(f, e);
   const excess = f / SOFTCAP_F;
-  const scale = 5 / Math.sqrt(Math.log10(f));
+  const scale = up3SoftcapScale(Math.log10(f));
   return Math.pow(SOFTCAP_F, e) * Math.pow(excess, e * scale);
 }
 // 由 log10(F) 计算波长缩减量 F^e 的 log10（含软上限缩放，代数式永不溢出）
@@ -458,13 +459,13 @@ function up3WavelengthFromFLog(lf) {
   const e = up3Exp();
   if (!isFinite(lf)) return Infinity;
   if (lf <= 100) return e * lf;
-  const scale = 5 / Math.sqrt(lf);
+  const scale = up3SoftcapScale(lf);
   return e * 100 + e * scale * (lf - 100);
 }
 // e100 软上限：超出部分（log10 F > 100）的指数缩放增量
 function softcapExtraLog(lf) {
   if (lf <= 100) return 0;
-  const scale = 5 / Math.sqrt(lf);
+  const scale = up3SoftcapScale(lf);
   return up3Exp() * (scale - 1) * (lf - 100);
 }
 // 上者的 log10（代数式，永不溢出）
@@ -474,7 +475,7 @@ function up3WavelengthLog(f) {
   if (!isFinite(f) || f <= 0) return f === Infinity ? e * FLog() : -Infinity;
   const lf = Math.log10(f);
   if (f <= SOFTCAP_F) return e * lf;
-  const scale = 5 / Math.sqrt(lf);
+  const scale = up3SoftcapScale(lf);
   return e * 100 + e * scale * (lf - 100);
 }
 // 冷却宇宙：购买任何升级 → 波速获取量变为 A^k，k 在 15 秒内从 0 线性变到 1；
@@ -1418,7 +1419,9 @@ const MILESTONES = [
   { n: 10, desc: "解锁自动湮灭（可设置在多少奇点时重置）" },
   { n: 20, desc: "解锁「扭曲」选项卡" },
 ];
-function hasMilestone(n) { return state.annihilations >= n; }
+// 有效湮灭次数：受 SVPU2 虚幻湮灭加成 ×2^svpu2（用于里程碑解锁判定与显示）
+function effAnnihilations() { return Math.floor(state.annihilations * annCountMult()); }
+function hasMilestone(n) { return effAnnihilations() >= n; }
 
 // ---------- 扭曲里程碑（按已湮灭的扭曲宇宙数量 DA）----------
 const DISTORT_MILESTONES = [
@@ -1895,7 +1898,7 @@ function absZeroMult() {
 // ---------- 黑洞系统（v0.4.3 实装，5DA 解锁）----------
 // 黑洞：黑洞质量 M（太阳质量）、虚粒子 VP；基础效果 M^0.2 给予时间倍率加成（扭曲状态）
 // 三个状态：吸积（获取质量，无加成，虚粒子衰减）/ 扭曲（给时间倍率加成）/ 脉冲（失质量，获虚粒子）
-// 三个 SBU 升级：事件视界（吸积效率 ×2/级）/ 引力潮汐（效果指数 +0.01/级）/ 霍金辐射（虚粒子获取 ×2/级）
+// 三个 SBU 升级：事件视界（吸积效率 ×2/级）/ 引力潮汐（效果指数 +0.05/级）/ 霍金辐射（虚粒子获取 ×2/级）
 function bhUnlocked() { return hasDistortMilestone(5); }
 function getLogBhMass() {
   if (state.logBhMass !== undefined && isFinite(state.logBhMass)) return clampLog(state.logBhMass);
@@ -1923,11 +1926,11 @@ function setVPLog(logV) {
   state.logVP = clampLog(logV);
   state.virtualParticles = (logV <= NLOG + 1) ? 0 : (logV > 308 ? Infinity : Math.pow(10, logV));
 }
-// 黑洞基础效果：M^（0.2 + sbu2·0.01）（引力潮汐：效果指数 +0.01/级）；返回 double（扭曲状态给时间倍率）
+// 黑洞基础效果：M^（0.2 + sbu2·0.05）（引力潮汐：效果指数 +0.05/级）；返回 double（扭曲状态给时间倍率）
 function bhEffect() {
   const mLog = getLogBhMass();
   if (mLog <= 0) return 1;
-  const exp = 0.2 + state.sbu2 * 0.01;
+  const exp = 0.2 + state.sbu2 * 0.05;
   const effLog = exp * mLog;
   return effLog > 308 ? Infinity : Math.pow(10, effLog);
 }
@@ -1935,7 +1938,7 @@ function bhEffect() {
 function bhEffectLog() {
   const mLog = getLogBhMass();
   if (mLog <= 0) return 0;
-  const exp = 0.2 + state.sbu2 * 0.01;
+  const exp = 0.2 + state.sbu2 * 0.05;
   return clampLog(exp * mLog);
 }
 // 黑洞对时间速率的加成（仅扭曲状态）：×(1 + bhEffect)
@@ -1949,11 +1952,11 @@ function bhAccretionMult() { return Math.pow(2, state.sbu1); }
 // 虚粒子获取倍率（SBU3 霍金辐射 ×2/级）
 function bhVPMult() { return Math.pow(2, state.sbu3); }
 // 吸积状态：质量获取速率 log10(dM/dt)。M^0.75 × (F/1e200)^0.01 × accretionMult
-// → log = 0.75*logM + 0.01*(FLog-200) + log2(sbu1)
+// → log = massExp*logM + 0.01*(FLog-200) + log2(sbu1)；massExp 受 SVPU1 加成
 function bhAccretionRateLog() {
   const mLog = getLogBhMass();
   const fLog = FLog();
-  return clampLog(0.75 * mLog + 0.01 * (fLog - 200) + state.sbu1 * Math.log10(2));
+  return clampLog(bhAccretionMassExp() * mLog + 0.01 * (fLog - 200) + state.sbu1 * Math.log10(2));
 }
 // 脉冲状态：虚粒子获取速率（每秒）= floor(M^0.1 × vpMult)；返回 log10
 function bhVPGainLog() {
@@ -1964,7 +1967,7 @@ function bhVPGainLog() {
 // 黑洞升级定义
 const SBU_DEFS = [
   { id: "sbu1", key: "sbu1", name: "事件视界", desc: "每级使黑洞吸积效率 ×2", max: Infinity, cost: (n) => Math.pow(1e9, 1) * Math.pow(100, n - 1) },
-  { id: "sbu2", key: "sbu2", name: "引力潮汐", desc: "每级使黑洞效果指数 +0.01", max: Infinity, cost: (n) => Math.pow(1e10, 1) * Math.pow(1000, n - 1) },
+  { id: "sbu2", key: "sbu2", name: "引力潮汐", desc: "每级使黑洞效果指数 +0.05", max: Infinity, cost: (n) => Math.pow(1e10, 1) * Math.pow(1000, n - 1) },
   { id: "sbu3", key: "sbu3", name: "霍金辐射", desc: "每级使虚粒子获取 ×2", max: Infinity, cost: (n) => Math.pow(1e11, 1) * Math.pow(100, n - 1) },
 ];
 function sbuCostLog(u, n) {
@@ -1984,6 +1987,39 @@ function buySBU(id) {
   state[u.key]++;
   updateBlackholeUI();
   setAutosaveStatus("已购买黑洞升级：" + u.name);
+}
+// 黑洞虚粒子升级（花 VP，位于黑洞页）
+const SVPU_DEFS = [
+  { id: "svpu1", key: "svpu1", name: "全息原理", desc: "吸积公式中质量的指数 +0.03/级（最高 6 级）", max: 6, costLog: (n) => n },         // 10^n VP
+  { id: "svpu2", key: "svpu2", name: "虚幻湮灭", desc: "每级使湮灭次数加成 ×2", max: Infinity, costLog: (n) => n * Math.log10(15) },       // 15^n VP
+  { id: "svpu3", key: "svpu3", name: "非欧几何", desc: "削弱升级3软上限（最高 3 级）", max: 3, costLog: (n) => 3 * n - 2 },                  // 10^(3n-2) VP
+];
+function buySVPU(id) {
+  if (!bhUnlocked()) return;
+  const u = SVPU_DEFS.find(x => x.id === id);
+  if (!u) return;
+  if (state[u.key] >= u.max) return;
+  const n = state[u.key] + 1;
+  const cLog = u.costLog(n);
+  const c = Math.pow(10, cLog);
+  if (cmpLT(state.virtualParticles, c, getLogVP(), cLog)) return;
+  setVP(state.virtualParticles - c);
+  state[u.key]++;
+  updateBlackholeUI();
+  setAutosaveStatus("已购买黑洞升级：" + u.name);
+}
+// SVPU1 全息原理：吸积质量指数 +0.03/级（0.75 → 0.75 + 0.03·svpu1）
+function bhAccretionMassExp() { return 0.75 + 0.03 * state.svpu1; }
+// SVPU2 虚幻湮灭：湮灭次数加成 ×2^svpu2（作用于"总湮灭次数"显示加成？实为加成湮灭次数的倍率）
+// 按"每级加成湮灭次数×2"：用于统计或奖励。此处提供 getter 供后续挂钩。
+function annCountMult() { return Math.pow(2, state.svpu2); }
+// SVPU3 非欧几何：升级3软上限缩放指数的次幂 1/(n+1)（n=svpu3）
+function up3SoftcapScale(lf) {
+  // 原 scale = 5/√(lf)；SVPU3 后 scale = (5/√lf)^(1/(svpu3+1))
+  if (lf <= 100) return 5 / Math.sqrt(lf);
+  const base = 5 / Math.sqrt(lf);
+  const pw = 1 / (state.svpu3 + 1);
+  return Math.pow(base, pw);
 }
 function setBhState(s) {
   if (!bhUnlocked()) return;
@@ -2046,6 +2082,22 @@ function buildBlackholeOnce() {
     list.appendChild(btn);
     bhRefs[u.id] = { u, btn, descEl: ds, costEl: ct };
   }
+  // SVPU 虚粒子升级（花 VP）
+  const svpuTitle = document.createElement("div");
+  svpuTitle.className = "bh-vp-title";
+  svpuTitle.textContent = "虚粒子升级";
+  list.appendChild(svpuTitle);
+  for (const u of SVPU_DEFS) {
+    const btn = document.createElement("button");
+    btn.className = "sau-btn bh-upg-btn svpu-btn";
+    const nm = document.createElement("div"); nm.className = "sau-name"; nm.textContent = u.name;
+    const ds = document.createElement("div"); ds.className = "sau-desc";
+    const ct = document.createElement("div"); ct.className = "sau-cost";
+    btn.append(nm, ds, ct);
+    btn.addEventListener("click", () => buySVPU(u.id));
+    list.appendChild(btn);
+    bhRefs[u.id] = { u, btn, descEl: ds, costEl: ct, vp: true };
+  }
   bhStateBtns = [];
   document.querySelectorAll(".bh-state-btn").forEach(b => {
     b.addEventListener("click", () => setBhState(b.dataset.bhState));
@@ -2058,9 +2110,9 @@ function buildBlackholeOnce() {
 }
 
 function bhRadius() {
-  // 半径：基础宽度 0.1 倍，随 1+lg(M) 增大，上限 0.6 倍页面宽度
+  // 半径：基础宽度 0.1 倍，随 (1+lg(M)/5) 增大，上限 0.6 倍页面宽度
   const mLog = Math.max(0, getLogBhMass());
-  const scale = Math.min(0.6, 0.1 * (1 + mLog));
+  const scale = Math.min(0.6, 0.1 * (1 + mLog / 5));
   const pageW = document.getElementById("app").offsetWidth || 760;
   return { r: pageW * scale, pageW };
 }
@@ -2149,16 +2201,32 @@ function updateBlackholeUI() {
   for (const b of bhStateBtns) {
     b.classList.toggle("active", b.dataset.bhState === state.bhState);
   }
-  // SBU 升级
+  // SBU 升级（花 Sp）与 SVPU 升级（花 VP）
   for (const id in bhRefs) {
     const r = bhRefs[id];
     const n = state[r.u.key] + 1;
-    const cLog = sbuCostLog(r.u, n);
-    const c = r.u.cost(n);
-    r.descEl.textContent = r.u.desc + "（等级 " + state[r.u.key] + "）";
-    r.costEl.textContent = fmtNum(c, cLog) + " Sp";
-    r.btn.disabled = state.sp < c;
-    r.btn.classList.toggle("affordable", state.sp >= c);
+    const maxed = r.u.max !== Infinity && state[r.u.key] >= r.u.max;
+    let c, cLog, affordable, costStr, resUnit;
+    if (r.vp) {
+      // SVPU：花 VP
+      cLog = r.u.costLog(n);
+      c = Math.pow(10, cLog);
+      affordable = !maxed && cmpGE(state.virtualParticles, c, getLogVP(), cLog);
+      costStr = fmtNum(c, cLog) + " VP";
+      resUnit = "VP";
+    } else {
+      // SBU：花 Sp
+      cLog = sbuCostLog(r.u, n);
+      c = r.u.cost(n);
+      affordable = !maxed && state.sp >= c;
+      costStr = fmtNum(c, cLog) + " Sp";
+      resUnit = "Sp";
+    }
+    r.descEl.textContent = r.u.desc + (r.u.max !== Infinity ? "（" + state[r.u.key] + "/" + r.u.max + "）" : "（等级 " + state[r.u.key] + "）");
+    r.costEl.textContent = maxed ? "已满级" : costStr;
+    r.btn.disabled = maxed || !affordable;
+    r.btn.classList.toggle("bought", maxed);
+    r.btn.classList.toggle("affordable", !maxed && affordable);
   }
 }
 
@@ -2345,7 +2413,7 @@ function updateSpUI() {
     }
     const done = r.distort ? hasDistortMilestone(r.m.n) : hasMilestone(r.m.n);
     r.row.classList.toggle("done", done);
-    const cur = r.distort ? distortDA() : state.annihilations;
+    const cur = r.distort ? distortDA() : effAnnihilations();
     r.countEl.textContent = done ? "✓" : (cur + " / " + r.m.n);
   }
   for (const r of spRefs) {
@@ -2850,6 +2918,7 @@ function renderStats() {
   document.getElementById("stat-ann-best-sp").textContent = fmtNum(state.annBestSp, state.annBestSp > 0 ? Math.log10(state.annBestSp) : NLOG);
   document.getElementById("stat-ann-best-rate").textContent = fmtNum(state.annBestRate, state.annBestRate > 0 ? Math.log10(state.annBestRate) : NLOG) + " Sp/min";
   document.getElementById("stat-ann-fastest").textContent = state.annFastest > 0 ? fmtTime(state.annFastest) : "—";
+  document.getElementById("stat-ann-count").textContent = fmt(effAnnihilations()) + (state.svpu2 > 0 ? `（实际 ${fmt(state.annihilations)} ×${fmt(annCountMult())}）` : "");
   document.getElementById("stat-ann-tp").textContent = fmtNum(temperatureCap(), temperatureCapLog()) + " K";
   document.getElementById("stat-ann-distort").textContent = `${state.distortDone.length} / ${DISTORT_UNIVERSES.length}`;
   // 挑战选项卡：各扭曲宇宙最佳完成时间与总完成时间

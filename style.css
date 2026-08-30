@@ -487,3 +487,7 @@ body[data-theme="white"] #bh-canvas { box-shadow: 0 0 0 2px #888, 0 2px 8px rgba
 
 /* help 章节版本标签代表色 */
 .help-ver.black-text { color: var(--black); }
+
+/* 黑洞虚粒子升级（v0.4.3）*/
+.bh-vp-title { font-size: 14px; font-weight: 600; color: var(--text-dim); margin: 10px 0 4px; }
+.svpu-btn { border-style: dashed !important; }
