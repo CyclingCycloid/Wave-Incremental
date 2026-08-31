@@ -2376,10 +2376,10 @@ function updateBlackholeUI() {
 
 // 批量购买上限升级（A34 解锁，位于自动化页）
 const BATCH_UPG = { id: "batch", name: "批量购买上限翻倍", desc: "批量购买的每次上限翻倍（初始 2）；打破规则且上限超过 128 后变为「最大购买」", key: "batchLvl", repeat: true, cost: () => Math.pow(20, state.batchLvl) };
-// A44 星标奖励：自动湮灭 CD 缩减升级（自动化页，Sp 购买；每级 CD ÷2，最低 25ms）
+// A42 星标奖励：自动湮灭 CD 缩减升级（自动化页，Sp 购买；每级 CD ÷2，最低 25ms）
 const ANN_CD_UPG = { id: "annCd", name: "自动湮灭 CD 缩减", desc: "每级使自动湮灭 CD ÷2（最低 25ms）", key: "autoAnnCDLvl", cost: () => Math.pow(100, state.autoAnnCDLvl) * 1e12 };
 function buyAnnCDUpgrade() {
-  if (!state.ach.normal.includes("A44")) return;
+  if (!state.ach.normal.includes("A42")) return;
   const cost = ANN_CD_UPG.cost();
   if (state.sp < cost) return;
   setSp(state.sp - cost);
@@ -2826,7 +2826,7 @@ function buildAutomationOnce() {
   bRow.append(bLeft, bRight);
   list.appendChild(bRow);
   batchRefs = { row: bRow, costEl: bCost, btn: bBtn };
-  // A44 星标奖励：自动湮灭 CD 缩减升级（A44 解锁，Sp 购买）
+  // A42 星标奖励：自动湮灭 CD 缩减升级（A42 解锁，Sp 购买）
   const cdRow = document.createElement("div");
   cdRow.className = "sp-upgrade";
   const cdLeft = document.createElement("div");
@@ -2921,9 +2921,9 @@ function updateAutomationUI() {
       batchRefs.btn.disabled = state.sp < cost;
     }
   }
-  // 自动湮灭 CD 缩减升级卡（A44 解锁）
+  // 自动湮灭 CD 缩减升级卡（A42 解锁）
   if (annCDRefs) {
-    const unlocked = state.ach.normal.includes("A44");
+    const unlocked = state.ach.normal.includes("A42");
     annCDRefs.row.classList.toggle("hidden", !unlocked);
     if (unlocked) {
       const cost = ANN_CD_UPG.cost();
@@ -2965,7 +2965,7 @@ function autoAnnTick() {
 function autoAnnCD() {
   let cd = 1000;
   if (state.ach.normal.includes("A42")) cd = 200;
-  if (state.ach.normal.includes("A44")) cd = Math.max(25, cd / Math.pow(2, state.autoAnnCDLvl));
+  cd = Math.max(25, cd / Math.pow(2, state.autoAnnCDLvl));
   return cd;
 }
 function runAutomation() {
@@ -3220,9 +3220,9 @@ const NORMAL_ACH = [
   { id: "A35", name: "刻写", desc: "购买第一个奇点升级", check: () => (state.sau1 + state.sau2 + state.sau3 > 0) || Object.keys(state.au).length > 0 },
   // 第 4 行 (A41-A45) 奇点
   { id: "A41", name: "视界", desc: "解锁黑洞", star: true, reward: "总时间倍率再 ^1.1", check: () => bhUnlocked() },
-  { id: "A42", name: "烂柯", desc: "总时间倍率超过 3.65e6", star: true, reward: "自动湮灭 CD 200ms", check: () => timeRate() >= 3.65e6 },
+  { id: "A42", name: "烂柯", desc: "总时间倍率超过 3.65e6", star: true, reward: "自动湮灭 CD 变为 200ms，并解锁一个新的自动化升级", check: () => timeRate() >= 3.65e6 },
   { id: "A43", name: "无限", desc: "打破多元宇宙的规则", check: () => state.rulesBroken && !state.testBreakRules }, // 原 A35
-  { id: "A44", name: "永炽", desc: "温度超过 1.79e308 K", star: true, reward: "解锁自动化页的自动湮灭 CD 缩减升级", check: () => temperature() >= 1.79e308 },
+  { id: "A44", name: "永炽", desc: "温度超过 1.79e308 K", check: () => temperature() >= 1.79e308 },
   { id: "A45", name: "???", desc: "（占位）", check: () => false },
 ];
 const ACH_PER_ROW = 5;
