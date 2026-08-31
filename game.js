@@ -2054,11 +2054,11 @@ function bhTimeMult() {
 }
 // 吸积效率倍率（SBU1 事件视界 ×2/级；AU43 奇点塌缩额外 ×spAccretionMult）
 function bhAccretionMult() { return Math.pow(2, state.sbu1) * spAccretionMult(); }
-// AU43 奇点塌缩：黑洞吸积效率倍率 = (lg(Sp+1) + (Sp+1)^0.01)^2
+// AU43 奇点塌缩：黑洞吸积效率倍率 = (lg(Sp+1) + (Sp+1)^0.01)^3
 function spAccretionMult() {
   if (!auOwned("au43")) return 1;
   const sp1 = 1 + state.totalSp;
-  return Math.pow(Math.log10(sp1) + Math.pow(sp1, 0.01), 2);
+  return Math.pow(Math.log10(sp1) + Math.pow(sp1, 0.01), 3);
 }
 // 虚粒子获取倍率（SBU3 霍金辐射 ×2/级）
 function bhVPMult() { return Math.pow(2, state.sbu3); }
