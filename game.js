@@ -1993,12 +1993,12 @@ function phononSpMult() {
 function timeArrowMult() { return auOwned("au31") ? 1 + Math.pow(Math.log10(1 + state.realTime), 0.6) : 1; }
 // AU32：成就时间倍率底数
 function achTimeBase() { return auOwned("au32") ? 1.2 : 1.1; }
-// AU33：绝对零度（冷却最佳完成时间 T 秒）：×min(100, max(1, 60/T))
+// AU33：绝对零度（冷却最佳完成时间 T 秒）：×min(100, max(1, (1000/T)^0.5))
 function absZeroMult() {
   if (!auOwned("au33")) return 1;
   const T = state.distortBest && state.distortBest.cooldown;
   if (!T || T <= 0) return 1;
-  return Math.min(100, Math.max(1, 60 / T));
+  return Math.min(100, Math.max(1, Math.sqrt(1000 / T)));
 }
 
 // ---------- 黑洞系统（v0.4.3 实装，5DA 解锁）----------
