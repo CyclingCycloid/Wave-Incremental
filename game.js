@@ -1740,12 +1740,7 @@ function retryDistort() {
   if (state.distortFails >= 10 && !state.ach.hidden.includes("S14")) {
     grantHidden("S14"); updateAchievementsUI();
   }
-  // 挑战计时：重试也计入总和与最佳（25ms 刻度）
-  {
-    const durQ = Math.max(0.025, Math.round(((Date.now() - state.annStartReal) / 1000) * 40) / 40);
-    state.distortTotal = (state.distortTotal || 0) + durQ;
-    if (!state.distortBest[id] || durQ < state.distortBest[id]) state.distortBest[id] = durQ;
-  }
+  // 退出/重试不记录挑战时长（只有 doAnnihilation 完成才记录 distortBest/distortTotal）
   // 重置（不触发完成逻辑、不获 Sp、不计历史）
   state.distortActive = "";
   setU(resetU()); state.L = 1; state.logL10 = 0;
@@ -1773,13 +1768,7 @@ function exitDistortBtn() {
     grantHidden("S18"); updateAchievementsUI();
   }
   const u = DISTORT_UNIVERSES.find(x => x.id === state.distortActive);
-  // 挑战计时：仅当达标（可完成但选择退出）时才计入，未达标退出不记录
-  if (annihilationReady()) {
-    const id = state.distortActive;
-    const durQ = Math.max(0.025, Math.round(((Date.now() - state.annStartReal) / 1000) * 40) / 40);
-    state.distortTotal = (state.distortTotal || 0) + durQ;
-    if (!state.distortBest[id] || durQ < state.distortBest[id]) state.distortBest[id] = durQ;
-  }
+  // 退出/重试不记录挑战时长（只有 doAnnihilation 完成才记录 distortBest/distortTotal）
   state.distortFails = (state.distortFails || 0) + 1;
   if (state.distortFails >= 10 && !state.ach.hidden.includes("S14")) {
     grantHidden("S14"); updateAchievementsUI();
@@ -1933,7 +1922,7 @@ const AU_DEFS = [
     { id: "au31", name: "时间之矢", desc: "基于真实游玩时间给予时间倍率：×(1+lg(1+t)^0.6)", cost: 1e6 },
     { id: "au32", name: "成就刻印", desc: "成就的时间倍率 1.1x → 1.2x", cost: 1e7 },
     { id: "au33", name: "绝对零度", desc: "基于「冷却」最佳完成时间给予时间倍率", cost: 1e10 },
-    { id: "au34", name: "引力扭曲", desc: "增强黑洞的效果（WIP）", cost: Infinity },
+    { id: "au34", name: "引力扭曲", desc: "增强黑洞的效果", cost: 1e11 },
   ],
   [ // 第4组（4DA 解锁）
     { id: "au41", name: "共轭湮灭", desc: "湮灭次数加成奇点效果", cost: 3e8 },
@@ -2047,10 +2036,12 @@ function bhEffectLog() {
   const exp = 0.2 + state.sbu2 * 0.05;
   return clampLog(exp * mLog);
 }
-// 黑洞对时间速率的加成（仅扭曲状态）：×(1 + bhEffect)
+// 黑洞对时间速率的加成（仅扭曲状态）：×(1 + bhEffect)；AU34 引力扭曲：扭曲状态效果额外 ^1.5
 function bhTimeMult() {
   if (!bhUnlocked() || state.bhState !== "distorl") return 1;
-  const el = bhEffectLog();
+  // AU34：扭曲状态效果 ^1.5（即 bhEffectLog × 1.5）
+  let el = bhEffectLog();
+  if (auOwned("au34")) el = clampLog(el * 1.5);
   return el > 0 ? (1 + (el > 308 ? Infinity : Math.pow(10, el))) : 1;
 }
 // 吸积效率倍率（SBU1 事件视界 ×2/级）
@@ -2101,7 +2092,7 @@ function buySBU(id) {
 const SVPU_DEFS = [
   { id: "svpu1", key: "svpu1", name: "全息原理", desc: "吸积公式中质量的指数 +0.03/级（最高 6 级）", max: 6, costLog: (n) => n },         // 10^n VP
   { id: "svpu2", key: "svpu2", name: "虚幻湮灭", desc: "获得的湮灭次数×2", max: Infinity, costLog: (n) => Math.log10(3) + (n - 1) * Math.log10(5) },  // 3×5^(n-1) VP
-  { id: "svpu3", key: "svpu3", name: "非欧几何", desc: "削弱升级3软上限（最高 3 级）", max: 3, costLog: (n) => 3 * n - 2 },                  // 10^(3n-2) VP
+  { id: "svpu3", key: "svpu3", name: "非欧几何", desc: "削弱升级3软上限（最高 3 级）", max: 3, costLog: (n) => 5 * n - 4 },                  // 10^(5n-4) VP，增速 ×1e5
 ];
 function buySVPU(id) {
   if (!bhUnlocked()) return;
