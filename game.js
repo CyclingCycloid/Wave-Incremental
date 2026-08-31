@@ -54,6 +54,7 @@ function defaultState() {
     autoAnnInterval: 60,   // AU22：时间模式的间隔秒数
     lastAutoUp3At: 0,      // 上次自动升级3时刻
     lastAutoAnnAt: 0,      // 上次自动湮灭时刻
+    autoAnnCDLvl: 0,       // A44 奖励：自动湮灭 CD 缩减升级等级（每级 ÷2，最低 25ms）
     sau1: 0, sau2: 0, sau3: 0, sau4: 0,  // 奇点可重复升级等级（3DA 解锁）
     au: {},                                 // 奇点单次升级已购标记（id→1）
     testBreakRules: false, // 测试按钮：临时打破规则（不获 Sp，v0.4.3 移除）
@@ -891,6 +892,8 @@ function migrateState() {
   if (state.ruaBoostMult === undefined) state.ruaBoostMult = 1;
   if (state.ruaBoostUntil === undefined) state.ruaBoostUntil = 0;
   if (state.ruaBoostCD === undefined) state.ruaBoostCD = 0;
+  // v0.4.3.2：自动湮灭 CD 升级字段回填
+  if (state.autoAnnCDLvl === undefined) state.autoAnnCDLvl = 0;
   // 测试开关不跨会话残留：加载存档时重置（温度无上限的测试状态若被保存，
   // 热反馈失控会让每次湮灭后十几秒就再次到达 Tcap 且不获 Sp）
   if (state.testBreakRules) state.testBreakRules = false;
@@ -2371,6 +2374,17 @@ function updateBlackholeUI() {
 
 // 批量购买上限升级（A34 解锁，位于自动化页）
 const BATCH_UPG = { id: "batch", name: "批量购买上限翻倍", desc: "批量购买的每次上限翻倍（初始 2）；打破规则且上限超过 128 后变为「最大购买」", key: "batchLvl", repeat: true, cost: () => Math.pow(20, state.batchLvl) };
+// A44 星标奖励：自动湮灭 CD 缩减升级（自动化页，Sp 购买；每级 CD ÷2，最低 25ms）
+const ANN_CD_UPG = { id: "annCd", name: "自动湮灭 CD 缩减", desc: "每级使自动湮灭 CD ÷2（最低 25ms）", key: "autoAnnCDLvl", cost: () => Math.pow(100, state.autoAnnCDLvl) * 1e12 };
+function buyAnnCDUpgrade() {
+  if (!state.ach.normal.includes("A44")) return;
+  const cost = ANN_CD_UPG.cost();
+  if (state.sp < cost) return;
+  setSp(state.sp - cost);
+  state.autoAnnCDLvl++;
+  updateAutomationUI();
+  setAutosaveStatus("已购买：自动湮灭 CD 缩减");
+}
 function buyBatchUpgrade() {
   if (!state.ach.normal.includes("A34")) return;
   const cost = BATCH_UPG.cost();
@@ -2729,7 +2743,7 @@ function autoUnlocked(def) {
   return false;
 }
 
-let autoBuilt = false, autoRefs = {}, batchRefs = null;
+let autoBuilt = false, autoRefs = {}, batchRefs = null, annCDRefs = null;
 function buildAutomationOnce() {
   if (autoBuilt) return;
   const list = document.getElementById("auto-list");
@@ -2808,6 +2822,21 @@ function buildAutomationOnce() {
   bRow.append(bLeft, bRight);
   list.appendChild(bRow);
   batchRefs = { row: bRow, costEl: bCost, btn: bBtn };
+  // A44 星标奖励：自动湮灭 CD 缩减升级（A44 解锁，Sp 购买）
+  const cdRow = document.createElement("div");
+  cdRow.className = "sp-upgrade";
+  const cdLeft = document.createElement("div");
+  const cdNm = document.createElement("div"); cdNm.className = "spu-name"; cdNm.textContent = ANN_CD_UPG.name;
+  const cdDs = document.createElement("div"); cdDs.className = "spu-desc"; cdDs.textContent = ANN_CD_UPG.desc;
+  cdLeft.append(cdNm, cdDs);
+  const cdRight = document.createElement("div"); cdRight.className = "auto-controls";
+  const cdCost = document.createElement("div"); cdCost.className = "spu-cost";
+  const cdBtn = document.createElement("button"); cdBtn.textContent = "购买";
+  cdBtn.addEventListener("click", buyAnnCDUpgrade);
+  cdRight.append(cdCost, cdBtn);
+  cdRow.append(cdLeft, cdRight);
+  list.appendChild(cdRow);
+  annCDRefs = { row: cdRow, costEl: cdCost, btn: cdBtn };
   autoBuilt = true;
 }
 // 解析 AeB 格式输入（"1e5"、"3.5e-2" 等；失败返回 NaN）
@@ -2888,6 +2917,17 @@ function updateAutomationUI() {
       batchRefs.btn.disabled = state.sp < cost;
     }
   }
+  // 自动湮灭 CD 缩减升级卡（A44 解锁）
+  if (annCDRefs) {
+    const unlocked = state.ach.normal.includes("A44");
+    annCDRefs.row.classList.toggle("hidden", !unlocked);
+    if (unlocked) {
+      const cost = ANN_CD_UPG.cost();
+      annCDRefs.row.classList.toggle("affordable", state.sp >= cost);
+      annCDRefs.costEl.textContent = fmt(cost) + " Sp（等级 " + state.autoAnnCDLvl + "，当前 CD " + autoAnnCD() + "ms）";
+      annCDRefs.btn.disabled = state.sp < cost;
+    }
+  }
 }
 
 // 每帧自动购买/自动湮灭逻辑（游戏时间）
@@ -2912,10 +2952,17 @@ function autoAnnTick() {
     if (Date.now() - state.lastAutoAnnAt >= state.autoAnnInterval * 1000 && annihilationReady()) {
       if (doAnnihilation()) state.lastAutoAnnAt = Date.now();
     }
-  } else if (Date.now() - state.lastAutoAnnAt >= 200 && annihilationReady() && spGainExact() >= state.autoAnnSp) {
-    // Sp 模式：200ms 防抖（rAF 与 tick 双入口下防止连环湮灭，但减少延迟）
+  } else if (Date.now() - state.lastAutoAnnAt >= autoAnnCD() && annihilationReady() && spGainExact() >= state.autoAnnSp) {
+    // Sp 模式：CD 防抖（基础 1s，A42 星标 200ms，A44 升级进一步缩减，最低 25ms）
     if (doAnnihilation()) state.lastAutoAnnAt = Date.now();
   }
+}
+// 自动湮灭 CD（ms）：基础 1000ms；A42 星标奖励 200ms；A44 解锁的升级每级 ÷2，最低 25ms
+function autoAnnCD() {
+  let cd = 1000;
+  if (state.ach.normal.includes("A42")) cd = 200;
+  if (state.ach.normal.includes("A44")) cd = Math.max(25, cd / Math.pow(2, state.autoAnnCDLvl));
+  return cd;
 }
 function runAutomation() {
   if (state.annihilations < 1) return;
@@ -3169,9 +3216,9 @@ const NORMAL_ACH = [
   { id: "A35", name: "刻写", desc: "购买第一个奇点升级", check: () => (state.sau1 + state.sau2 + state.sau3 > 0) || Object.keys(state.au).length > 0 },
   // 第 4 行 (A41-A45) 奇点
   { id: "A41", name: "视界", desc: "解锁黑洞", star: true, reward: "总时间倍率再 ^1.1", check: () => bhUnlocked() },
-  { id: "A42", name: "烂柯", desc: "总时间倍率超过 3.65e6", check: () => timeRate() >= 3.65e6 },
+  { id: "A42", name: "烂柯", desc: "总时间倍率超过 3.65e6", star: true, reward: "自动湮灭 CD 200ms", check: () => timeRate() >= 3.65e6 },
   { id: "A43", name: "无限", desc: "打破多元宇宙的规则", check: () => state.rulesBroken && !state.testBreakRules }, // 原 A35
-  { id: "A44", name: "永炽", desc: "温度超过 1.79e308 K", check: () => temperature() >= 1.79e308 },
+  { id: "A44", name: "永炽", desc: "温度超过 1.79e308 K", star: true, reward: "解锁自动化页的自动湮灭 CD 缩减升级", check: () => temperature() >= 1.79e308 },
   { id: "A45", name: "???", desc: "（占位）", check: () => false },
 ];
 const ACH_PER_ROW = 5;
