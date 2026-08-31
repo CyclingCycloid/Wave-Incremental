@@ -71,10 +71,12 @@ function defaultState() {
     bhDistorlSince: 0,     // S23：本次持续处于扭曲状态的起始时刻（0=不在扭曲）
     // rua摆线（v0.4.3.2）
     ruaFav: 0,             // 好感度
-    ruaCountThisHour: 0,   // 本小时已 rua 次数（每小时重置）
-    ruaHourStart: 0,       // 当前小时窗口起始时间戳
+    ruaCountToday: 0,      // 今天已获取的好感度（每天最多 100）
+    ruaClicksToday: 0,     // 今天总 rua 点击次数（不限上限，用于 S24）
+    ruaDayStart: 0,        // 当前天窗口起始时间戳
     ruaBoostMult: 1,       // 当前生效的随机倍率加成
     ruaBoostUntil: 0,      // 倍率加成到期时间戳
+    ruaBoostCD: 0,         // 倍率按钮 CD 到期时间戳
 
     // 统计
     totalFGained: 10,      // 累计频率（生成总量，double 缓存；极端值看 logTotalF）
@@ -873,10 +875,12 @@ function migrateState() {
   if (state.bhDistorlSince === undefined) state.bhDistorlSince = 0;
   // v0.4.3.2：rua摆线字段回填
   if (state.ruaFav === undefined) state.ruaFav = 0;
-  if (state.ruaCountThisHour === undefined) state.ruaCountThisHour = 0;
-  if (state.ruaHourStart === undefined) state.ruaHourStart = 0;
+  if (state.ruaCountToday === undefined) state.ruaCountToday = 0;
+  if (state.ruaClicksToday === undefined) state.ruaClicksToday = 0;
+  if (state.ruaDayStart === undefined) state.ruaDayStart = 0;
   if (state.ruaBoostMult === undefined) state.ruaBoostMult = 1;
   if (state.ruaBoostUntil === undefined) state.ruaBoostUntil = 0;
+  if (state.ruaBoostCD === undefined) state.ruaBoostCD = 0;
   // 测试开关不跨会话残留：加载存档时重置（温度无上限的测试状态若被保存，
   // 热反馈失控会让每次湮灭后十几秒就再次到达 Tcap 且不获 Sp）
   if (state.testBreakRules) state.testBreakRules = false;
@@ -3658,38 +3662,80 @@ function setupUI() {
     showAchPopup("测试弹窗", false);
   });
 
-  // rua摆线
+  // rua摆线：rua 按钮下方显示文字；好感度每天最多 100；独立倍率按钮（CD 1h，效果 10min）
+  const ruaBtn = document.getElementById("rua-btn");
   const ruaStatus = document.getElementById("rua-status");
-  const refreshRuaStatus = () => { ruaStatus.textContent = "好感度 " + fmt(state.ruaFav); };
-  document.getElementById("rua-btn").addEventListener("click", () => {
+  const ruaBoostBtn = document.getElementById("rua-boost-btn");
+  const ruaBoostInfo = document.getElementById("rua-boost-info");
+  const refreshRuaUI = () => {
     const now = Date.now();
-    // 每小时重置计数窗口
-    if (!state.ruaHourStart || now - state.ruaHourStart >= 3600000) {
-      state.ruaHourStart = now;
-      state.ruaCountThisHour = 0;
+    // 每天重置好感度获取窗口（86400000ms = 24h）
+    if (!state.ruaDayStart || now - state.ruaDayStart >= 86400000) {
+      state.ruaDayStart = now;
+      state.ruaCountToday = 0;
+      state.ruaClicksToday = 0;
     }
-    state.ruaCountThisHour++;
+    // rua 按钮下方文字
+    if (state.ruaCountToday >= 100) {
+      ruaStatus.textContent = `好感度 ${fmt(state.ruaFav)}（今天已上限，明天再来）`;
+    } else {
+      ruaStatus.textContent = `好感度 ${fmt(state.ruaFav)}（今天已 rua ${state.ruaCountToday}/100）`;
+    }
+    // 倍率按钮：显示倍率和剩余时间（持续时间或 CD）
+    const inCD = state.ruaBoostCD && now < state.ruaBoostCD;
+    const inBoost = state.ruaBoostUntil && now < state.ruaBoostUntil;
+    if (inBoost) {
+      const remain = Math.ceil((state.ruaBoostUntil - now) / 1000);
+      ruaBoostBtn.textContent = `×${fmt(state.ruaBoostMult)} 剩余 ${remain}s`;
+      ruaBoostBtn.disabled = true;
+    } else if (inCD) {
+      const remain = Math.ceil((state.ruaBoostCD - now) / 1000);
+      ruaBoostBtn.textContent = `CD ${remain}s`;
+      ruaBoostBtn.disabled = true;
+    } else {
+      ruaBoostBtn.textContent = "获取倍率";
+      ruaBoostBtn.disabled = false;
+    }
+    ruaBoostInfo.textContent = inBoost ? `当前倍率 ×${fmt(state.ruaBoostMult)}（剩余 ${Math.ceil((state.ruaBoostUntil - now) / 1000)}s）` : "点击获取随机倍率加成（持续 10 分钟，CD 1 小时）";
+  };
+  ruaBtn.addEventListener("click", () => {
+    const now = Date.now();
+    if (!state.ruaDayStart || now - state.ruaDayStart >= 86400000) {
+      state.ruaDayStart = now;
+      state.ruaCountToday = 0;
+      state.ruaClicksToday = 0;
+    }
+    state.ruaClicksToday++;
+    // S24：一天内 rua 200 次（点击次数不受好感度上限限制）
+    if (state.ruaClicksToday >= 200 && !state.ach.hidden.includes("S24")) { grantHidden("S24"); updateAchievementsUI(); }
+    if (state.ruaCountToday >= 100) {
+      ruaStatus.textContent = `要被 rua 秃了 qwq（好感度 ${fmt(state.ruaFav)}）`;
+      return;
+    }
+    state.ruaCountToday++;
     state.ruaFav++;
     // S25：好感度达到 1000
     if (state.ruaFav >= 1000 && !state.ach.hidden.includes("S25")) { grantHidden("S25"); updateAchievementsUI(); }
-    // S24：一小时内 rua 200 次
-    if (state.ruaCountThisHour >= 200 && !state.ach.hidden.includes("S24")) { grantHidden("S24"); updateAchievementsUI(); }
-    // 每小时前 100 次：第一次获得随机倍率加成（持续 10 分钟）
-    if (state.ruaCountThisHour === 1) {
-      const lo = Math.min(1 + state.ruaFav / 1000, 2);
-      state.ruaBoostMult = lo + Math.random() * (2 - lo);
-      state.ruaBoostUntil = now + 600000;
-    }
-    // 显示反馈
-    if (state.ruaCountThisHour <= 100) {
-      setAutosaveStatus("你 rua 了 rua 摆线，好感度 +1");
-    } else {
-      setAutosaveStatus("要被 rua 秃了 qwq");
-    }
-    refreshRuaStatus();
+    // rua 按钮下方文字
+    ruaStatus.textContent = `你 rua 了 rua 摆线，好感度 +1（今天 ${state.ruaCountToday}/100）`;
+    refreshRuaUI();
     saveGame();
   });
-  refreshRuaStatus();
+  ruaBoostBtn.addEventListener("click", () => {
+    const now = Date.now();
+    if (state.ruaBoostCD && now < state.ruaBoostCD) return;
+    if (state.ruaBoostUntil && now < state.ruaBoostUntil) return;
+    // 随机倍率：random(min(1+Fav/1000, 2), 2)
+    const lo = Math.min(1 + state.ruaFav / 1000, 2);
+    state.ruaBoostMult = lo + Math.random() * (2 - lo);
+    state.ruaBoostUntil = now + 600000; // 效果 10 分钟
+    state.ruaBoostCD = now + 3600000;   // CD 1 小时
+    refreshRuaUI();
+    saveGame();
+  });
+  // 实时刷新 rua UI（每秒）
+  setInterval(refreshRuaUI, 1000);
+  refreshRuaUI();
 
   // 湮灭按钮（首次湮灭后显示；点击直接湮灭）
   document.getElementById("annihilate-btn").addEventListener("click", () => {
