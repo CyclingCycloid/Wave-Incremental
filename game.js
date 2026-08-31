@@ -556,15 +556,18 @@ function temperatureCap() {
 function baseSpGain(T) {
   // 连续版本（floor 只在 spGain 最外层乘 distortMult 之后执行）：
   // T < 1e50：旧公式 1~10 线性；1e50 ≤ T < 1e100：lg(T)/5（线性到 20）；T ≥ 1e100：2·T^0.01
+  // 注意：T=Infinity 时（软上限后超 double），log10(T)=Infinity 会污染结果——
+  // 一律用 log 域代数式 2·10^(0.01·lgT)，永不产生 Infinity/NaN。
+  if (T === Infinity || T > 1e300) {
+    // 2·T^0.01 超 double：返回 Infinity 由调用方（log 版）处理
+    return Infinity;
+  }
   if (T < 1e50) {
     const frac = Math.log10(T / T_P0) / Math.log10(1e50 / T_P0);
     return 1 + 9 * Math.max(0, frac);
   }
   if (T < 1e100) {
     return Math.log10(T) / 5; // e50→10, e70→14, e99→19.8（连续）
-  }
-  if (T === Infinity || T > 1e300) {
-    return Decimal.pow(T, 0.01).times(2).toNumber();
   }
   return 2 * Math.pow(T, 0.01);
 }
@@ -573,37 +576,41 @@ function vpSpMult() {
   if (!auOwned("au42")) return 1;
   return Math.pow(1 + state.virtualParticles, 0.3);
 }
+// Sp 获取的 log10（log 域全链路，温度超 double 也不产生 Infinity）。
+// base = baseSpGain 的 log：T<1e50 为 1~10 小数（直接算）；之后 lg(T)/5 或 lg2+0.01·lgT
+function spGainBaseLog() {
+  const tLog = temperatureCappedLog();
+  if (tLog < 50) {
+    // baseSpGain 在 1~10 区间，直接数值计算后取 log
+    const frac = (tLog - Math.log10(T_P0)) / (50 - Math.log10(T_P0));
+    const b = 1 + 9 * Math.max(0, frac);
+    return Math.log10(Math.max(b, 1e-300));
+  }
+  if (tLog < 100) return Math.log10(tLog / 5); // lg(T)/5 的 log
+  return Math.log10(2) + 0.01 * tLog;          // 2·T^0.01 的 log
+}
 function spGainExact() {
   if (state.testBreakRules) return 0;
-  const b = baseSpGain(temperature());
-  const m = state.distortMult * Math.pow(2, state.sau4) * phononSpMult() * vpSpMult();
-  // 超 double 用 Decimal
-  if (b > 1e300) return Decimal.pow(b, 1).times(m).toNumber();
-  return Math.max(state.annihilations === 0 ? 1 : 0, b) * m;
+  const mLog = Math.log10(state.distortMult) + state.sau4 * Math.log10(2)
+    + Math.log10(Math.max(1, phononSpMult())) + Math.log10(Math.max(1, vpSpMult()));
+  const bLog = spGainBaseLog() + mLog;
+  const first = state.annihilations === 0 ? 1 : 0;
+  const log = first > 0 ? Math.log10(1 + Math.pow(10, bLog)) : bLog; // 首次保底 max(1,b)
+  return log > 308 ? Infinity : Math.pow(10, log);
 }
 function spGain() {
-  // 测试按钮（打破规则）激活期间不能获得 Sp
   if (state.testBreakRules) return 0;
-  // distortMult 乘在 floor 内部：先乘后取整，数值连续（外部乘法会造成整数跳变）
-  const base = Math.max(state.annihilations === 0 ? 1 : 0, baseSpGain(temperature())) * state.distortMult * Math.pow(2, state.sau4) * phononSpMult() * vpSpMult();
-  return Math.floor(base);
+  const v = spGainExact();
+  return v === Infinity ? Infinity : Math.floor(v);
 }
-// spGain 的 log10（用于 fmtNum 显示，超 double 时显示 1eN）。与 spGain() 一致用裁剪后温度。
+// spGain 的 log10（用于 fmtNum 显示，超 double 时显示 1eN）。与 spGain() 同一 log 域链路。
 function spGainLog() {
   if (state.testBreakRules) return NLOG;
-  const tLog = temperatureCappedLog();
-  let baseLog;
-  if (tLog < 50) {
-    // baseSpGain 返回 1~10 区间（小数，log 域小）
-    return Math.log10(Math.max(1, spGain()));
-  }
-  if (tLog < 100) {
-    baseLog = Math.log10(tLog / 5); // lg(T)/5 的 log
-  } else {
-    baseLog = Math.log10(2) + 0.01 * tLog; // 2·T^0.01 的 log
-  }
-  const mLog = Math.log10(state.distortMult) + state.sau4 * Math.log10(2) + Math.log10(Math.max(1, phononSpMult())) + (auOwned("au42") ? 0.3 * Math.log10(Math.max(1, 1 + state.virtualParticles)) : 0);
-  return clampLog(baseLog + mLog);
+  const mLog = Math.log10(state.distortMult) + state.sau4 * Math.log10(2)
+    + Math.log10(Math.max(1, phononSpMult())) + Math.log10(Math.max(1, vpSpMult()));
+  const bLog = spGainBaseLog() + mLog;
+  const first = state.annihilations === 0 ? 1 : 0;
+  return clampLog(first > 0 ? Math.log10(1 + Math.pow(10, bLog)) : bLog);
 }
 // gainRate 的 log10 版本（完整乘法链在 log 域，永不溢出）
 function gainRate() {
@@ -1603,11 +1610,24 @@ function doAnnihilation() {
   const realNow = Date.now();
   const realDur = (realNow - state.annStartReal) / 1000;
   const gameDur = state.playTime - state.annStartGame;
-  const rate = realDur > 0 ? (gained / realDur) * 60 : 0; // Sp/分
+  const rate = realDur > 0 && isFinite(gained) ? (gained / realDur) * 60 : 0; // Sp/分
   if (!inDistortMode) {
-    setSp(state.sp + gained);
-    setTotalSp(state.totalSp + gained);
-    if (gained > state.annBestSp) state.annBestSp = gained;
+    // log 域加法：gained 超 double（Infinity）时也不会污染存档
+    if (isFinite(gained)) {
+      setSp(state.sp + gained);
+      setTotalSp(state.totalSp + gained);
+      if (gained > state.annBestSp) state.annBestSp = gained;
+    } else {
+      // gained 超 double：log 域累积（log 为权威，double 缓存 Infinity）
+      const gLog = spGainLog();
+      const newSpLog = logAddLogs(getLogSp(), gLog);
+      state.logDsp = newSpLog;
+      state.sp = newSpLog > 308 ? Infinity : Math.pow(10, newSpLog);
+      const newTotalLog = logAddLogs(getLogTotalSp(), gLog);
+      state.logDtotal = newTotalLog;
+      state.totalSp = newTotalLog > 308 ? Infinity : Math.pow(10, newTotalLog);
+      state.annBestSp = Infinity;
+    }
     if (rate > state.annBestRate) state.annBestRate = rate;
     if (state.annFastest === 0 || realDur < state.annFastest) state.annFastest = realDur;
   }
@@ -3754,22 +3774,6 @@ function setupUI() {
 
   document.getElementById("hard-reset").addEventListener("click", hardReset);
 
-  // 测试按钮：临时打破宇宙规则（取消温度上限，期间不获 Sp；v0.4.3 移除）
-  const testBtn = document.getElementById("test-break-rules");
-  const refreshTestBtn = () => {
-    testBtn.textContent = state.testBreakRules
-      ? "测试：恢复宇宙规则（温度上限回归，可正常获得奇点）"
-      : "测试：打破宇宙规则（取消温度上限，期间无法获得奇点）";
-  };
-  testBtn.addEventListener("click", () => {
-    state.testBreakRules = !state.testBreakRules;
-    refreshTestBtn();
-    saveGame();
-    renderAll();
-    setAutosaveStatus(state.testBreakRules ? "测试模式：宇宙规则已打破（不获 Sp）" : "测试模式：规则已恢复");
-  });
-  refreshTestBtn();
-
   // 8DA：打破/恢复多元宇宙的规则（奇点页顶部按钮）
   const brBtn = document.getElementById("break-rules-btn");
   brBtn.addEventListener("click", () => {
@@ -3778,11 +3782,6 @@ function setupUI() {
     saveGame();
     renderAll();
     setAutosaveStatus(state.rulesBroken ? "多元宇宙的规则已被打破" : "多元宇宙的规则已恢复");
-  });
-
-  // 测试：弹出成就弹窗
-  document.getElementById("test-popup").addEventListener("click", () => {
-    showAchPopup("测试弹窗", false);
   });
 
   // rua摆线：rua 按钮下方显示文字；好感度每天最多 100；独立倍率按钮（CD 1h，效果 10min）
