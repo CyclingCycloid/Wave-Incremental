@@ -1528,7 +1528,6 @@ const DISTORT_MILESTONES = [
   { n: 1, desc: "" }, // 动态填充：基于扭曲宇宙湮灭数，将奇点效果变为 X 倍
   { n: 3, desc: "解锁更多的奇点升级" },
   { n: 5, desc: "解锁黑洞选项卡", black: true },
-  { n: 6, desc: "解锁更多奇点单次升级（AU42）" },
   { n: 8, desc: "打破多元宇宙的规则：取消温度上限（WIP）" },
 ];
 function distortDA() { return state.distortDone.length; }
@@ -1933,7 +1932,7 @@ const AU_DEFS = [
   ],
   [ // 第4组（4DA 解锁）
     { id: "au41", name: "共轭湮灭", desc: "湮灭次数加成奇点效果", cost: 3e8 },
-    { id: "au42", name: "虚幻凝聚", desc: "基于虚粒子数量增加奇点获取", cost: 5e9 },
+    { id: "au42", name: "虚幻凝聚", desc: "基于虚粒子数量增加奇点获取（6DA 解锁）", cost: 5e9 },
     { id: "au43", name: "???", desc: "（占位）", cost: Infinity },
     { id: "au44", name: "???", desc: "（占位）", cost: Infinity },
   ],
@@ -2608,8 +2607,9 @@ function updateSpUI() {
     const owned = auOwned(id);
     const afford = state.sp >= r.u.cost;
     const isAu4 = id.startsWith("au4");
-    // AU42 特殊：需 6DA 解锁，其余 au4* 需 4DA
+    // AU42 特殊：需 6DA 解锁，其余 au4* 需 4DA；解锁前显示 ？？？
     const au4Show = !isAu4 || (id === "au42" ? hasDistortMilestone(6) : au4Unlocked);
+    const au4Disabled = isAu4 && !(id === "au42" ? hasDistortMilestone(6) : au4Unlocked);
     r.descEl.textContent = au4Show ? r.u.desc : "？？？";
     if (r.nameEl) r.nameEl.textContent = au4Show ? r.u.name : "？？？";
     r.btn.disabled = owned || !afford || (isAu4 && !au4Unlocked);
