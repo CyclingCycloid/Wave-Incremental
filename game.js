@@ -786,13 +786,15 @@ function fmtInt(doubleVal, logVal) {
   return "∞";
 }
 function fmtTime(seconds, precise) {
-  // precise=true 时保留到 25ms 刻度的小数（挑战计时用）
+  // precise=true 时保留到 0.1s 刻度（挑战计时与统计用）
   const total = precise ? seconds : Math.floor(seconds);
   const d = Math.floor(total / 86400);
+  // 超过 1e4 天：只显示 XXXd 并用科学计数法
+  if (d >= 1e4) return d.toExponential(2).replace("e+", "e") + "d";
   const h = Math.floor((total % 86400) / 3600);
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
-  const sStr = precise ? (Math.round(s * 40) / 40).toString() : `${s}`;
+  const sStr = precise ? (Math.round(s * 10) / 10).toString() : `${s}`;
   if (d > 0) return `${d}d ${h}h ${m}m`;
   if (h > 0) return `${h}h ${m}m ${sStr}s`;
   if (m > 0) return `${m}m ${sStr}s`;
