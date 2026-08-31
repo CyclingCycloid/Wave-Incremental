@@ -1933,7 +1933,7 @@ const AU_DEFS = [
   [ // 第4组（4DA 解锁）
     { id: "au41", name: "共轭湮灭", desc: "湮灭次数加成奇点效果", cost: 3e8 },
     { id: "au42", name: "虚幻凝聚", desc: "基于虚粒子数量增加奇点获取", cost: 5e9 },
-    { id: "au43", name: "奇点塌缩", desc: "新增黑洞吸积效率倍率奇点效果", cost: 5e11 },
+    { id: "au43", name: "奇点塌缩", desc: "新增黑洞吸积效率倍率奇点效果", cost: 5e12 },
     { id: "au44", name: "???", desc: "（占位）", cost: Infinity },
   ],
 ];
@@ -2638,7 +2638,9 @@ function updateSpUI() {
       r.descEl.textContent = r.u.desc;
       if (r.nameEl) r.nameEl.textContent = r.u.name;
     }
-    r.costEl.textContent = owned ? "已购买" : (r.u.cost === Infinity ? "未开放" : fmt(r.u.cost) + " Sp");
+    r.costEl.textContent = owned ? "已购买"
+      : (r.u.cost === Infinity ? "未开放"
+      : (isAu4 && !thisUnlocked ? "???" : fmt(r.u.cost) + " Sp"));
     r.btn.disabled = owned || !afford || (isAu4 && !thisUnlocked);
     r.btn.classList.toggle("bought", owned);
     r.btn.classList.toggle("affordable", !owned && afford);
