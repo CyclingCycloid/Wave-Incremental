@@ -975,7 +975,12 @@ function getSlotInfo(i) {
     const raw = localStorage.getItem(slotKey(i));
     if (!raw) return null;
     const obj = decodeSave(raw);
-    return { freq: (obj.U || 10) / (obj.L || 1), playTime: obj.playTime || 0, empty: false };
+    // 槽内存档可能超 double：预览频率用 log 域计算（双精度除法会溢出为 ∞）
+    const uLog = (obj.logU10 !== undefined && isFinite(obj.logU10)) ? obj.logU10
+      : (obj.U > 0 ? (isFinite(obj.U) ? Math.log10(obj.U) : 308) : 1);
+    const lLog = (obj.logL10 !== undefined && isFinite(obj.logL10)) ? obj.logL10
+      : (obj.L > 0 ? Math.log10(obj.L) : 0);
+    return { freqLog: clampLog(uLog - lLog), playTime: obj.playTime || 0, empty: false };
   } catch { return null; }
 }
 function saveToSlot(i) {
@@ -1019,7 +1024,7 @@ function renderSlots() {
     row.className = "slot" + (i === currentSlot ? " current" : "");
     const name = document.createElement("div"); name.className = "slot-name"; name.textContent = `存档槽 ${i + 1}`;
     const meta = document.createElement("div"); meta.className = "slot-info";
-    meta.textContent = (info && !info.empty) ? `${fmt(info.freq)} Hz · ${fmtTime(info.playTime)}` : "（空）";
+    meta.textContent = (info && !info.empty) ? `${fmtLog(info.freqLog)} Hz · ${fmtTime(info.playTime)}` : "（空）";
     const actions = document.createElement("div"); actions.className = "slot-actions";
     const b1 = document.createElement("button"); b1.textContent = "保存"; b1.onclick = () => saveToSlot(i);
     const b2 = document.createElement("button"); b2.textContent = "读取"; b2.onclick = () => loadFromSlot(i);
