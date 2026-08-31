@@ -2588,6 +2588,16 @@ function updateSpUI() {
     if (r.distort && r.m.n === 1 && r.descEl) {
       r.descEl.textContent = "1 DA：基于扭曲宇宙湮灭数，将奇点效果变为 " + daExpMult().toFixed(2) + " 倍";
     }
+    // 8DA：7DA 前显示 ？？？？？（防剧透），7DA 后显示真实描述（金色）
+    if (r.distort && r.m.n === 8 && r.descEl) {
+      if (hasDistortMilestone(7)) {
+        r.descEl.textContent = "8 DA：" + r.m.desc;
+        r.descEl.classList.add("gold-text");
+      } else {
+        r.descEl.textContent = "8 DA：？？？？？";
+        r.descEl.classList.remove("gold-text");
+      }
+    }
     const done = r.distort ? hasDistortMilestone(r.m.n) : hasMilestone(r.m.n);
     r.row.classList.toggle("done", done);
     const cur = r.distort ? distortDA() : effAnnihilations();
