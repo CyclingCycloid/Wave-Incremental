@@ -858,6 +858,9 @@ function migrateState() {
   if (state.bhCanvasClicks === undefined) state.bhCanvasClicks = 0;
   if (state.bhPulseSince === undefined) state.bhPulseSince = 0;
   if (state.bhDistorlSince === undefined) state.bhDistorlSince = 0;
+  // 测试开关不跨会话残留：加载存档时重置（温度无上限的测试状态若被保存，
+  // 热反馈失控会让每次湮灭后十几秒就再次到达 Tcap 且不获 Sp）
+  if (state.testBreakRules) state.testBreakRules = false;
 }
 function loadGame() {
   try {
