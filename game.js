@@ -1673,6 +1673,8 @@ function enterDistort(id) {
   } else {
     forceAnnihilationReset(0); // 未达标进入：重置但不获 Sp、不计入最好纪录
   }
+  // AU24 的「湮灭保留声子」在进出扭曲宇宙时不生效：进入扭曲必须清零声子
+  setPhonons(0);
   state.distortActive = id;
   distortEnterAt = Date.now();
   if (id === "simple") setPhonons(1); // 简洁宇宙：声子恒 1
