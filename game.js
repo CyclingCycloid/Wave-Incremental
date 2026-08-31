@@ -558,7 +558,7 @@ function baseSpGain(T) {
 // AU42 虚幻凝聚：基于虚粒子数量增加奇点获取 ×(1+VP)^0.15
 function vpSpMult() {
   if (!auOwned("au42")) return 1;
-  return Math.pow(1 + state.virtualParticles, 0.15);
+  return Math.pow(1 + state.virtualParticles, 0.3);
 }
 function spGainExact() {
   if (state.testBreakRules) return 0;
@@ -589,7 +589,7 @@ function spGainLog() {
   } else {
     baseLog = Math.log10(2) + 0.01 * tLog; // 2·T^0.01 的 log
   }
-  const mLog = Math.log10(state.distortMult) + state.sau4 * Math.log10(2) + Math.log10(Math.max(1, phononSpMult())) + (auOwned("au42") ? 0.15 * Math.log10(Math.max(1, 1 + state.virtualParticles)) : 0);
+  const mLog = Math.log10(state.distortMult) + state.sau4 * Math.log10(2) + Math.log10(Math.max(1, phononSpMult())) + (auOwned("au42") ? 0.3 * Math.log10(Math.max(1, 1 + state.virtualParticles)) : 0);
   return clampLog(baseLog + mLog);
 }
 // gainRate 的 log10 版本（完整乘法链在 log 域，永不溢出）
