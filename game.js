@@ -1109,13 +1109,15 @@ function checkS6() {
 
 // ---------- Tabs ----------
 const DEFAULT_SUBTAB = { wave: "main", stats: "stats-data", annihilation: "ann-sp" };
+let lastSubtab = {}; // 记录每个主标签上次停留的子标签页
 function switchTab(name) {
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === name));
   document.querySelectorAll(".page").forEach(p => p.classList.add("hidden"));
   const page = document.getElementById("page-" + name);
   if (page) page.classList.remove("hidden");
-  // 主标签默认子页（覆盖上次停留状态）
-  if (DEFAULT_SUBTAB[name]) switchSubtab(DEFAULT_SUBTAB[name]);
+  // 返回上次离开时所处的子标签页；无记录则用默认
+  const sub = lastSubtab[name] || DEFAULT_SUBTAB[name];
+  if (sub) switchSubtab(sub);
   if (name === "settings") renderSlots();
   if (name === "achievements") updateAchievementsUI();
   if (name === "annihilation") { updateSpUI(); updateDistortUI(); updateBlackholeUI(); }
@@ -1125,6 +1127,9 @@ function switchSubtab(name) {
   document.querySelectorAll(".subtab").forEach(t => t.classList.toggle("active", t.dataset.subtab === name));
   document.querySelectorAll(".subpage").forEach(p => p.classList.add("hidden"));
   document.getElementById("sub-" + name).classList.remove("hidden");
+  // 记录当前主标签下最后停留的子标签页
+  const activeTab = document.querySelector(".tab.active");
+  if (activeTab) lastSubtab[activeTab.dataset.tab] = name;
   if (name === "ann-sp") updateSpUI();
   if (name === "ann-distort") updateDistortUI();
   if (name === "ann-blackhole") updateBlackholeUI();
@@ -2901,8 +2906,8 @@ function autoAnnTick() {
     if (Date.now() - state.lastAutoAnnAt >= state.autoAnnInterval * 1000 && annihilationReady()) {
       if (doAnnihilation()) state.lastAutoAnnAt = Date.now();
     }
-  } else if (Date.now() - state.lastAutoAnnAt >= 1000 && annihilationReady() && spGainExact() >= state.autoAnnSp) {
-    // Sp 模式：1 秒防抖（rAF 与 tick 双入口下防止连环湮灭）
+  } else if (Date.now() - state.lastAutoAnnAt >= 200 && annihilationReady() && spGainExact() >= state.autoAnnSp) {
+    // Sp 模式：200ms 防抖（rAF 与 tick 双入口下防止连环湮灭，但减少延迟）
     if (doAnnihilation()) state.lastAutoAnnAt = Date.now();
   }
 }
