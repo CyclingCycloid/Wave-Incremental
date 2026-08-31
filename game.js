@@ -1932,7 +1932,7 @@ const AU_DEFS = [
   ],
   [ // 第4组（4DA 解锁）
     { id: "au41", name: "共轭湮灭", desc: "湮灭次数加成奇点效果", cost: 3e8 },
-    { id: "au42", name: "虚幻凝聚", desc: "基于虚粒子数量增加奇点获取（6DA 解锁）", cost: 5e9 },
+    { id: "au42", name: "虚幻凝聚", desc: "基于虚粒子数量增加奇点获取", cost: 5e9 },
     { id: "au43", name: "???", desc: "（占位）", cost: Infinity },
     { id: "au44", name: "???", desc: "（占位）", cost: Infinity },
   ],
@@ -2607,14 +2607,19 @@ function updateSpUI() {
     const owned = auOwned(id);
     const afford = state.sp >= r.u.cost;
     const isAu4 = id.startsWith("au4");
-    // AU42 特殊：需 6DA 解锁，其余 au4* 需 4DA；解锁前显示 ？？？
-    const au4Show = !isAu4 || (id === "au42" ? hasDistortMilestone(6) : au4Unlocked);
-    const au4Disabled = isAu4 && !(id === "au42" ? hasDistortMilestone(6) : au4Unlocked);
-    r.descEl.textContent = au4Show ? r.u.desc : "？？？";
-    if (r.nameEl) r.nameEl.textContent = au4Show ? r.u.name : "？？？";
-    r.btn.disabled = owned || !afford || (isAu4 && !au4Unlocked);
+    // AU42 特殊：需 6DA 解锁，其余 au4* 需 4DA
+    // AU42 未解锁时名字显示？？？、描述显示「（6DA 解锁）」；其余 au4* 未解锁显示？？？/？？？
+    const au42Unlocked = hasDistortMilestone(6);
+    const au4Show = !isAu4 || (id === "au42" ? au42Unlocked : au4Unlocked);
+    if (id === "au42" && !au42Unlocked) {
+      r.descEl.textContent = "（6DA 解锁）";
+      if (r.nameEl) r.nameEl.textContent = "？？？";
+    } else {
+      r.descEl.textContent = au4Show ? r.u.desc : "？？？";
+      if (r.nameEl) r.nameEl.textContent = au4Show ? r.u.name : "？？？";
+    }
     r.costEl.textContent = owned ? "已购买" : (r.u.cost === Infinity ? "未开放" : fmt(r.u.cost) + " Sp");
-    r.btn.disabled = owned || !afford;
+    r.btn.disabled = owned || !afford || (isAu4 && !(id === "au42" ? au42Unlocked : au4Unlocked));
     r.btn.classList.toggle("bought", owned);
     r.btn.classList.toggle("affordable", !owned && afford);
   }
