@@ -1561,7 +1561,7 @@ const DISTORT_MILESTONES = [
   { n: 1, desc: "" }, // 动态填充：基于扭曲宇宙湮灭数，将奇点效果变为 X 倍
   { n: 3, desc: "解锁更多的奇点升级" },
   { n: 5, desc: "解锁黑洞选项卡", black: true },
-  { n: 8, desc: "打破多元宇宙的规则：普朗克温度变为软上限" },
+  { n: 8, desc: "打破多元宇宙的规则" },
 ];
 function distortDA() { return state.distortDone.length; }
 // 1DA 里程碑效果倍率：基于湮灭扭曲宇宙数，奇点效果指数 ×(1 + log2(1+DA))
