@@ -152,7 +152,7 @@ const DISTORT_UNIVERSES = [
   {
     id: "inflation", name: "滞涨",
     desc: "前奇点资源不消耗被禁用，所有升级价格折算从10Hz开始并且变得更严重，声子升级价格平方，波速获取变为原来的平方根，有效温度变为原来的平方根",
-    tp: Infinity, // 无完成条件
+    tp: 1e110,
   },
   {
     id: "adiabatic", name: "热寂",
