@@ -1935,7 +1935,7 @@ const AU_DEFS = [
   [ // 第4组（4DA 解锁）
     { id: "au41", name: "共轭湮灭", desc: "湮灭次数加成奇点效果", cost: 3e8 },
     { id: "au42", name: "虚幻凝聚", desc: "基于虚粒子数量增加奇点获取", cost: 5e9 },
-    { id: "au43", name: "奇点塌缩", desc: "新增黑洞吸积效率倍率奇点效果", cost: 5e12 },
+    { id: "au43", name: "奇点塌缩", desc: "新增一个奇点效果", cost: 5e12 },
     { id: "au44", name: "???", desc: "（占位）", cost: Infinity },
   ],
 ];
