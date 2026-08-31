@@ -151,7 +151,7 @@ const DISTORT_UNIVERSES = [
   {
     id: "inflation", name: "滞涨",
     desc: "前奇点资源不消耗被禁用，所有升级价格折算从10Hz开始并且变得更严重，声子升级价格平方，波速获取变为原来的平方根，有效温度变为原来的平方根",
-    tp: 1e102,
+    tp: Infinity, // 无完成条件
   },
   {
     id: "adiabatic", name: "热寂",
@@ -2039,21 +2039,21 @@ function bhEffectLog() {
   const exp = 0.2 + state.sbu2 * 0.05;
   return clampLog(exp * mLog);
 }
-// 黑洞对时间速率的加成（仅扭曲状态）：×(1 + bhEffect)；AU34 引力扭曲：扭曲状态效果额外 ^1.5
+// 黑洞对时间速率的加成（仅扭曲状态）：×(1 + bhEffect)；AU34 引力扭曲：扭曲状态效果额外 ^2
 function bhTimeMult() {
   if (!bhUnlocked() || state.bhState !== "distorl") return 1;
-  // AU34：扭曲状态效果 ^1.5（即 bhEffectLog × 1.5）
+  // AU34：扭曲状态效果 ^2（即 bhEffectLog × 2）
   let el = bhEffectLog();
-  if (auOwned("au34")) el = clampLog(el * 1.5);
+  if (auOwned("au34")) el = clampLog(el * 2);
   return el > 0 ? (1 + (el > 308 ? Infinity : Math.pow(10, el))) : 1;
 }
 // 吸积效率倍率（SBU1 事件视界 ×2/级；AU43 奇点塌缩额外 ×spAccretionMult）
 function bhAccretionMult() { return Math.pow(2, state.sbu1) * spAccretionMult(); }
-// AU43 奇点塌缩：黑洞吸积效率倍率 = (lg(Sp+1) + (Sp+1)^0.1)^2
+// AU43 奇点塌缩：黑洞吸积效率倍率 = (lg(Sp+1) + (Sp+1)^0.01)^2
 function spAccretionMult() {
   if (!auOwned("au43")) return 1;
   const sp1 = 1 + state.totalSp;
-  return Math.pow(Math.log10(sp1) + Math.pow(sp1, 0.1), 2);
+  return Math.pow(Math.log10(sp1) + Math.pow(sp1, 0.01), 2);
 }
 // 虚粒子获取倍率（SBU3 霍金辐射 ×2/级）
 function bhVPMult() { return Math.pow(2, state.sbu3); }
