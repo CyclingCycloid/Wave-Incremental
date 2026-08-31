@@ -3233,8 +3233,13 @@ function buildAchievementsOnce() {
   const grid = document.getElementById("normal-ach-grid");
   grid.innerHTML = "";
   normalCellRefs = [];
-  // 已定义行 + 1 行锁定行（展示 ??? 结构）
+  // 已定义行 + 1 行锁定行（展示 ??? 结构）。
+  // 每个逻辑行包进独立的 .ach-row 行容器：手机窄屏时一行 5 个拆成 3+2 居中，
+  // 不同逻辑行的成就永远不会混到同一视觉行。
   for (let r = 0; r < NORMAL_ROWS + 1; r++) {
+    const rowEl = document.createElement("div");
+    rowEl.className = "ach-row";
+    grid.appendChild(rowEl);
     for (let c = 0; c < ACH_PER_ROW; c++) {
       const idx = r * ACH_PER_ROW + c;
       const a = NORMAL_ACH[idx];
@@ -3266,7 +3271,7 @@ function buildAchievementsOnce() {
           }
         });
       }
-      grid.appendChild(cell);
+      rowEl.appendChild(cell);
       normalCellRefs.push({ root: cell, a, row: r, idEl, nameEl, descEl, checkEl, lockEl, starEl, tipEl });
     }
   }

@@ -409,6 +409,10 @@ textarea:focus { outline: none; border-color: var(--accent); }
 .ach-time-rate { text-align: center; font-size: 16px; margin: -8px 0 20px; }
 .ach-section h3 { font-size: 15px; margin-bottom: 4px; }
 .ach-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 10px; }
+/* 普通成就：每个逻辑行独立容器。桌面 5 列；窄屏 3+2 居中，不与其他逻辑行混排 */
+#normal-ach-grid { display: flex; flex-direction: column; gap: 8px; }
+.ach-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.ach-row .ach-cell { flex: 0 0 calc(20% - 7px); min-width: 0; box-sizing: border-box; }
 .ach-cell {
   background: var(--bg-panel); border: 1px solid var(--border); border-radius: 6px;
   padding: 12px 6px; text-align: center; min-height: 78px;
@@ -453,6 +457,8 @@ textarea:focus { outline: none; border-color: var(--accent); }
 @media (max-width: 540px) {
   .stat-tri { grid-template-columns: 1fr; }
   .ach-grid { grid-template-columns: repeat(3, 1fr); }
+  /* 普通成就：逻辑行拆 3+2 居中（行容器隔离，不与其他行混排） */
+  #normal-ach-grid .ach-row .ach-cell { flex: 0 0 calc(33.333% - 6px); }
   .upgrade-card { flex-direction: column; align-items: stretch; }
   .up-card-right { text-align: left; }
 }
