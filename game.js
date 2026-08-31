@@ -2063,11 +2063,13 @@ function spAccretionMult() {
 // 虚粒子获取倍率（SBU3 霍金辐射 ×2/级）
 function bhVPMult() { return Math.pow(2, state.sbu3); }
 // 吸积状态：质量获取速率 log10(dM/dt)。M^0.75 × (F/1e200)^0.01 × accretionMult
-// → log = massExp*logM + 0.01*(FLog-200) + log2(sbu1)；massExp 受 SVPU1 加成
+// → log = massExp*logM + 0.01*(FLog-200) + accretionMult；massExp 受 SVPU1 加成，
+// accretionMult = SBU1 ×2^sbu1 × AU43 奇点塌缩倍率（spAccretionMult）
 function bhAccretionRateLog() {
   const mLog = getLogBhMass();
   const fLog = FLog();
-  return clampLog(bhAccretionMassExp() * mLog + 0.01 * (fLog - 200) + state.sbu1 * Math.log10(2));
+  const accMult = Math.pow(2, state.sbu1) * spAccretionMult();
+  return clampLog(bhAccretionMassExp() * mLog + 0.01 * (fLog - 200) + Math.log10(Math.max(accMult, 1e-300)));
 }
 // 脉冲状态：虚粒子获取速率（每秒）= floor(mult × (M^0.1 − 1))；M=1 时自然为 0。返回 log10
 function bhVPGainLog() {
