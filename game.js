@@ -797,7 +797,7 @@ function fmtTime(seconds, precise) {
   const h = Math.floor((total % 86400) / 3600);
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
-  const sStr = precise ? (Math.round(s * 10) / 10).toString() : `${s}`;
+  const sStr = precise ? (Math.round(s * 40) / 40).toString() : `${s}`;
   if (d > 0) return `${d}d ${h}h ${m}m`;
   if (h > 0) return `${h}h ${m}m ${sStr}s`;
   if (m > 0) return `${m}m ${sStr}s`;
@@ -1993,12 +1993,12 @@ function phononSpMult() {
 function timeArrowMult() { return auOwned("au31") ? 1 + Math.pow(Math.log10(1 + state.realTime), 0.6) : 1; }
 // AU32：成就时间倍率底数
 function achTimeBase() { return auOwned("au32") ? 1.2 : 1.1; }
-// AU33：绝对零度（冷却最佳完成时间 T 秒）：×min(100, max(1, (1000/T)^0.5))
+// AU33：绝对零度（冷却最佳完成时间 T 秒）：×min(200, max(1, min((1000/T)^0.5, 60/T)))
 function absZeroMult() {
   if (!auOwned("au33")) return 1;
   const T = state.distortBest && state.distortBest.cooldown;
   if (!T || T <= 0) return 1;
-  return Math.min(100, Math.max(1, Math.sqrt(1000 / T)));
+  return Math.min(200, Math.max(1, Math.min(Math.sqrt(1000 / T), 60 / T)));
 }
 
 // ---------- 黑洞系统（v0.4.3 实装，5DA 解锁）----------
