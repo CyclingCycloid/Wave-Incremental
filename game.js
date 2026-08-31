@@ -150,7 +150,7 @@ const DISTORT_UNIVERSES = [
   },
   {
     id: "inflation", name: "滞涨",
-    desc: "前奇点资源不消耗被禁用，所有升级价格折算从10Hz开始并且变得更严重，声子升级价格平方，波速获取变为原来的平方根",
+    desc: "前奇点资源不消耗被禁用，所有升级价格折算从10Hz开始并且变得更严重，声子升级价格平方，波速获取变为原来的平方根，有效温度变为原来的平方根",
     tp: Infinity, // 测试值，待调整
   },
   {
@@ -354,7 +354,10 @@ function effectiveCapLog() {
 // 与 double 版 temperature() 语义一致，否则 log 域会绕过上限引发数值爆炸。
 function temperatureCappedLog() {
   if (state.rulesBroken || state.testBreakRules) return temperatureLog(); // 打破规则：无上限
-  return Math.min(temperatureLog(), effectiveCapLog());
+  const raw = temperatureLog();
+  // 滞涨宇宙：有效温度变为原来的平方根（log ÷ 2），热涨落等加成相应减弱
+  const eff = inDistort("inflation") ? raw / 2 : raw;
+  return Math.min(eff, effectiveCapLog());
 }
 function temperature() {
   const log = temperatureCappedLog();
