@@ -3,7 +3,7 @@
 // ---------- Save schema ----------
 function defaultState() {
   return {
-    version: "0.4.3.2",
+    version: "0.4.3.3",
     // 物理资源
     U: 10,                 // 波速 m/s (默认国际单位制，double 缓存；极端值看 logU10)
     logU10: 1,             // log10(U) 权威表示（防溢出/下溢；U=0 时为 NLOG 哨兵）
@@ -151,7 +151,7 @@ const DISTORT_UNIVERSES = [
   {
     id: "inflation", name: "滞涨",
     desc: "前奇点资源不消耗被禁用，所有升级价格折算从10Hz开始并且变得更严重，声子升级价格平方，波速获取变为原来的平方根，有效温度变为原来的平方根",
-    tp: Infinity, // 测试值，待调整
+    tp: 1e102,
   },
   {
     id: "adiabatic", name: "热寂",
@@ -789,15 +789,15 @@ function fmtInt(doubleVal, logVal) {
   return "∞";
 }
 function fmtTime(seconds, precise) {
-  // precise=true 时保留到 0.1s 刻度（挑战计时与统计用）
-  const total = precise ? seconds : Math.floor(seconds);
+  // precise=true 时显示最小分度 0.1s（计算精度保留 25ms，仅显示取整到 0.1s）
+  const total = precise ? Math.round(seconds * 10) / 10 : Math.floor(seconds);
   const d = Math.floor(total / 86400);
   // 超过 1e4 天：只显示 XXXd 并用科学计数法
   if (d >= 1e4) return d.toExponential(2).replace("e+", "e") + "d";
   const h = Math.floor((total % 86400) / 3600);
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
-  const sStr = precise ? (Math.round(s * 40) / 40).toString() : `${s}`;
+  const sStr = precise ? (Math.round(s * 10) / 10).toString() : `${s}`;
   if (d > 0) return `${d}d ${h}h ${m}m`;
   if (h > 0) return `${h}h ${m}m ${sStr}s`;
   if (m > 0) return `${m}m ${sStr}s`;
@@ -1930,7 +1930,7 @@ const AU_DEFS = [
   [ // 第4组（4DA 解锁）
     { id: "au41", name: "共轭湮灭", desc: "湮灭次数加成奇点效果", cost: 3e8 },
     { id: "au42", name: "虚幻凝聚", desc: "基于虚粒子数量增加奇点获取", cost: 5e9 },
-    { id: "au43", name: "???", desc: "（占位）", cost: Infinity },
+    { id: "au43", name: "奇点塌缩", desc: "新增黑洞吸积效率倍率奇点效果", cost: 5e11 },
     { id: "au44", name: "???", desc: "（占位）", cost: Infinity },
   ],
 ];
@@ -2047,8 +2047,14 @@ function bhTimeMult() {
   if (auOwned("au34")) el = clampLog(el * 1.5);
   return el > 0 ? (1 + (el > 308 ? Infinity : Math.pow(10, el))) : 1;
 }
-// 吸积效率倍率（SBU1 事件视界 ×2/级）
-function bhAccretionMult() { return Math.pow(2, state.sbu1); }
+// 吸积效率倍率（SBU1 事件视界 ×2/级；AU43 奇点塌缩额外 ×spAccretionMult）
+function bhAccretionMult() { return Math.pow(2, state.sbu1) * spAccretionMult(); }
+// AU43 奇点塌缩：黑洞吸积效率倍率 = (lg(Sp+1) + (Sp+1)^0.1)^2
+function spAccretionMult() {
+  if (!auOwned("au43")) return 1;
+  const sp1 = 1 + state.totalSp;
+  return Math.pow(Math.log10(sp1) + Math.pow(sp1, 0.1), 2);
+}
 // 虚粒子获取倍率（SBU3 霍金辐射 ×2/级）
 function bhVPMult() { return Math.pow(2, state.sbu3); }
 // 吸积状态：质量获取速率 log10(dM/dt)。M^0.75 × (F/1e200)^0.01 × accretionMult
@@ -2606,19 +2612,20 @@ function updateSpUI() {
     const owned = auOwned(id);
     const afford = state.sp >= r.u.cost;
     const isAu4 = id.startsWith("au4");
-    // AU42 特殊：需 6DA 解锁，其余 au4* 需 4DA
-    // AU42 未解锁时名字显示？？？、描述显示「（6DA 解锁）」；其余 au4* 未解锁显示？？？/？？？
+    // AU42 需 6DA、AU43 需 7DA；其余 au4* 需 4DA
+    // 未解锁时名字显示？？？、描述显示「（NDA 解锁）」
     const au42Unlocked = hasDistortMilestone(6);
-    const au4Show = !isAu4 || (id === "au42" ? au42Unlocked : au4Unlocked);
-    if (id === "au42" && !au42Unlocked) {
-      r.descEl.textContent = "（6DA 解锁）";
+    const au43Unlocked = hasDistortMilestone(7);
+    const thisUnlocked = !isAu4 ? true : (id === "au42" ? au42Unlocked : id === "au43" ? au43Unlocked : au4Unlocked);
+    if (isAu4 && !thisUnlocked) {
+      r.descEl.textContent = `（${id === "au42" ? "6" : id === "au43" ? "7" : "4"}DA 解锁）`;
       if (r.nameEl) r.nameEl.textContent = "？？？";
     } else {
-      r.descEl.textContent = au4Show ? r.u.desc : "？？？";
-      if (r.nameEl) r.nameEl.textContent = au4Show ? r.u.name : "？？？";
+      r.descEl.textContent = r.u.desc;
+      if (r.nameEl) r.nameEl.textContent = r.u.name;
     }
     r.costEl.textContent = owned ? "已购买" : (r.u.cost === Infinity ? "未开放" : fmt(r.u.cost) + " Sp");
-    r.btn.disabled = owned || !afford || (isAu4 && !(id === "au42" ? au42Unlocked : au4Unlocked));
+    r.btn.disabled = owned || !afford || (isAu4 && !thisUnlocked);
     r.btn.classList.toggle("bought", owned);
     r.btn.classList.toggle("affordable", !owned && afford);
   }
@@ -2628,8 +2635,9 @@ function updateSpUI() {
     ["总奇点 (Sp)", fmtNum(state.totalSp, getLogTotalSp())],
     ["波速获取倍率", "×" + fmtNum(hasDistortMilestone(1) ? Decimal.pow(1 + state.totalSp, 2 * daExpMult()).toNumber() : Math.pow(1 + state.totalSp, 2), 2 * daExpMult() * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp)))],
     ["普朗克常数倍率", "×" + fmtNum(planckMult(), planckMultLog())],
-    ["当前宇宙普朗克温度", fmtNum(temperatureCap(), temperatureCapLog()) + " K"],
   ];
+  if (auOwned("au43")) rows.push(["黑洞吸积效率倍率", "×" + fmt(spAccretionMult())]);
+  rows.push(["当前宇宙普朗克温度", fmtNum(temperatureCap(), temperatureCapLog()) + " K"]);
   panel.innerHTML = "";
   for (const [label, value] of rows) {
     const row = document.createElement("div"); row.className = "spb-row";
@@ -3060,7 +3068,7 @@ function renderStats() {
   const annReal = state.annihilations >= 1 ? (Date.now() - state.annStartReal) / 1000 : 0;
   const annGame = state.annihilations >= 1 ? state.playTime - state.annStartGame : 0;
   document.getElementById("stat-ann-time").textContent =
-    state.annihilations >= 1 ? `${fmtTime(Math.round(annReal * 10) / 10, true)} / ${fmtTime(Math.round(annGame * 10) / 10, true)}` : "— / —";
+    state.annihilations >= 1 ? `${fmtTime(annReal, true)} / ${fmtTime(annGame, true)}` : "— / —";
   document.getElementById("stat-ann-total-sp").textContent = fmtNum(state.totalSp, getLogTotalSp());
   document.getElementById("stat-ann-best-sp").textContent = fmtNum(state.annBestSp, state.annBestSp > 0 ? Math.log10(state.annBestSp) : NLOG);
   document.getElementById("stat-ann-best-rate").textContent = fmtNum(state.annBestRate, state.annBestRate > 0 ? Math.log10(state.annBestRate) : NLOG) + " Sp/min";
