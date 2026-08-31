@@ -1597,10 +1597,9 @@ function doAnnihilation() {
   // SVPU2 虚幻湮灭：每次获得的湮灭次数 ×2^svpu2（如 3 级则每次 +8 次而非 +1）
   state.annihilations += annSpMult();
 
-  // 重置（几乎全部）。累计频率（通用统计的总产生）不重置。
+  // 重置（几乎全部）。累计频率与统计极值（通用统计）不重置。
   setU(resetU()); state.L = 1; state.logL10 = 0;
   state.up1 = 0; state.up2 = 0; state.up3 = 0; state.up3LastF = 0; state.logUp3LastF = NLOG;
-  state.maxF = 10; state.logMaxF = 1; state.maxU = 10; state.logMaxU = 1; state.minL = 1; state.logMinL = 0;
   if (!auOwned("au24")) setPhonons(0); // AU24 量子涟漪：湮灭保留声子
   state.pg1 = 0; state.pg2 = 0; state.pg3 = 0; // 发生器重复升级等级总是重置
   if (!hasMilestone(1)) state.phUnlocked = 0;
@@ -1706,7 +1705,6 @@ function forceAnnihilationReset(gained) {
 function applyAnnihilationResetBody(realNow) {
   setU(resetU()); state.L = 1; state.logL10 = 0;
   state.up1 = 0; state.up2 = 0; state.up3 = 0; state.up3LastF = 0; state.logUp3LastF = NLOG;
-  state.maxF = 10; state.logMaxF = 1; state.maxU = 10; state.logMaxU = 1; state.minL = 1; state.logMinL = 0;
   setPhonons(0);
   state.pg1 = 0; state.pg2 = 0; state.pg3 = 0;
   state.lastPurchaseAt = 0; state.narrowPurchases = 0;
@@ -3062,7 +3060,7 @@ function renderStats() {
   const annReal = state.annihilations >= 1 ? (Date.now() - state.annStartReal) / 1000 : 0;
   const annGame = state.annihilations >= 1 ? state.playTime - state.annStartGame : 0;
   document.getElementById("stat-ann-time").textContent =
-    state.annihilations >= 1 ? `${fmtTime(annReal)} / ${fmtTime(annGame)}` : "— / —";
+    state.annihilations >= 1 ? `${fmtTime(Math.round(annReal * 10) / 10, true)} / ${fmtTime(Math.round(annGame * 10) / 10, true)}` : "— / —";
   document.getElementById("stat-ann-total-sp").textContent = fmtNum(state.totalSp, getLogTotalSp());
   document.getElementById("stat-ann-best-sp").textContent = fmtNum(state.annBestSp, state.annBestSp > 0 ? Math.log10(state.annBestSp) : NLOG);
   document.getElementById("stat-ann-best-rate").textContent = fmtNum(state.annBestRate, state.annBestRate > 0 ? Math.log10(state.annBestRate) : NLOG) + " Sp/min";
