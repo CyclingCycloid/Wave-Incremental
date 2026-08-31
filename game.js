@@ -790,15 +790,15 @@ function fmtInt(doubleVal, logVal) {
   return "∞";
 }
 function fmtTime(seconds, precise) {
-  // precise=true 时显示最小分度 0.1s（计算精度保留 25ms，仅显示取整到 0.1s）
-  const total = precise ? Math.round(seconds * 10) / 10 : Math.floor(seconds);
+  // precise=true 时显示最小分度 25ms（挑战计时用；计算精度也是 25ms）
+  const total = precise ? seconds : Math.floor(seconds);
   const d = Math.floor(total / 86400);
   // 超过 1e4 天：只显示 XXXd 并用科学计数法
   if (d >= 1e4) return d.toExponential(2).replace("e+", "e") + "d";
   const h = Math.floor((total % 86400) / 3600);
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
-  const sStr = precise ? (Math.round(s * 10) / 10).toString() : `${s}`;
+  const sStr = precise ? (Math.round(s * 40) / 40).toString() : `${s}`;
   if (d > 0) return `${d}d ${h}h ${m}m`;
   if (h > 0) return `${h}h ${m}m ${sStr}s`;
   if (m > 0) return `${m}m ${sStr}s`;
