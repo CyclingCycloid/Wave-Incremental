@@ -2589,7 +2589,9 @@ function updateSpUI() {
       r.descEl.textContent = "1 DA：基于扭曲宇宙湮灭数，将奇点效果变为 " + daExpMult().toFixed(2) + " 倍";
     }
     // 8DA：7DA 前显示 ？？？？？（防剧透），7DA 后显示真实描述（金色）
+    // 8DA：7DA 前显示 ？？？？？；7DA 后金色文字（完成前红框、完成后金框全金）
     if (r.distort && r.m.n === 8 && r.descEl) {
+      r.row.classList.add("ms-8da");
       if (hasDistortMilestone(7)) {
         r.descEl.textContent = "8 DA：" + r.m.desc;
         r.descEl.classList.add("gold-text");

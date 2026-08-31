@@ -532,3 +532,9 @@ body[data-theme="white"] #bh-canvas { box-shadow: 0 0 0 2px #888, 0 2px 8px rgba
 
 /* 8DA 里程碑描述：7DA 后显示为金色 */
 .ms-desc.gold-text { color: #d4a017; }
+
+/* 8DA 里程碑专属样式 */
+.milestone.ms-8da { border-color: var(--danger); }                 /* 7DA 后未完成：红框 */
+.milestone.ms-8da .ms-desc.gold-text { color: #d4a017; }            /* 金色文字 */
+.milestone.ms-8da.done { border-color: #d4a017; }                   /* 完成后：金框 */
+.milestone.ms-8da.done .ms-desc { color: #d4a017; }                 /* 完成后：金色文字 */
