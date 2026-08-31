@@ -1505,7 +1505,7 @@ const DISTORT_MILESTONES = [
   { n: 1, desc: "" }, // 动态填充：基于扭曲宇宙湮灭数，将奇点效果变为 X 倍
   { n: 3, desc: "解锁更多的奇点升级" },
   { n: 5, desc: "解锁黑洞选项卡", black: true },
-  { n: 8, desc: "打破宇宙的规则：取消温度上限（WIP）" },
+  { n: 8, desc: "打破多元宇宙的规则：取消温度上限（WIP）" },
 ];
 function distortDA() { return state.distortDone.length; }
 // 1DA 里程碑效果倍率：基于湮灭扭曲宇宙数，奇点效果指数 ×(1 + log2(1+DA))
@@ -1903,11 +1903,11 @@ const AU_DEFS = [
   [ // 第3组
     { id: "au31", name: "时间之矢", desc: "基于真实游玩时间给予时间倍率：×(1+lg(1+t)^0.6)", cost: 1e6 },
     { id: "au32", name: "成就刻印", desc: "成就的时间倍率 1.1x → 1.2x", cost: 1e7 },
-    { id: "au33", name: "绝对零度", desc: "基于「冷却」最佳完成时间给予时间倍率：×max(1, min(100, 600/T))", cost: 1e10 },
+    { id: "au33", name: "绝对零度", desc: "基于「冷却」最佳完成时间给予时间倍率", cost: 1e10 },
     { id: "au34", name: "引力扭曲", desc: "增强黑洞的效果（WIP）", cost: Infinity },
   ],
   [ // 第4组（4DA 解锁）
-    { id: "au41", name: "声子湮灭", desc: "声子加成奇点获取", cost: Infinity },
+    { id: "au41", name: "共轭湮灭", desc: "湮灭次数加成奇点效果", cost: 3e8 },
     { id: "au42", name: "???", desc: "（占位）", cost: Infinity },
     { id: "au43", name: "???", desc: "（占位）", cost: Infinity },
     { id: "au44", name: "???", desc: "（占位）", cost: Infinity },
@@ -1955,21 +1955,21 @@ function up2Base() { return 2 + (auOwned("au13") ? Math.min(0.5, Math.log2(Math.
 function invLMult() { return auOwned("au14") ? Math.max(1, Math.pow(10, -0.05 * getLogL10())) : 1; }
 // 波长倒数增强声子产生的 log10：max(0, -0.05·logL10)
 function invLMultLog() { return auOwned("au14") ? Math.max(0, -0.05 * getLogL10()) : 0; }
-// AU41：声子湮灭——声子加成奇点获取
+// AU41：共轭湮灭——湮灭次数 A 加成奇点效果：×(1+lg(1+A)/3)^(1/2)
 function phononSpMult() {
   if (!auOwned("au41")) return 1;
-  return Math.max(1, Math.pow(state.phonons / 1e40, 0.02));
+  return Math.sqrt(1 + Math.log10(1 + state.annihilations) / 3);
 }
 // AU31：时间倍率（真实游玩时间）
 function timeArrowMult() { return auOwned("au31") ? 1 + Math.pow(Math.log10(1 + state.realTime), 0.6) : 1; }
 // AU32：成就时间倍率底数
 function achTimeBase() { return auOwned("au32") ? 1.2 : 1.1; }
-// AU33：绝对零度（冷却最佳完成时间 T 秒）
+// AU33：绝对零度（冷却最佳完成时间 T 秒）：×min(100, max(1, 60/T))
 function absZeroMult() {
   if (!auOwned("au33")) return 1;
   const T = state.distortBest && state.distortBest.cooldown;
   if (!T || T <= 0) return 1;
-  return Math.max(1, Math.min(100, 30 / T));
+  return Math.min(100, Math.max(1, 60 / T));
 }
 
 // ---------- 黑洞系统（v0.4.3 实装，5DA 解锁）----------
@@ -2616,7 +2616,7 @@ function updateSpUI() {
     if (rawLogCap > 250) {
       const warn = document.createElement("div");
       warn.className = "spb-warning";
-      warn.textContent = "宇宙的规则正在阻止你获取更高的温度";
+      warn.textContent = "多元宇宙的规则正在阻止你获取更高的温度";
       panel.appendChild(warn);
     }
   }
@@ -3117,7 +3117,7 @@ const NORMAL_ACH = [
   // 第 4 行 (A41-A45) 奇点
   { id: "A41", name: "视界", desc: "解锁黑洞", star: true, reward: "总时间倍率再 ^1.1", check: () => bhUnlocked() },
   { id: "A42", name: "烂柯", desc: "总时间倍率超过 3.65e6", check: () => timeRate() >= 3.65e6 },
-  { id: "A43", name: "无限", desc: "打破宇宙的规则", check: () => state.rulesBroken && !state.testBreakRules }, // 原 A35
+  { id: "A43", name: "无限", desc: "打破多元宇宙的规则", check: () => state.rulesBroken && !state.testBreakRules }, // 原 A35
   { id: "A44", name: "永炽", desc: "温度超过 1.79e308 K", check: () => temperature() >= 1.79e308 },
   { id: "A45", name: "???", desc: "（占位）", check: () => false },
 ];
