@@ -884,6 +884,30 @@ function migrateState() {
     const lp = getLogUp3LastF();
     state.up3LastF = (lp <= NLOG + 1) ? 0 : fromLog(lp);
   }
+  // 存档净化：clampLog 修复前的失控会把 log 权威字段写成天文数字（污染指纹
+  // 集中在 [2.3e14, 1e15]：0.23×LOG_CAP 与 LOG_CAP 本体；正常游玩 log ≥1e12
+  // 需连续不湮灭挂机十余小时才会触及）。检测即修复：U 重置为湮灭初值，
+  // 派生统计跟随，Sp/声子等资源清为对应零值。
+  const SANITY_MAX = 1e12;
+  const polluted = [state.logU10, state.logL10, state.logTotalF, state.logMaxF, state.logMaxU, state.logDsp, state.logDtotal, state.logDph, state.logUp3LastF, state.logVP, state.logBhMass]
+    .some(v => v !== undefined && v !== null && isFinite(v) && Math.abs(v) >= SANITY_MAX);
+  if (polluted) {
+    setU(resetU());
+    setTotalFGained(resetU());
+    state.L = 1; state.logL10 = 0;
+    state.maxF = resetU(); state.logMaxF = 2;
+    state.maxU = resetU(); state.logMaxU = 2;
+    state.minL = 1; state.logMinL = 0;
+    setSp(0); setTotalSp(0);
+    setPhonons(0);
+    setUp3LastF(NLOG);
+    setVP(0);
+    setBhMass(1);
+    state.up1 = 0; state.up2 = 0; state.up3 = 0; state.meta1 = 0;
+    state.pg1 = 0; state.pg2 = 0; state.pg3 = 0;
+    state.phFluct = 0; state.phCoupling = 0;
+    state.distortActive = "";
+  }
 }
 function loadGame() {
   try {
