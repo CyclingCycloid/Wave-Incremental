@@ -11,7 +11,7 @@
   <div id="app">
     <header id="topbar">
       <div class="title">Wave Incremental</div>
-      <div class="version">v0.4.3.3</div>
+      <div class="version">v0.5.0 The Distort Update</div>
       <button id="annihilate-btn" class="annihilate-btn hidden">湮灭</button>
     </header>
 
@@ -86,6 +86,7 @@
           <div class="ph-resources">
             <div class="ph-res-text" id="ph-res-text">你拥有0声子，温度为0 K</div>
             <div class="ph-thermal" id="ph-thermal">热涨落把你的波速获取变为原来的1.000倍</div>
+            <div class="ph-softcap-note hidden" id="ph-softcap-note">超过普朗克温度的部分将受到软上限限制</div>
           </div>
           <div class="btn-row ph-gen-row">
             <button id="ph-gen-btn">启动声子发生器</button>
@@ -322,6 +323,7 @@
 
         <!-- 奇点 -->
         <div class="subpage hidden" id="sub-ann-sp">
+          <button id="break-rules-btn" class="break-rules-btn hidden">打破多元宇宙的规则</button>
           <div class="sp-bonus-panel" id="sp-bonus-panel"></div>
           <div class="sp-upgrade-list" id="sp-upgrade-list"></div>
         </div>

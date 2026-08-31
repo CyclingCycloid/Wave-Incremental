@@ -3,7 +3,7 @@
 // ---------- Save schema ----------
 function defaultState() {
   return {
-    version: "0.4.3.3",
+    version: "0.5.0",
     // 物理资源
     U: 10,                 // 波速 m/s (默认国际单位制，double 缓存；极端值看 logU10)
     logU10: 1,             // log10(U) 权威表示（防溢出/下溢；U=0 时为 NLOG 哨兵）
@@ -353,12 +353,21 @@ function effectiveCapLog() {
 }
 // 温度的 log10（经上限裁剪）：热涨落/声子涨落等增益计算必须用这个，
 // 与 double 版 temperature() 语义一致，否则 log 域会绕过上限引发数值爆炸。
+// 8DA 打破规则（仅主宇宙）：普朗克温度从硬上限变为软上限——
+// 超过 Tp 的部分（log 域超出量）按 (lg(Tp)/lg(T))^(1/2)/2 次方缩放。
+// 扭曲宇宙中仍为硬上限（该硬上限还是硬上限）。
 function temperatureCappedLog() {
-  if (state.rulesBroken || state.testBreakRules) return temperatureLog(); // 打破规则：无上限
   const raw = temperatureLog();
+  if (state.testBreakRules) return raw; // 测试按钮：无上限
+  const capLog = effectiveCapLog();
+  if (state.rulesBroken && !state.distortActive && raw > capLog) {
+    // 软上限：超出部分 × (lg(Tp)/lg(T))^(1/2)/2
+    const p = Math.sqrt(capLog / raw) / 2;
+    return clampLog(capLog + (raw - capLog) * p);
+  }
   // 滞涨宇宙：有效温度变为原来的平方根（log ÷ 2），热涨落等加成相应减弱
   const eff = inDistort("inflation") ? raw / 2 : raw;
-  return Math.min(eff, effectiveCapLog());
+  return Math.min(eff, capLog);
 }
 function temperature() {
   const log = temperatureCappedLog();
@@ -1472,6 +1481,15 @@ function renderPhononFast() {
     `你拥有${fmtNum(Math.floor(state.phonons), getLogPhonons())}声子，温度为${fmtNum(T, temperatureCappedLog())} K`;
   document.getElementById("ph-thermal").textContent =
     `热涨落把你的波速获取变为原来的${fmtNum(thermalMult(), thermalMultLog())}倍`;
+  // 8DA 打破规则后：主宇宙普朗克温度为软上限，声子页显示红色提示行
+  const noteEl = document.getElementById("ph-softcap-note");
+  if (noteEl) {
+    if (state.rulesBroken && !state.distortActive && temperatureLog() > effectiveCapLog()) {
+      noteEl.classList.remove("hidden");
+    } else {
+      noteEl.classList.add("hidden");
+    }
+  }
 }
 function updatePhononUI() {
   if (!state.phUnlocked) return;
@@ -1543,7 +1561,7 @@ const DISTORT_MILESTONES = [
   { n: 1, desc: "" }, // 动态填充：基于扭曲宇宙湮灭数，将奇点效果变为 X 倍
   { n: 3, desc: "解锁更多的奇点升级" },
   { n: 5, desc: "解锁黑洞选项卡", black: true },
-  { n: 8, desc: "打破多元宇宙的规则：取消温度上限（WIP）" },
+  { n: 8, desc: "打破多元宇宙的规则：普朗克温度变为软上限" },
 ];
 function distortDA() { return state.distortDone.length; }
 // 1DA 里程碑效果倍率：基于湮灭扭曲宇宙数，奇点效果指数 ×(1 + log2(1+DA))
@@ -2668,15 +2686,24 @@ function updateSpUI() {
     row.append(l, v);
     panel.appendChild(row);
   }
-  // 温度上限软上限提示：原上限超 1e250 时显示（亮红）
+  // 温度上限软上限提示：原上限超 1e250 且未打破规则时显示（亮红）
   {
     const expS = hasDistortMilestone(1) ? 10 * daExpMult() : 10;
     const rawLogCap = (getLogTotalSp() > 250 ? expS * getLogTotalSp() : expS * Math.log10(1 + state.totalSp)) + Math.log10(T_P0);
-    if (rawLogCap > 250) {
+    if (rawLogCap > 250 && !state.rulesBroken) {
       const warn = document.createElement("div");
       warn.className = "spb-warning";
       warn.textContent = "多元宇宙的规则正在阻止你获取更高的温度";
       panel.appendChild(warn);
+    }
+  }
+  // 8DA 打破规则按钮：奇点页顶部居中（红→金）
+  {
+    const brBtn = document.getElementById("break-rules-btn");
+    if (brBtn) {
+      brBtn.classList.toggle("hidden", !hasDistortMilestone(8));
+      brBtn.classList.toggle("broken", state.rulesBroken);
+      brBtn.textContent = state.rulesBroken ? "恢复多元宇宙的规则" : "打破多元宇宙的规则";
     }
   }
   document.getElementById("sp-value").textContent = fmtNum(state.sp, getLogSp());
@@ -3730,6 +3757,16 @@ function setupUI() {
     setAutosaveStatus(state.testBreakRules ? "测试模式：宇宙规则已打破（不获 Sp）" : "测试模式：规则已恢复");
   });
   refreshTestBtn();
+
+  // 8DA：打破/恢复多元宇宙的规则（奇点页顶部按钮）
+  const brBtn = document.getElementById("break-rules-btn");
+  brBtn.addEventListener("click", () => {
+    if (!hasDistortMilestone(8)) return;
+    state.rulesBroken = !state.rulesBroken;
+    saveGame();
+    renderAll();
+    setAutosaveStatus(state.rulesBroken ? "多元宇宙的规则已被打破" : "多元宇宙的规则已恢复");
+  });
 
   // 测试：弹出成就弹窗
   document.getElementById("test-popup").addEventListener("click", () => {
