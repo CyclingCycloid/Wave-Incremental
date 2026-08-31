@@ -7,10 +7,11 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body data-theme="black">
+  <div id="ach-popup-stack"></div>
   <div id="app">
     <header id="topbar">
       <div class="title">Wave Incremental</div>
-      <div class="version">v0.4.3.1</div>
+      <div class="version">v0.4.3.2</div>
       <button id="annihilate-btn" class="annihilate-btn hidden">湮灭</button>
     </header>
 
@@ -264,10 +265,23 @@
           <a href="CHANGELOG.md" target="_blank" class="changelog-link">查看 Changelog</a>
         </div>
 
+        <div class="setting-group">
+          <h3>仓库</h3>
+          <a href="https://github.com/CyclingCycloid/Wave-Incremental" target="_blank" class="changelog-link">GitHub 仓库</a>
+          <p class="muted small">关注摆线谢谢喵，给摆线点星星谢谢喵</p>
+        </div>
+
+        <div class="setting-group">
+          <h3>rua摆线</h3>
+          <button id="rua-btn">rua摆线！</button>
+          <p class="muted small" id="rua-status">好感度 0</p>
+        </div>
+
         <div class="setting-group danger">
           <h3>危险操作</h3>
           <button id="hard-reset" class="danger-btn">硬重置（清除一切）</button>
-          <button id="test-break-rules" class="danger-btn">测试：打破宇宙规则（取消温度上限，期间无法获得奇点）</button>
+          <button id="test-break-rules" class="danger-btn">测试：打破多元宇宙规则（取消温度上限，期间无法获得奇点）</button>
+          <button id="test-popup" class="danger-btn">测试：弹出成就弹窗</button>
         </div>
       </section>
 
@@ -275,7 +289,7 @@
       <section class="page hidden" id="page-achievements">
         <h2 class="page-title">成就</h2>
         <div class="ach-time-rate" id="ach-time-rate">你的成就将时间速率变为原来的1.000倍</div>
-        <div class="ach-hint">带五角星的成就具有特殊奖励，点击查看</div>
+        <div class="ach-hint">带五角星的成就具有特殊奖励，完成后点击查看</div>
 
         <div class="ach-section">
           <h3>普通成就</h3>

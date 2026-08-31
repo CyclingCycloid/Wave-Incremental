@@ -501,3 +501,19 @@ body[data-theme="white"] #bh-canvas { box-shadow: 0 0 0 2px #888, 0 2px 8px rgba
 /* 黑洞虚粒子升级（v0.4.3）*/
 .bh-vp-title { font-size: 14px; font-weight: 600; color: var(--text-dim); margin: 10px 0 4px; }
 .svpu-btn { border-style: dashed !important; }
+
+/* ===== 成就弹窗（左上角，堆叠+补位动画）===== */
+#ach-popup-stack { position: fixed; top: 12px; left: 12px; z-index: 200; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+.ach-popup {
+  padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.4); white-space: nowrap;
+  animation: ach-popup-fade 1.5s ease-out forwards; transition: transform 0.3s ease, opacity 0.3s ease;
+}
+.ach-popup.normal { background: #1a3a1a; color: #4ade80; border: 2px solid #4ade80; }
+.ach-popup.hidden-ach { background: #3a3a1a; color: #facc15; border: 2px solid #facc15; }
+@keyframes ach-popup-fade {
+  0% { opacity: 0; transform: translateY(-20px); }
+  10% { opacity: 1; transform: translateY(0); }
+  80% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-10px); }
+}

@@ -3,7 +3,7 @@
 // ---------- Save schema ----------
 function defaultState() {
   return {
-    version: "0.4.3.1",
+    version: "0.4.3.2",
     // 物理资源
     U: 10,                 // 波速 m/s (默认国际单位制，double 缓存；极端值看 logU10)
     logU10: 1,             // log10(U) 权威表示（防溢出/下溢；U=0 时为 NLOG 哨兵）
@@ -69,6 +69,12 @@ function defaultState() {
     bhCanvasClicks: 0,     // S21：黑洞动画点击计数
     bhPulseSince: 0,       // S22：本次持续处于脉冲状态的起始时刻（0=不在脉冲）
     bhDistorlSince: 0,     // S23：本次持续处于扭曲状态的起始时刻（0=不在扭曲）
+    // rua摆线（v0.4.3.2）
+    ruaFav: 0,             // 好感度
+    ruaCountThisHour: 0,   // 本小时已 rua 次数（每小时重置）
+    ruaHourStart: 0,       // 当前小时窗口起始时间戳
+    ruaBoostMult: 1,       // 当前生效的随机倍率加成
+    ruaBoostUntil: 0,      // 倍率加成到期时间戳
 
     // 统计
     totalFGained: 10,      // 累计频率（生成总量，double 缓存；极端值看 logTotalF）
@@ -665,10 +671,11 @@ function gainRateLog() {
   return { log: clampLog(log), sign };
 }
 // 时间速率：每个普通成就给予 ×1.1 的游戏时间速率加成；黑洞扭曲状态给予 ×(1+bhEffect)；
-// A41 特殊奖励：总时间倍率再 ^1.1
+// A41 特殊奖励：总时间倍率再 ^1.1；rua摆线随机倍率加成（持续 10 分钟）
 function timeRate() {
   let tr = Math.pow(achTimeBase(), state.ach.normal.length) * timeArrowMult() * absZeroMult() * bhTimeMult();
   if (state.ach.normal.includes("A41")) tr = Math.pow(tr, 1.1);
+  if (state.ruaBoostUntil && Date.now() < state.ruaBoostUntil) tr *= state.ruaBoostMult;
   return tr;
 }
 // A25 奖励：每次重置后初始波速 100 m/s（否则 10）
@@ -864,6 +871,12 @@ function migrateState() {
   if (state.bhCanvasClicks === undefined) state.bhCanvasClicks = 0;
   if (state.bhPulseSince === undefined) state.bhPulseSince = 0;
   if (state.bhDistorlSince === undefined) state.bhDistorlSince = 0;
+  // v0.4.3.2：rua摆线字段回填
+  if (state.ruaFav === undefined) state.ruaFav = 0;
+  if (state.ruaCountThisHour === undefined) state.ruaCountThisHour = 0;
+  if (state.ruaHourStart === undefined) state.ruaHourStart = 0;
+  if (state.ruaBoostMult === undefined) state.ruaBoostMult = 1;
+  if (state.ruaBoostUntil === undefined) state.ruaBoostUntil = 0;
   // 测试开关不跨会话残留：加载存档时重置（温度无上限的测试状态若被保存，
   // 热反馈失控会让每次湮灭后十几秒就再次到达 Tcap 且不获 Sp）
   if (state.testBreakRules) state.testBreakRules = false;
@@ -1496,9 +1509,10 @@ const MILESTONES = [
   { n: 10, desc: "解锁自动湮灭（可设置在多少奇点时重置）" },
   { n: 20, desc: "解锁「扭曲」选项卡" },
 ];
-// 有效湮灭次数：受 SVPU2 虚幻湮灭加成 ×2^svpu2（用于里程碑解锁判定与显示）
-function effAnnihilations() { return Math.floor(state.annihilations * annCountMult()); }
-function hasMilestone(n) { return effAnnihilations() >= n; }
+// SVPU2 虚幻湮灭：加成每次获得的奇点数 ×2^svpu2（不加成湮灭次数本身）。
+// effAnnihilations 仍为实际次数（里程碑/统计只用实际次数）。
+function effAnnihilations() { return state.annihilations; }
+function hasMilestone(n) { return state.annihilations >= n; }
 
 // ---------- 扭曲里程碑（按已湮灭的扭曲宇宙数量 DA）----------
 const DISTORT_MILESTONES = [
@@ -1539,7 +1553,7 @@ function doAnnihilation() {
   if (!annihilationReady()) return;
   const inDistortMode = !!state.distortActive;
   const dUniverse = inDistortMode ? DISTORT_UNIVERSES.find(x => x.id === state.distortActive) : null;
-  const gained = inDistortMode ? 0 : spGain(); // 扭曲宇宙内湮灭不获得 Sp
+  const gained = inDistortMode ? 0 : spGain(); // Sp 获取不受 SVPU2 加成
   if (!inDistortMode && gained < 1 && !state.testBreakRules) return; // 测试模式：Sp=0 也执行湮灭
   const wasFirst = state.annihilations === 0;
 
@@ -1561,7 +1575,8 @@ function doAnnihilation() {
     distort: inDistortMode ? dUniverse.id : "",
     sp: gained, realDur, gameDur, rate, at: realNow,
   });
-  state.annihilations++;
+  // SVPU2 虚幻湮灭：每次获得的湮灭次数 ×2^svpu2（如 3 级则每次 +8 次而非 +1）
+  state.annihilations += annSpMult();
 
   // 重置（几乎全部）。累计频率（通用统计的总产生）不重置。
   setU(resetU()); state.L = 1; state.logL10 = 0;
@@ -1663,7 +1678,7 @@ function forceAnnihilationReset(gained) {
     if (state.annFastest === 0 || realDur < state.annFastest) state.annFastest = realDur;
   }
   pushAnnHistory({ label: `第 ${state.annihilations + 1} 次`, distort: "", sp: gained, realDur, gameDur, rate, at: realNow });
-  state.annihilations++;
+  state.annihilations += annSpMult();
   applyAnnihilationResetBody(realNow);
   setAutosaveStatus(gained > 0 ? `湮灭完成：获得 ${fmtNum(gained, gained > 0 ? Math.log10(gained) : NLOG)} 奇点` : "湮灭完成");
 }
@@ -1744,8 +1759,8 @@ function exitDistortBtn() {
     grantHidden("S18"); updateAchievementsUI();
   }
   const u = DISTORT_UNIVERSES.find(x => x.id === state.distortActive);
-  // 挑战计时：退出也计入总和与最佳（25ms 刻度）
-  {
+  // 挑战计时：仅当达标（可完成但选择退出）时才计入，未达标退出不记录
+  if (annihilationReady()) {
     const id = state.distortActive;
     const durQ = Math.max(0.025, Math.round(((Date.now() - state.annStartReal) / 1000) * 40) / 40);
     state.distortTotal = (state.distortTotal || 0) + durQ;
@@ -2071,7 +2086,7 @@ function buySBU(id) {
 // 黑洞虚粒子升级（花 VP，位于黑洞页）
 const SVPU_DEFS = [
   { id: "svpu1", key: "svpu1", name: "全息原理", desc: "吸积公式中质量的指数 +0.03/级（最高 6 级）", max: 6, costLog: (n) => n },         // 10^n VP
-  { id: "svpu2", key: "svpu2", name: "虚幻湮灭", desc: "每级使湮灭次数加成 ×2", max: Infinity, costLog: (n) => n * Math.log10(15) },       // 15^n VP
+  { id: "svpu2", key: "svpu2", name: "虚幻湮灭", desc: "获得的湮灭次数×2", max: Infinity, costLog: (n) => Math.log10(3) + (n - 1) * Math.log10(5) },  // 3×5^(n-1) VP
   { id: "svpu3", key: "svpu3", name: "非欧几何", desc: "削弱升级3软上限（最高 3 级）", max: 3, costLog: (n) => 3 * n - 2 },                  // 10^(3n-2) VP
 ];
 function buySVPU(id) {
@@ -2090,9 +2105,8 @@ function buySVPU(id) {
 }
 // SVPU1 全息原理：吸积质量指数 +0.03/级（0.75 → 0.75 + 0.03·svpu1）
 function bhAccretionMassExp() { return 0.75 + 0.03 * state.svpu1; }
-// SVPU2 虚幻湮灭：湮灭次数加成 ×2^svpu2（作用于"总湮灭次数"显示加成？实为加成湮灭次数的倍率）
-// 按"每级加成湮灭次数×2"：用于统计或奖励。此处提供 getter 供后续挂钩。
-function annCountMult() { return Math.pow(2, state.svpu2); }
+// SVPU2 虚幻湮灭：每次获得的奇点 ×2^svpu2（乘在每次 gained 上，不加成次数本身）
+function annSpMult() { return Math.pow(2, state.svpu2); }
 // SVPU3 非欧几何：升级3软上限缩放指数的次幂 1/(n+1)（n=svpu3）
 function up3SoftcapScale(lf) {
   // 原 scale = 5/√(lf)；SVPU3 后 scale = (5/√lf)^(1/(svpu3+1))
@@ -3036,7 +3050,7 @@ function renderStats() {
   document.getElementById("stat-ann-best-sp").textContent = fmtNum(state.annBestSp, state.annBestSp > 0 ? Math.log10(state.annBestSp) : NLOG);
   document.getElementById("stat-ann-best-rate").textContent = fmtNum(state.annBestRate, state.annBestRate > 0 ? Math.log10(state.annBestRate) : NLOG) + " Sp/min";
   document.getElementById("stat-ann-fastest").textContent = state.annFastest > 0 ? fmtTime(state.annFastest) : "—";
-  document.getElementById("stat-ann-count").textContent = fmt(effAnnihilations()) + (state.svpu2 > 0 ? `（实际 ${fmt(state.annihilations)} ×${fmt(annCountMult())}）` : "");
+  document.getElementById("stat-ann-count").textContent = fmt(effAnnihilations());
   document.getElementById("stat-ann-tp").textContent = fmtNum(temperatureCap(), temperatureCapLog()) + " K";
   document.getElementById("stat-ann-distort").textContent = `${state.distortDone.length} / ${DISTORT_UNIVERSES.length}`;
   // 挑战选项卡：各扭曲宇宙最佳完成时间与总完成时间
@@ -3093,6 +3107,22 @@ function renderStats() {
 
 function renderAll() { applyPhononVisibility(); renderWave(); updatePhononUI(); renderStats(); renderSlots(); updateAchievementsUI(); updateDistortUI(); updateBlackholeUI(); }
 function setAutosaveStatus(msg) { document.getElementById("autosave-status").textContent = msg; }
+
+// ---------- 成就弹窗系统（左上角，堆叠+补位动画）----------
+function showAchPopup(name, isHidden) {
+  const stack = document.getElementById("ach-popup-stack");
+  if (!stack) return;
+  const popup = document.createElement("div");
+  popup.className = "ach-popup " + (isHidden ? "hidden-ach" : "normal");
+  popup.textContent = "获得成就：" + name;
+  stack.appendChild(popup);
+  // 1.5s 后移除（CSS 动画已淡出）；移除后下方弹窗自动上浮（CSS transition）
+  setTimeout(() => {
+    popup.style.opacity = "0";
+    popup.style.transform = "translateY(-10px)";
+    setTimeout(() => popup.remove(), 300);
+  }, 1500);
+}
 
 // ---------- Achievements ----------
 const NORMAL_ACH = [
@@ -3153,6 +3183,8 @@ const HIDDEN_ACH = [
   { id: "S21", name: "这是饼干点点乐吗？", check: () => false }, // 点击黑洞动画界面 100 次
   { id: "S22", name: "白洞", check: () => false }, // 黑洞保持脉冲状态 5 分钟以上
   { id: "S23", name: "裸奇点", check: () => false }, // 黑洞倍率为 1 时保持扭曲状态 10 分钟以上
+  { id: "S24", name: "你变秃了，也变强了", check: () => false }, // 一小时内 rua 摆线 200 次
+  { id: "S25", name: "这是旮旯给木吗？", check: () => false }, // 好感度达到 1000
 ];
 // S5 目标序列：S1,S1,S4,S5,S1,S4
 const S5_SEQUENCE = ["S1", "S1", "S4", "S5", "S1", "S4"];
@@ -3161,12 +3193,13 @@ function checkAchievements() {
   for (const a of NORMAL_ACH) {
     if (!state.ach.normal.includes(a.id) && a.check()) {
       state.ach.normal.push(a.id);
-      setAutosaveStatus("成就达成：" + a.name);
+      showAchPopup(a.name, false);
     }
   }
   for (const a of HIDDEN_ACH) {
     if (!state.ach.hidden.includes(a.id) && a.check()) {
       state.ach.hidden.push(a.id);
+      showAchPopup(a.name, true);
     }
   }
 }
@@ -3183,7 +3216,7 @@ function grantHidden(id) {
   if (!state.ach.hidden.includes(id)) {
     const a = HIDDEN_ACH.find(x => x.id === id);
     state.ach.hidden.push(id);
-    if (a) setAutosaveStatus("隐藏成就达成：" + a.name);
+    if (a) showAchPopup(a.name, true);
   }
 }
 
@@ -3263,7 +3296,11 @@ function buildAchievementsOnce() {
         cell.classList.add("has-reward");
         // 「//」原意是换行：第一行成就编号，第二行奖励描述
         tipEl.textContent = a.id + "\n" + a.reward;
-        cell.addEventListener("click", () => cell.classList.toggle("show-tip"));
+        // 仅在已完成时才可点击查看奖励；未完成时 disabled
+        cell.addEventListener("click", () => {
+          if (!state.ach.normal.includes(a.id)) return;
+          cell.classList.toggle("show-tip");
+        });
       }
       // S12：就你特殊？？！！ —— 点击 Qol（A32）成就单元格 10 次
       if (a && a.id === "A32") {
@@ -3615,6 +3652,44 @@ function setupUI() {
     setAutosaveStatus(state.testBreakRules ? "测试模式：宇宙规则已打破（不获 Sp）" : "测试模式：规则已恢复");
   });
   refreshTestBtn();
+
+  // 测试：弹出成就弹窗
+  document.getElementById("test-popup").addEventListener("click", () => {
+    showAchPopup("测试弹窗", false);
+  });
+
+  // rua摆线
+  const ruaStatus = document.getElementById("rua-status");
+  const refreshRuaStatus = () => { ruaStatus.textContent = "好感度 " + fmt(state.ruaFav); };
+  document.getElementById("rua-btn").addEventListener("click", () => {
+    const now = Date.now();
+    // 每小时重置计数窗口
+    if (!state.ruaHourStart || now - state.ruaHourStart >= 3600000) {
+      state.ruaHourStart = now;
+      state.ruaCountThisHour = 0;
+    }
+    state.ruaCountThisHour++;
+    state.ruaFav++;
+    // S25：好感度达到 1000
+    if (state.ruaFav >= 1000 && !state.ach.hidden.includes("S25")) { grantHidden("S25"); updateAchievementsUI(); }
+    // S24：一小时内 rua 200 次
+    if (state.ruaCountThisHour >= 200 && !state.ach.hidden.includes("S24")) { grantHidden("S24"); updateAchievementsUI(); }
+    // 每小时前 100 次：第一次获得随机倍率加成（持续 10 分钟）
+    if (state.ruaCountThisHour === 1) {
+      const lo = Math.min(1 + state.ruaFav / 1000, 2);
+      state.ruaBoostMult = lo + Math.random() * (2 - lo);
+      state.ruaBoostUntil = now + 600000;
+    }
+    // 显示反馈
+    if (state.ruaCountThisHour <= 100) {
+      setAutosaveStatus("你 rua 了 rua 摆线，好感度 +1");
+    } else {
+      setAutosaveStatus("要被 rua 秃了 qwq");
+    }
+    refreshRuaStatus();
+    saveGame();
+  });
+  refreshRuaStatus();
 
   // 湮灭按钮（首次湮灭后显示；点击直接湮灭）
   document.getElementById("annihilate-btn").addEventListener("click", () => {
