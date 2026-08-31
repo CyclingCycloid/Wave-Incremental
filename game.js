@@ -1914,7 +1914,7 @@ const VACUUM_DEF = { id: "sau4", key: "sau4", name: "真空衰变", desc: "每�
 const AU_DEFS = [
   [ // 第1组
     { id: "au11", name: "机械共振", desc: "基于波动升级1等级给予其指数加成：^max(1,√n/5)", cost: 1e6 },
-    { id: "au12", name: "受激跃迁", desc: "每个声子升级1等级给予声子升级2免费2级", cost: Infinity },
+    { id: "au12", name: "受激跃迁", desc: "每个声子升级1等级给予声子升级2免费2级", cost: 1e10 },
     { id: "au13", name: "光子共振", desc: "基于波动升级2等级增强其底数：+min(0.5, log₂n/30)", cost: Infinity },
     { id: "au14", name: "黑体辐射", desc: "波长倒数增强声子产生：×max(1, L^-0.05)", cost: Infinity },
   ],
