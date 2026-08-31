@@ -2035,11 +2035,14 @@ function bhAccretionRateLog() {
   const fLog = FLog();
   return clampLog(bhAccretionMassExp() * mLog + 0.01 * (fLog - 200) + state.sbu1 * Math.log10(2));
 }
-// 脉冲状态：虚粒子获取速率（每秒）= floor(M^0.1 × vpMult)；返回 log10
+// 脉冲状态：虚粒子获取速率（每秒）= floor(mult × (M^0.1 − 1))；M=1 时自然为 0。返回 log10
 function bhVPGainLog() {
   const mLog = getLogBhMass();
-  if (mLog <= 0) return NLOG; // M=1 停止获取
-  return clampLog(0.1 * mLog + state.sbu3 * Math.log10(2));
+  if (mLog <= 0) return NLOG; // M=1 → M^0.1−1 = 0，无获取
+  const x = 0.1 * mLog;
+  // 大质量时 10^x−1 ≈ 10^x（log ≈ x）；小质量直接算，避免精度损失
+  const inner = x > 15 ? x : Math.log10(Math.max(Math.pow(10, x) - 1, 1e-300));
+  return clampLog(inner + state.sbu3 * Math.log10(2));
 }
 // 黑洞升级定义
 const SBU_DEFS = [
@@ -2129,13 +2132,15 @@ function tickBlackhole(dt) {
       if (newLog < 0) newLog = 0; // 到 1（log 0）为止
       setBhMassLog(newLog);
     }
-    // 虚粒子获取：floor(M^0.1 × vpMult)/秒（乘数乘在 floor 内部 → log 域先算再 floor）
-    const vpGainLog = bhVPGainLog() + Math.log10(Math.max(dt, 1e-300));
-    if (vpGainLog > NLOG + 1) {
-      // floor：取整数部分。log 域累积后，显示时 floor。
-      const gain = Math.pow(10, vpGainLog - Math.floor(vpGainLog)); // 尾数
-      const totalGain = Math.floor(gain) * Math.pow(10, Math.floor(vpGainLog));
-      if (totalGain > 0) setVPLog(logAddLogs(getLogVP(), Math.log10(totalGain)));
+    // 虚粒子获取：每秒速率 = floor(mult × (M^0.1 − 1))（整数速率），按 dt 连续累计。
+    // floor 按「每秒速率」取整而非按 tick 取整，否则小速率会永远取 0。
+    const vRateLog = bhVPGainLog();
+    if (vRateLog > NLOG + 1) {
+      const rate = vRateLog > 15 ? Math.pow(10, vRateLog) : Math.floor(Math.pow(10, vRateLog));
+      if (rate > 0) {
+        const addLog = clampLog(Math.log10(rate) + Math.log10(Math.max(dt, 1e-300)));
+        setVPLog(logAddLogs(getLogVP(), addLog));
+      }
     }
   }
 }
