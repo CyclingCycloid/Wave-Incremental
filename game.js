@@ -1563,10 +1563,10 @@ function doAnnihilation() {
   });
   state.annihilations++;
 
-  // 重置（几乎全部）
+  // 重置（几乎全部）。累计频率（通用统计的总产生）不重置。
   setU(resetU()); state.L = 1; state.logL10 = 0;
   state.up1 = 0; state.up2 = 0; state.up3 = 0; state.up3LastF = 0; state.logUp3LastF = NLOG;
-  setTotalFGained(10); state.maxF = 10; state.maxU = 10; state.minL = 1; state.logMaxF = 1; state.logMaxU = 1; state.logMinL = 0;
+  state.maxF = 10; state.logMaxF = 1; state.maxU = 10; state.logMaxU = 1; state.minL = 1; state.logMinL = 0;
   if (!auOwned("au24")) setPhonons(0); // AU24 量子涟漪：湮灭保留声子
   state.pg1 = 0; state.pg2 = 0; state.pg3 = 0; // 发生器重复升级等级总是重置
   if (!hasMilestone(1)) state.phUnlocked = 0;
@@ -1672,7 +1672,7 @@ function forceAnnihilationReset(gained) {
 function applyAnnihilationResetBody(realNow) {
   setU(resetU()); state.L = 1; state.logL10 = 0;
   state.up1 = 0; state.up2 = 0; state.up3 = 0; state.up3LastF = 0; state.logUp3LastF = NLOG;
-  setTotalFGained(10); state.maxF = 10; state.maxU = 10; state.minL = 1; state.logMaxF = 1; state.logMaxU = 1; state.logMinL = 0;
+  state.maxF = 10; state.logMaxF = 1; state.maxU = 10; state.logMaxU = 1; state.minL = 1; state.logMinL = 0;
   setPhonons(0);
   state.pg1 = 0; state.pg2 = 0; state.pg3 = 0;
   state.lastPurchaseAt = 0; state.narrowPurchases = 0;
@@ -2725,8 +2725,8 @@ function buildAutomationOnce() {
       timeInput = document.createElement("input"); timeInput.type = "text"; timeInput.classList.add("hidden"); // text 以允许 AeB 格式
       timeInput.addEventListener("change", () => {
         const v = parseSciInput(timeInput.value);
-        if (def.key === "up3") state.autoUp3Interval = isNaN(v) || v < 1 ? 10 : v;
-        else state.autoAnnInterval = isNaN(v) || v < 1 ? 60 : v;
+        if (def.key === "up3") state.autoUp3Interval = isNaN(v) || v < 0.1 ? 10 : v;
+        else state.autoAnnInterval = isNaN(v) || v < 0.1 ? 60 : v;
         saveGame();
       });
     }
@@ -3381,20 +3381,21 @@ function tick() {
     // 定向宇宙：波速硬下限 0
     if (inDistort("directed") && state.U < 0) setU(0);
 
-    // 累计频率 F 增量 = (g/L)·dt；log 域：gLog + log10(dt) - log10(L)
-    const gOverLLog = (gFinite ? Math.log10(Math.max(Math.abs(g), 1e-300)) : gainRateLog().log) + Math.log10(Math.max(dt, 1e-300)) - getLogL10();
-    if (gFinite && uFinite && isFinite(state.totalFGained) && state.totalFGained < LOG_FALLBACK && Math.abs(state.totalFGained + gd / Math.max(state.L, 1e-300)) < LOG_FALLBACK) {
-      state.totalFGained += (g / state.L) * dt;
-      state.logTotalF = state.totalFGained > 0 ? Math.log10(state.totalFGained) : NLOG;
-    } else {
-      // log 域：logTotalF 与 gOverLLog·sign 累积（带符号）
-      const sgn = g < 0 ? -1 : 1;
-      const r = logAddSigned(getLogTotalF(), 1, gOverLLog, sgn);
-      if (r.sign < 0) {
-        // 累计频率为负（定向大幅取反）：存 0
-        setTotalFGainedLog(NLOG);
+    // 累计频率 F 增量 = (g/L)·dt；扭曲宇宙中的产生不计入通用统计
+    if (!state.distortActive) {
+      const gOverLLog = (gFinite ? Math.log10(Math.max(Math.abs(g), 1e-300)) : gainRateLog().log) + Math.log10(Math.max(dt, 1e-300)) - getLogL10();
+      if (gFinite && uFinite && isFinite(state.totalFGained) && state.totalFGained < LOG_FALLBACK && Math.abs(state.totalFGained + gd / Math.max(state.L, 1e-300)) < LOG_FALLBACK) {
+        state.totalFGained += (g / state.L) * dt;
+        state.logTotalF = state.totalFGained > 0 ? Math.log10(state.totalFGained) : NLOG;
       } else {
-        setTotalFGainedLog(r.log);
+        // log 域：logTotalF 与 gOverLLog·sign 累积（带符号）
+        const sgn = g < 0 ? -1 : 1;
+        const r = logAddSigned(getLogTotalF(), 1, gOverLLog, sgn);
+        if (r.sign < 0) {
+          setTotalFGainedLog(NLOG);
+        } else {
+          setTotalFGainedLog(r.log);
+        }
       }
     }
   }
