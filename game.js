@@ -1466,8 +1466,10 @@ function buildPhononOnce() {
 function renderPhononFast() {
   if (!state.phUnlocked) return;
   const T = temperature();
+  // 显示必须用裁剪后的温度 log（temperatureCappedLog），传 raw 会在 T=Infinity 时
+  // 显示未封顶的原始温度，看起来像温度超过了上限
   document.getElementById("ph-res-text").textContent =
-    `你拥有${fmtNum(Math.floor(state.phonons), getLogPhonons())}声子，温度为${fmtNum(T, temperatureLog())} K`;
+    `你拥有${fmtNum(Math.floor(state.phonons), getLogPhonons())}声子，温度为${fmtNum(T, temperatureCappedLog())} K`;
   document.getElementById("ph-thermal").textContent =
     `热涨落把你的波速获取变为原来的${fmtNum(thermalMult(), thermalMultLog())}倍`;
 }
@@ -2054,11 +2056,11 @@ function bhTimeMult() {
 }
 // 吸积效率倍率（SBU1 事件视界 ×2/级；AU43 奇点塌缩额外 ×spAccretionMult）
 function bhAccretionMult() { return Math.pow(2, state.sbu1) * spAccretionMult(); }
-// AU43 奇点塌缩：黑洞吸积效率倍率 = (lg(Sp+1) + (Sp+1)^0.01)^10
+// AU43 奇点塌缩：黑洞吸积效率倍率 = (lg(Sp+1) + (Sp+1)^0.01)^6
 function spAccretionMult() {
   if (!auOwned("au43")) return 1;
   const sp1 = 1 + state.totalSp;
-  return Math.pow(Math.log10(sp1) + Math.pow(sp1, 0.01), 10);
+  return Math.pow(Math.log10(sp1) + Math.pow(sp1, 0.01), 6);
 }
 // 虚粒子获取倍率（SBU3 霍金辐射 ×2/级）
 function bhVPMult() { return Math.pow(2, state.sbu3); }
