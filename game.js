@@ -103,8 +103,14 @@ const LOG_FALLBACK = 1e290;
 // log 域上界哨兵：log 值永远不允许为 +Infinity（会污染所有 log 域算术）。
 // 用一个远超任何可达量级的有限数钳制；任何超此的值都视为「无限大」但有限可算。
 const LOG_CAP = 1e15;
-// 钳制 log 值到 [NLOG, LOG_CAP]，防 +Infinity 污染 log 域算术
-function clampLog(v) { return (!isFinite(v) || v > LOG_CAP) ? LOG_CAP : (v < NLOG ? NLOG : v); }
+// 钳制 log 值到 [NLOG, LOG_CAP]：-Infinity/NaN 归 NLOG（零语义），+Infinity 归 LOG_CAP。
+// 注意 -Infinity 必须归 NLOG：湮灭重置后声子=0 时 getLogPhonons()=-Infinity，
+// 若被钳到 LOG_CAP 会让温度直接等于上限（T 开局定在 Tcap 的根因）。
+function clampLog(v) {
+  if (v === -Infinity || v !== v || v < NLOG) return NLOG; // -Inf / NaN / 超下界
+  if (v === Infinity || v > LOG_CAP) return LOG_CAP;
+  return v;
+}
 
 let state = defaultState();
 let currentSlot = 0;
@@ -861,6 +867,23 @@ function migrateState() {
   // 测试开关不跨会话残留：加载存档时重置（温度无上限的测试状态若被保存，
   // 热反馈失控会让每次湮灭后十几秒就再次到达 Tcap 且不获 Sp）
   if (state.testBreakRules) state.testBreakRules = false;
+  // JSON 无法存 Infinity：超 double 的 double 缓存在存档里是 null。
+  // 若不恢复，Math.abs(null)=0 会令 tick 误走 double 路径（setU(null+gd) 打塌 logU10），
+  // 且各级回填把 null 当 0。统一从 log 权威恢复缓存。
+  const fromLog = (lg) => (lg <= NLOG + 1) ? 0 : (lg > 308 ? Infinity : Math.pow(10, lg));
+  if (state.U === null || state.U === undefined) state.U = fromLog(getLogU10());
+  if (state.totalFGained === null || state.totalFGained === undefined) state.totalFGained = fromLog(getLogTotalF());
+  if (state.phonons === null || state.phonons === undefined) {
+    state.phonons = (state.logDph !== undefined && isFinite(state.logDph) && state.logDph > 0) ? fromLog(state.logDph) : 0;
+  }
+  if (state.maxF === null || state.maxF === undefined) state.maxF = fromLog(getLogMaxF());
+  if (state.maxU === null || state.maxU === undefined) state.maxU = fromLog(getLogMaxU());
+  if (state.bhMass === null || state.bhMass === undefined) state.bhMass = fromLog(getLogBhMass());
+  if (state.virtualParticles === null || state.virtualParticles === undefined) state.virtualParticles = fromLog(getLogVP());
+  if (state.up3LastF === null || state.up3LastF === undefined) {
+    const lp = getLogUp3LastF();
+    state.up3LastF = (lp <= NLOG + 1) ? 0 : fromLog(lp);
+  }
 }
 function loadGame() {
   try {
