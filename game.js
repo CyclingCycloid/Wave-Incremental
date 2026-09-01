@@ -152,7 +152,7 @@ const DISTORT_UNIVERSES = [
   {
     id: "inflation", name: "滞涨",
     desc: "前奇点资源不消耗被禁用，所有升级价格折算从10Hz开始并且变得更严重，声子升级价格平方，波速获取变为原来的平方根，有效温度变为原来的平方根",
-    tp: 1e110,
+    tp: 1e115,
   },
   {
     id: "adiabatic", name: "热寂",
@@ -703,7 +703,25 @@ function timeRate() {
   let tr = Math.pow(achTimeBase(), state.ach.normal.length) * timeArrowMult() * absZeroMult() * bhTimeMult();
   if (state.ach.normal.includes("A41")) tr = Math.pow(tr, 1.1);
   if (state.ruaBoostUntil && Date.now() < state.ruaBoostUntil) tr *= state.ruaBoostMult;
+  // 时间倍率可能超 double（黑洞扭曲状态效果巨大）：用 Decimal 承载，tick 侧走 timeRateLog
   return tr;
+}
+// timeRate 的 log10（log 域权威，永不溢出；游戏时间计算用）
+function timeRateLog() {
+  let log = state.ach.normal.length * Math.log10(achTimeBase());
+  const ta = timeArrowMult();
+  log += Math.log10(Math.max(ta, 1e-300));
+  const az = absZeroMult();
+  log += Math.log10(Math.max(az, 1e-300));
+  // 黑洞扭曲状态加成：log 域 ×(1+bhEffect) = logAdd(log1, bhEffectLog)
+  if (bhUnlocked() && state.bhState === "distorl") {
+    let el = bhEffectLog();
+    if (auOwned("au34")) el = clampLog(el * 2);
+    if (el > 0) log = logAddLogs(log, el);
+  }
+  if (state.ach.normal.includes("A41")) log = clampLog(log * 1.1);
+  if (state.ruaBoostUntil && Date.now() < state.ruaBoostUntil) log += Math.log10(Math.max(state.ruaBoostMult, 1e-300));
+  return clampLog(log);
 }
 // A25 奖励：每次重置后初始波速 100 m/s（否则 10）
 function resetU() { return state.ach.normal.includes("A25") ? 100 : 10; }
@@ -1976,7 +1994,7 @@ const AU_DEFS = [
     { id: "au41", name: "共轭湮灭", desc: "湮灭次数加成奇点效果", cost: 3e8 },
     { id: "au42", name: "虚幻凝聚", desc: "基于虚粒子数量增加奇点获取", cost: 5e9 },
     { id: "au43", name: "奇点塌缩", desc: "新增一个奇点效果", cost: 5e12 },
-    { id: "au44", name: "???", desc: "（占位）", cost: Infinity },
+    { id: "au44", name: "监察原理", desc: "全息原理的加成在软上限后生效", cost: 1e14 },
   ],
 ];
 function auOwned(id) { return !!state.au[id]; }
@@ -2105,11 +2123,36 @@ function bhVPMult() { return Math.pow(2, state.sbu3); }
 // 吸积状态：质量获取速率 log10(dM/dt)。M^0.75 × (F/1e200)^0.01 × accretionMult
 // → log = massExp*logM + 0.01*(FLog-200) + accretionMult；massExp 受 SVPU1 加成，
 // accretionMult = SBU1 ×2^sbu1 × AU43 奇点塌缩倍率（spAccretionMult）
+// 本 tick 的质量获取 Gain（log10）超 1e50 时受软上限：
+// 实际获得 = 1e50 × (Gain/1e50)^( (5/lg(Gain))^(1/2) )
+// AU44 监察原理：SVPU1 全息原理的加成移动到软上限之后（即软上限前的 Gain 不含 SVPU1 指数加成）
 function bhAccretionRateLog() {
   const mLog = getLogBhMass();
   const fLog = FLog();
   const accMult = Math.pow(2, state.sbu1) * spAccretionMult();
-  return clampLog(bhAccretionMassExp() * mLog + 0.01 * (fLog - 200) + Math.log10(Math.max(accMult, 1e-300)));
+  // AU44 未购买：SVPU1 的指数加成作用于软上限前的 Gain 计算
+  const massExp = (auOwned("au44") ? 0.75 : bhAccretionMassExp());
+  const gainLog = clampLog(massExp * mLog + 0.01 * (fLog - 200) + Math.log10(Math.max(accMult, 1e-300)));
+  // 软上限：Gain 超 1e50（log50）的部分缩放
+  const SOFT = 50;
+  if (gainLog > SOFT) {
+    let softGainLog = SOFT + (gainLog - SOFT) * Math.sqrt(5 / gainLog);
+    // AU44 已购买：SVPU1 全息原理加成在软上限之后生效
+    if (auOwned("au44") && state.svpu1 > 0) {
+      // SVPU1 加成作用于软上限后的获取：Gain' = Gain^(1+0.03·svpu1/原指数)——
+      // 等价实现：软上限后的 log 乘以 (0.75+0.03·svpu1)/0.75
+      softGainLog = clampLog(softGainLog * (bhAccretionMassExp() / 0.75));
+    }
+    return clampLog(softGainLog);
+  }
+  return gainLog;
+}
+// 黑洞质量获取是否正受软上限影响（显示提示用）
+function bhMassSoftcapped() {
+  if (!bhUnlocked()) return false;
+  const accMult = Math.pow(2, state.sbu1) * spAccretionMult();
+  const massExp = auOwned("au44") ? 0.75 : bhAccretionMassExp();
+  return clampLog(massExp * getLogBhMass() + 0.01 * (FLog() - 200) + Math.log10(Math.max(accMult, 1e-300))) > 50;
 }
 // 脉冲状态：虚粒子获取速率（每秒）= floor(mult × (M^0.1 − 1))；M=1 时自然为 0。返回 log10
 function bhVPGainLog() {
@@ -2146,7 +2189,7 @@ function buySBU(id) {
 }
 // 黑洞虚粒子升级（花 VP，位于黑洞页）
 const SVPU_DEFS = [
-  { id: "svpu1", key: "svpu1", name: "全息原理", desc: "吸积公式中质量的指数 +0.03/级（最高 5 级）", max: 5, costLog: (n) => 1 + 2 * (n - 1) }, // 10×100^(n-1) VP，每级 ×100
+  { id: "svpu1", key: "svpu1", name: "全息原理", desc: "吸积公式中质量的指数 +0.03/级（最高 4 级）", max: 4, costLog: (n) => 1 + 2 * (n - 1) }, // 10×100^(n-1) VP，每级 ×100
   { id: "svpu2", key: "svpu2", name: "虚幻湮灭", desc: "获得的湮灭次数×2", max: Infinity, costLog: (n) => Math.log10(3) + (n - 1) * Math.log10(5) },  // 3×5^(n-1) VP
   { id: "svpu3", key: "svpu3", name: "非欧几何", desc: "削弱升级3软上限（最高 3 级）", max: 3, costLog: (n) => 5 * n - 4 },                  // 10^(5n-4) VP，增速 ×1e5
 ];
@@ -2374,7 +2417,8 @@ function bhAnimLoop() {
       `<div class="bh-stat-row"><span>黑洞质量</span><span>${fmtNum(state.bhMass, getLogBhMass())} M☉</span></div>` +
       `<div class="bh-stat-row"><span>虚粒子</span><span>${fmtInt(state.virtualParticles, getLogVP())}</span></div>` +
       `<div class="bh-stat-row"><span>当前状态</span><span>${stNames[state.bhState] || "—"}</span></div>` +
-      `<div class="bh-stat-row"><span>基础效果</span><span>×${fmtNum(bhEffect(), bhEffectLog())}</span></div>`;
+      `<div class="bh-stat-row"><span>基础效果</span><span>×${fmtNum(bhEffect(), bhEffectLog())}</span></div>` +
+      (bhMassSoftcapped() ? `<div class="bh-softcap-note">由于黑洞质量溢出，超过1e50的部分将受到软上限影响</div>` : "");
   }
   bhAnimRAF = requestAnimationFrame(bhAnimLoop);
 }
@@ -2419,9 +2463,10 @@ function updateBlackholeUI() {
 // 批量购买上限升级（A34 解锁，位于自动化页）
 const BATCH_UPG = { id: "batch", name: "批量购买上限翻倍", desc: "批量购买的每次上限翻倍（初始 2）；打破规则且上限超过 128 后变为「最大购买」", key: "batchLvl", repeat: true, cost: () => Math.pow(20, state.batchLvl) };
 // A42 星标奖励：自动湮灭 CD 缩减升级（自动化页，Sp 购买；每级 CD ÷2，最低 25ms）
-const ANN_CD_UPG = { id: "annCd", name: "自动湮灭 CD 缩减", desc: "每级使自动湮灭 CD ÷2（最低 25ms）", key: "autoAnnCDLvl", cost: () => Math.pow(100, state.autoAnnCDLvl) * 1e12 };
+const ANN_CD_UPG = { id: "annCd", name: "自动湮灭 CD 缩减", desc: "每级使自动湮灭 CD ÷2（最低 25ms，最高 3 级）", key: "autoAnnCDLvl", max: 3, cost: () => Math.pow(100, state.autoAnnCDLvl) * 1e12 };
 function buyAnnCDUpgrade() {
   if (!state.ach.normal.includes("A42")) return;
+  if (state.autoAnnCDLvl >= ANN_CD_UPG.max) return; // 3 级后 CD 已到 25ms 下限，拒绝购买
   const cost = ANN_CD_UPG.cost();
   if (state.sp < cost) return;
   setSp(state.sp - cost);
@@ -2431,6 +2476,8 @@ function buyAnnCDUpgrade() {
 }
 function buyBatchUpgrade() {
   if (!state.ach.normal.includes("A34")) return;
+  // 打破规则且上限已超 128（「最大购买」状态）后不可购买
+  if (batchLimit() === Infinity) return;
   const cost = BATCH_UPG.cost();
   if (state.sp < cost) return;
   setSp(state.sp - cost);
@@ -2673,7 +2720,8 @@ function updateSpUI() {
     r.btn.classList.toggle("bought", maxed);
     r.btn.classList.toggle("affordable", !maxed && state.sp >= c);
   }
-  // AU 单次升级（第 4 组 4DA 前显示 ???，解锁后显示真实内容；AU42 额外需 6DA）
+  // AU 单次升级（第 4 组 4DA 前显示 ???，解锁后显示真实内容）
+  // AU42 需 6DA、AU43 需 7DA、AU44 需打破多元宇宙规则；其余 au4* 需 4DA
   const au4Unlocked = hasDistortMilestone(4);
   for (const id in auRefs) {
     const r = auRefs[id];
@@ -2682,13 +2730,13 @@ function updateSpUI() {
     const owned = auOwned(id);
     const afford = state.sp >= r.u.cost;
     const isAu4 = id.startsWith("au4");
-    // AU42 需 6DA、AU43 需 7DA；其余 au4* 需 4DA
-    // 未解锁时名字显示？？？、描述显示「（NDA 解锁）」
+    // 未解锁时名字显示？？？、描述显示解锁条件
     const au42Unlocked = hasDistortMilestone(6);
     const au43Unlocked = hasDistortMilestone(7);
-    const thisUnlocked = !isAu4 ? true : (id === "au42" ? au42Unlocked : id === "au43" ? au43Unlocked : au4Unlocked);
+    const au44Unlocked = state.rulesBroken;
+    const thisUnlocked = !isAu4 ? true : (id === "au42" ? au42Unlocked : id === "au43" ? au43Unlocked : id === "au44" ? au44Unlocked : au4Unlocked);
     if (isAu4 && !thisUnlocked) {
-      r.descEl.textContent = `（${id === "au42" ? "6" : id === "au43" ? "7" : "4"}DA 解锁）`;
+      r.descEl.textContent = id === "au42" ? "（6DA 解锁）" : id === "au43" ? "（7DA 解锁）" : id === "au44" ? "（打破多元宇宙的规则解锁）" : "（4DA 解锁）";
       if (r.nameEl) r.nameEl.textContent = "？？？";
     } else {
       r.descEl.textContent = r.u.desc;
@@ -2930,7 +2978,11 @@ function updateAutomationUI() {
       // 时间模式下隐藏比例/Sp 输入框（只留时间框）
       const modeOwned = r.def.key === "up3" ? auOwned("au21") : auOwned("au22");
       r.inputEl.classList.toggle("hidden", !unlocked || (modeOwned && isTimeMode));
-      if (unlocked && !r.inputEl.classList.contains("hidden") && document.activeElement !== r.inputEl) r.inputEl.value = r.def.input.value();
+      if (unlocked && !r.inputEl.classList.contains("hidden") && document.activeElement !== r.inputEl) {
+        // 数值以 AeB 字符串形式显示（如 1e12），小数原样显示
+        const v = r.def.input.value();
+        r.inputEl.value = (v >= 1e6 ? v.toExponential(6).replace("e+", "e").replace(/\.?0+e/, "e") : v);
+      }
     }
     r.btn.textContent = state.autoOn[key] ? "开启中" : "已关闭";
     r.btn.disabled = !unlocked;
@@ -2978,10 +3030,13 @@ function updateAutomationUI() {
     const unlocked = state.ach.normal.includes("A34");
     batchRefs.row.classList.toggle("hidden", !unlocked);
     if (unlocked) {
-      const cost = BATCH_UPG.cost();
-      batchRefs.row.classList.toggle("affordable", state.sp >= cost);
-      batchRefs.costEl.textContent = fmt(cost) + " Sp（等级 " + state.batchLvl + "）";
-      batchRefs.btn.disabled = state.sp < cost;
+      const maxBuy = batchLimit() === Infinity; // 打破规则且 >128：已是最大购买，不可再买
+      batchRefs.row.classList.toggle("affordable", !maxBuy && state.sp >= BATCH_UPG.cost());
+      batchRefs.costEl.textContent = maxBuy
+        ? "已达到最大购买（上限无限制）"
+        : fmt(BATCH_UPG.cost()) + " Sp（等级 " + state.batchLvl + "）";
+      batchRefs.btn.textContent = maxBuy ? "最大购买中" : "购买";
+      batchRefs.btn.disabled = maxBuy || state.sp < BATCH_UPG.cost();
     }
   }
   // 自动湮灭 CD 缩减升级卡（A42 解锁）
@@ -2989,10 +3044,13 @@ function updateAutomationUI() {
     const unlocked = state.ach.normal.includes("A42");
     annCDRefs.row.classList.toggle("hidden", !unlocked);
     if (unlocked) {
-      const cost = ANN_CD_UPG.cost();
-      annCDRefs.row.classList.toggle("affordable", state.sp >= cost);
-      annCDRefs.costEl.textContent = fmt(cost) + " Sp（等级 " + state.autoAnnCDLvl + "，当前 CD " + autoAnnCD() + "ms）";
-      annCDRefs.btn.disabled = state.sp < cost;
+      const maxed = state.autoAnnCDLvl >= ANN_CD_UPG.max;
+      annCDRefs.row.classList.toggle("affordable", !maxed && state.sp >= ANN_CD_UPG.cost());
+      annCDRefs.costEl.textContent = maxed
+        ? "已满级（当前 CD " + autoAnnCD() + "ms）"
+        : fmt(ANN_CD_UPG.cost()) + " Sp（等级 " + state.autoAnnCDLvl + "，当前 CD " + autoAnnCD() + "ms）";
+      annCDRefs.btn.textContent = maxed ? "已满级" : "购买";
+      annCDRefs.btn.disabled = maxed || state.sp < ANN_CD_UPG.cost();
     }
   }
 }
@@ -3286,7 +3344,8 @@ const NORMAL_ACH = [
   { id: "A42", name: "烂柯", desc: "总时间倍率超过 3.65e6", star: true, reward: "自动湮灭 CD 变为 200ms，并解锁一个新的自动化升级", check: () => timeRate() >= 3.65e6 },
   { id: "A43", name: "无限", desc: "打破多元宇宙的规则", check: () => state.rulesBroken && !state.testBreakRules }, // 原 A35
   { id: "A44", name: "永炽", desc: "温度超过 1.79e308 K", check: () => temperature() >= 1.79e308 },
-  { id: "A45", name: "???", desc: "（占位）", check: () => false },
+  { id: "A45", name: "万物", desc: "购买所有奇点升级", check: () => ALL_SP_UPGRADES_OWNED(),
+    note: "含 spu1、SAU×4、AU11-24/31-34/41-44（占位/未开放除外）" },
 ];
 const ACH_PER_ROW = 5;
 // 已定义行数；之后整行为未解锁 ???
@@ -3325,6 +3384,13 @@ const HIDDEN_ACH = [
 ];
 // S5 目标序列：S1,S1,S4,S5,S1,S4
 const S5_SEQUENCE = ["S1", "S1", "S4", "S5", "S1", "S4"];
+// A45 万物：是否拥有所有奇点升级（当前已实装的：spu1、SAU1-3、真空衰变、13 个 AU）
+function ALL_SP_UPGRADES_OWNED() {
+  if (state.spu1 < 1) return false;
+  if (state.sau1 < 1 || state.sau2 < 1 || state.sau3 < 1 || state.sau4 < 1) return false;
+  const needAU = ["au11","au12","au21","au22","au23","au24","au31","au32","au33","au34","au41","au42","au43"];
+  return needAU.every(id => auOwned(id));
+}
 
 function checkAchievements() {
   for (const a of NORMAL_ACH) {
@@ -3530,10 +3596,21 @@ function updateAchievementsUI() {
 function tick() {
   const now = Date.now();
   const realDt = (now - state.lastTick) / 1000;
-  const dt = realDt * timeRate();
   state.lastTick = now;
-
-  state.playTime += dt;
+  // 游戏时间倍率走 log 域（timeRateLog 权威），倍率超 double（黑洞扭曲状态等）时
+  // 用 Decimal 计算游戏时间增量，不再产生 Infinity
+  const trLog = timeRateLog();
+  let dt;
+  if (trLog > 308) {
+    // 倍率超 double：游戏时间以 log 权威累积，double 缓存封顶 MAX_VALUE
+    if (state.playTimeLog === undefined) state.playTimeLog = Math.log10(Math.max(state.playTime, 1e-300));
+    state.playTimeLog = clampLog(logAddLogs(state.playTimeLog, clampLog(trLog + Math.log10(Math.max(realDt, 1e-300)))));
+    state.playTime = Number.MAX_VALUE;
+    dt = Number.MAX_VALUE; // 下游量级标记（生产按 log 域另行累积）
+  } else {
+    dt = realDt * Math.pow(10, trLog);
+    state.playTime += dt;
+  }
   state.realTime += realDt;
 
   // 波速生产（double 链不溢出时走原路径，零回归；饱和时退 log 域累积）
