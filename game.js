@@ -2743,6 +2743,10 @@ function updateSpUI() {
     if (isAu4 && !thisUnlocked) {
       r.descEl.textContent = id === "au42" ? "（6DA 解锁）" : id === "au43" ? "（7DA 解锁）" : id === "au44" ? "（打破多元宇宙的规则解锁）" : "（4DA 解锁）";
       if (r.nameEl) r.nameEl.textContent = "？？？";
+    } else if (id === "au13") {
+      // AU13 光子共振：实时显示当前 up2 底数
+      r.descEl.textContent = r.u.desc + "（当前底数 " + up2Base().toFixed(3) + "）";
+      if (r.nameEl) r.nameEl.textContent = r.u.name;
     } else {
       r.descEl.textContent = r.u.desc;
       if (r.nameEl) r.nameEl.textContent = r.u.name;
