@@ -2240,11 +2240,11 @@ function tickBlackhole(dt) {
   } else if (state.bhState === "distorl") {
     // 扭曲：无质量变化，无虚粒子（时间倍率由 bhTimeMult 给予）
   } else if (state.bhState === "pulse") {
-    // 脉冲：每秒质量 ×0.5（损失一半，到 1 停）
+    // 脉冲质量衰减：M>1e30 时每秒指数 -(1+lg(M)×0.1)（质量越大衰减越快）；
+    // M≤1e30 时每秒 ÷10（log 每 -1/秒）。到 M=1（log 0）为止。
     if (mLog > 0) {
-      const halfLife = Math.log10(0.5) * dt; // 每秒 -log10(2)
-      let newLog = mLog + halfLife;
-      if (newLog < 0) newLog = 0; // 到 1（log 0）为止
+      const decayRate = mLog > 30 ? -(1 + mLog * 0.1) : -1;
+      const newLog = Math.max(0, mLog + decayRate * dt);
       setBhMassLog(newLog);
     }
     // 虚粒子获取：每秒速率 = floor(mult × (M^0.1 − 1))（整数速率），按 dt 连续累计。
