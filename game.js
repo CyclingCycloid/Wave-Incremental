@@ -2052,7 +2052,8 @@ function invLMultLog() { return auOwned("au14") ? Math.max(0, -0.05 * getLogL10(
 // AU41：共轭湮灭——湮灭次数 A 加成奇点效果：×(1+lg(1+A)/3)^(1/2)
 function phononSpMult() {
   if (!auOwned("au41")) return 1;
-  return Math.sqrt(1 + Math.log10(1 + state.annihilations) / 3);
+  const base = Math.sqrt(1 + Math.log10(1 + state.annihilations) / 3);
+  return vpuOwned("vpu5") ? base * base : base; // VPU5 临界湮灭：共轭湮灭效果 ^2
 }
 // AU31：时间倍率（真实游玩时间）
 function timeArrowMult() { return auOwned("au31") ? 1 + Math.pow(Math.log10(1 + state.realTime), 0.6) : 1; }
@@ -2214,7 +2215,41 @@ function buySVPU(id) {
   updateBlackholeUI();
   setAutosaveStatus("已购买黑洞升级：" + u.name);
 }
-// SVPU1 全息原理：吸积质量指数 +0.03/级（0.75 → 0.75 + 0.03·svpu1）
+// ---------- 虚粒子单次升级（VPU1-9，AU45 星标奖励解锁；九宫格）----------
+// 解锁条件统一由 vpuUnlocked(id) 判定；目前仅 VPU5 实装，其余为占位（cost=Infinity 永不可购）
+const VPU_DEFS = [
+  { id: "vpu1", name: "???", desc: "（占位）", cost: Infinity },
+  { id: "vpu2", name: "???", desc: "（占位）", cost: Infinity },
+  { id: "vpu3", name: "???", desc: "（占位）", cost: Infinity },
+  { id: "vpu4", name: "???", desc: "（占位）", cost: Infinity },
+  { id: "vpu5", name: "临界湮灭", desc: "取消自动湮灭的 CD，并把共轭湮灭的效果变为原来的^2", cost: 1e17 },
+  { id: "vpu6", name: "???", desc: "（占位）", cost: Infinity },
+  { id: "vpu7", name: "???", desc: "（占位）", cost: Infinity },
+  { id: "vpu8", name: "???", desc: "（占位）", cost: Infinity },
+  { id: "vpu9", name: "???", desc: "（占位）", cost: Infinity },
+];
+// VPU 解锁条件：解锁 AU45 星标奖励（购买所有奇点升级）后全部可见；
+// VPU5 额外要求总挑战时间 < 3s
+function vpuUnlocked(id) {
+  if (!state.ach.normal.includes("A45")) return false;
+  if (id === "vpu5") {
+    const bestSum = DISTORT_UNIVERSES.reduce((s, u) => s + (state.distortBest[u.id] || 0), 0);
+    return bestSum > 0 && bestSum < 3;
+  }
+  return false; // 其余 VPU 尚未实装
+}
+function vpuOwned(id) { return !!state.au["vpu_" + id]; }
+function buyVPU(id) {
+  if (!bhUnlocked() || !vpuUnlocked(id)) return;
+  const u = VPU_DEFS.find(x => x.id === id);
+  if (!u || vpuOwned(id)) return;
+  if (state.sp < u.cost) return;
+  setSp(state.sp - u.cost);
+  state.au["vpu_" + id] = 1;
+  updateBlackholeUI();
+  setAutosaveStatus("已购买黑洞升级：" + u.name);
+}
+// VPU5 临界湮灭效果：自动湮灭无 CD（由 autoAnnCD 调用）；共轭湮灭效果 ^2（由 phononSpMult 调用）
 function bhAccretionMassExp() { return 0.75 + 0.03 * state.svpu1; }
 // SVPU2 虚幻湮灭：每次获得的奇点 ×2^svpu2（乘在每次 gained 上，不加成次数本身）
 function annSpMult() { return Math.pow(2, state.svpu2); }
@@ -2319,6 +2354,22 @@ function buildBlackholeOnce() {
     btn.addEventListener("click", () => buySVPU(u.id));
     svpuRow.appendChild(btn);
     bhRefs[u.id] = { u, btn, descEl: ds, costEl: ct, vp: true };
+  }
+  // 虚粒子单次升级（VPU1-9 九宫格，AU45 星标奖励解锁；花 Sp）
+  list.appendChild(mkTitle("虚粒子单次升级"));
+  const vpuRow = document.createElement("div");
+  vpuRow.className = "bh-vpu-grid";
+  list.appendChild(vpuRow);
+  for (const u of VPU_DEFS) {
+    const btn = document.createElement("button");
+    btn.className = "sau-btn bh-upg-btn vpu-btn";
+    const nm = document.createElement("div"); nm.className = "sau-name"; nm.textContent = u.name;
+    const ds = document.createElement("div"); ds.className = "sau-desc";
+    const ct = document.createElement("div"); ct.className = "sau-cost";
+    btn.append(nm, ds, ct);
+    btn.addEventListener("click", () => buyVPU(u.id));
+    vpuRow.appendChild(btn);
+    bhRefs[u.id] = { u, btn, descEl: ds, costEl: ct, vpu: true };
   }
   bhStateBtns = [];
   document.querySelectorAll(".bh-state-btn").forEach(b => {
@@ -2464,6 +2515,29 @@ function updateBlackholeUI() {
     r.btn.disabled = maxed || !affordable;
     r.btn.classList.toggle("bought", maxed);
     r.btn.classList.toggle("affordable", !maxed && affordable);
+  }
+  // VPU 虚粒子单次升级（花 Sp；AU45 奖励解锁，各自有解锁条件）
+  for (const id in bhRefs) {
+    const r = bhRefs[id];
+    if (!r.vpu) continue;
+    const owned = vpuOwned(r.u.id);
+    const unlocked = vpuUnlocked(r.u.id);
+    if (!unlocked) {
+      // 未解锁：显示锁定状态
+      r.descEl.textContent = r.u.cost === Infinity ? "（占位）" : "（未达成解锁条件）";
+      r.costEl.textContent = r.u.cost === Infinity ? "未开放" : "???";
+      if (r.nameEl) r.nameEl.textContent = r.u.cost === Infinity ? "???" : r.u.name;
+      r.btn.disabled = true;
+      r.btn.classList.remove("bought");
+      r.btn.classList.remove("affordable");
+      continue;
+    }
+    r.descEl.textContent = r.u.desc;
+    if (r.nameEl) r.nameEl.textContent = r.u.name;
+    r.costEl.textContent = owned ? "已购买" : fmt(r.u.cost) + " Sp";
+    r.btn.disabled = owned || state.sp < r.u.cost;
+    r.btn.classList.toggle("bought", owned);
+    r.btn.classList.toggle("affordable", !owned && state.sp >= r.u.cost);
   }
 }
 
@@ -3101,6 +3175,7 @@ function autoAnnTick() {
 }
 // 自动湮灭 CD（ms）：基础 1000ms；A42 星标奖励 200ms；A44 解锁的升级每级 ÷2，最低 25ms
 function autoAnnCD() {
+  if (vpuOwned("vpu5")) return 0; // VPU5 临界湮灭：取消自动湮灭 CD
   let cd = 1000;
   if (state.ach.normal.includes("A42")) cd = 200;
   cd = Math.max(25, cd / Math.pow(2, state.autoAnnCDLvl));
@@ -3365,8 +3440,7 @@ const NORMAL_ACH = [
   { id: "A42", name: "烂柯", desc: "总时间倍率超过 3.65e5", star: true, reward: "自动湮灭 CD 变为 200ms，并解锁一个新的自动化升级", check: () => timeRate() >= 3.65e5 },
   { id: "A43", name: "无限", desc: "打破多元宇宙的规则", check: () => state.rulesBroken && !state.testBreakRules }, // 原 A35
   { id: "A44", name: "永炽", desc: "温度超过 1.79e308 K", check: () => temperature() >= 1.79e308 },
-  { id: "A45", name: "万物", desc: "购买所有奇点升级", check: () => ALL_SP_UPGRADES_OWNED(),
-    note: "含 spu1、SAU×4、AU11-24/31-34/41-44（占位/未开放除外）" },
+  { id: "A45", name: "万物", desc: "购买所有奇点升级", star: true, reward: "解锁黑洞页的虚粒子单次升级（VPU 系列）", check: () => ALL_SP_UPGRADES_OWNED() },
 ];
 const ACH_PER_ROW = 5;
 // 已定义行数；之后整行为未解锁 ???

@@ -541,3 +541,8 @@ body[data-theme="white"] #bh-canvas { box-shadow: 0 0 0 2px #888, 0 2px 8px rgba
 
 /* 黑洞质量软上限提示（黄色） */
 .bh-softcap-note { font-size: 12px; color: #d4a017; margin-top: 4px; }
+
+/* VPU 虚粒子单次升级：九宫格（3×3） */
+.bh-vpu-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.bh-vpu-grid .sau-btn { min-height: 88px; padding: 8px 6px; }
+.bh-vpu-grid .sau-btn .sau-desc { font-size: 10px; min-height: 36px; }
