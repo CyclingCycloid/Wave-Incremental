@@ -36,6 +36,7 @@ function defaultState() {
     annHistory: [],        // 最近十次湮灭记录
     // 扭曲系统（v0.4.2.1 测试）
     distortActive: "",     // 当前所在扭曲宇宙 id（空=普通宇宙）
+    distortEnterAt: 0,     // 进入当前扭曲宇宙的时刻（ms；膨胀宇宙计时用。必须入存档：重载后模块变量归零会让波长倍率天文级膨胀、挑战报废）
     distortDone: [],       // 已湮灭的扭曲宇宙 id（每宇宙只计一次奖励）
     distortMult: 1,        // 湮灭扭曲宇宙给的 Sp 倍率（×2/个）
     distortFails: 0,       // S14：扭曲宇宙失败次数
@@ -57,7 +58,7 @@ function defaultState() {
     autoAnnCDLvl: 0,       // A44 奖励：自动湮灭 CD 缩减升级等级（每级 ÷2，最低 25ms）
     sau1: 0, sau2: 0, sau3: 0, sau4: 0,  // 奇点可重复升级等级（3DA 解锁）
     au: {},                                 // 奇点单次升级已购标记（id→1）
-    testBreakRules: false, // 测试按钮：临时打破规则（不获 Sp，v0.4.3 移除）
+    testBreakRules: false, // 已下线的测试开关：字段仅作旧存档兼容，migrateState 加载时强制复位
 
     // 黑洞系统（v0.4.3 实装，5DA 解锁）
     bhMass: 1,             // 黑洞质量（太阳质量，double 缓存）
@@ -183,7 +184,18 @@ function getLogSp() {
 }
 function setSp(v) {
   state.sp = v;
-  state.logDsp = v > 0 ? clampLog(Math.log10(v)) : 0;
+  // setU 同款防污染：v 为 Infinity（double 缓存饱和）时保留 logDsp 权威，
+  // 否则 clampLog(log10(Infinity))=LOG_CAP 会触发 migrateState 存档净化（清空资源）
+  if (v > 0 && isFinite(v)) state.logDsp = clampLog(Math.log10(v));
+  else if (v <= 0) state.logDsp = 0;
+}
+// 支出 Sp（c 为有限正数，调用前已做价格判定）：双方在 double 范围内走 double 减法；
+// sp 超 double（缓存 Infinity）时走 log 域减法——直接 setSp(sp - c) 会把 logDsp 压成 LOG_CAP
+function subSp(c) {
+  if (isFinite(c) && isFinite(state.sp) && state.sp >= c) { setSp(state.sp - c); return; }
+  const r = logAddSigned(getLogSp(), 1, Math.log10(c), -1);
+  if (r.sign < 0) setSp(0);
+  else { state.logDsp = r.log; state.sp = r.log > 308 ? Infinity : Math.pow(10, r.log); }
 }
 function getLogTotalSp() {
   if (state.logDtotal !== undefined && isFinite(state.logDtotal)) return clampLog(state.logDtotal);
@@ -191,7 +203,8 @@ function getLogTotalSp() {
 }
 function setTotalSp(v) {
   state.totalSp = v;
-  state.logDtotal = v > 0 ? clampLog(Math.log10(v)) : 0;
+  if (v > 0 && isFinite(v)) state.logDtotal = clampLog(Math.log10(v)); // 防污染同 setSp
+  else if (v <= 0) state.logDtotal = 0;
 }
 function getLogPhonons() {
   // 声子为 0 时返回 -Infinity（乘积为 0），而非 0（会被当作 1）
@@ -202,7 +215,16 @@ function getLogPhonons() {
 }
 function setPhonons(v) {
   state.phonons = v;
-  state.logDph = (v > 0 && isFinite(v)) ? clampLog(Math.log10(v)) : (v > 0 ? LOG_CAP : 0);
+  // 防污染同 setSp：非有限正数保留 logDph 权威（原先映射为 LOG_CAP 会触发存档净化）
+  if (v > 0 && isFinite(v)) state.logDph = clampLog(Math.log10(v));
+  else if (v <= 0) state.logDph = 0;
+}
+// 支出声子（c 为有限正数）：声子超 double 时 log 域减法，防 logDph 被 LOG_CAP 污染
+function subPhonons(c) {
+  if (isFinite(c) && isFinite(state.phonons) && state.phonons >= c) { setPhonons(state.phonons - c); return; }
+  const r = logAddSigned(getLogPhonons(), 1, Math.log10(c), -1);
+  if (r.sign < 0) setPhonons(0);
+  else setPhononsLog(r.log);
 }
 // 由 log10(phonons) 直接设（log 域路径）
 function setPhononsLog(logP) {
@@ -230,7 +252,8 @@ function setULog(logU) {
 // 购买扣款 U -= cost·L（costLog 为 log10(cost)）。U 在范围内走 double；否则 log 域减法
 function subULog(costLog) {
   const uLog = getLogU10();
-  if (isFinite(state.U) && state.U < LOG_FALLBACK && uLog < LOG_FALLBACK) {
+  // state.L > 0 保护：波长下溢为 0（logL10 < -308）时扣款 cost·L = 0 会变成免费购买
+  if (state.L > 0 && isFinite(state.U) && state.U < LOG_FALLBACK && uLog < LOG_FALLBACK) {
     setU(state.U - Math.pow(10, costLog) * state.L);
   } else {
     // log 域：log10(cost·L) = costLog + logL10；U - cost·L（同号相减）
@@ -293,8 +316,6 @@ function cmpGE(a, b, aLog, bLog) {
   return aLog >= bLog;
 }
 function cmpLT(a, b, aLog, bLog) { return !cmpGE(a, b, aLog, bLog); }
-// log 域相加（对数加法 = 数值乘法），返回 double log10
-function logAdd(a, b) { return a + b; }
 // ---------- 派生物理量 ----------
 // L 的双表示：logL10 权威（永不下溢），L 为 double 缓存（极端小时可能下溢为 0）
 function getLogL10() { return (state.logL10 !== undefined && isFinite(state.logL10)) ? state.logL10 : Math.log10(state.L || 1e-300); }
@@ -358,7 +379,6 @@ function effectiveCapLog() {
 // 扭曲宇宙中仍为硬上限（该硬上限还是硬上限）。
 function temperatureCappedLog() {
   const raw = temperatureLog();
-  if (state.testBreakRules) return raw; // 测试按钮：无上限
   const capLog = effectiveCapLog();
   if (state.rulesBroken && !state.distortActive && raw > capLog) {
     // 软上限：超出部分 × (lg(Tp)/lg(T))^(1/2)/2
@@ -480,35 +500,11 @@ function up2Cost() {
   if (logP > 300) return costOf(Decimal.pow(10, logP).toNumber()); // 超 double 返回 Infinity
   return costOf(Math.pow(10, logP));
 }
-// 升级3实际波长缩减（软上限）：e100 以下 1/F^e；超出部分指数 × scale，scale 受 SVPU3 非欧几何削弱
-function up3Wavelength(f) {
-  const e = up3Exp();
-  if (f <= SOFTCAP_F || !isFinite(f)) return Math.pow(f, e);
-  const excess = f / SOFTCAP_F;
-  const scale = up3SoftcapScale(Math.log10(f));
-  return Math.pow(SOFTCAP_F, e) * Math.pow(excess, e * scale);
-}
 // 由 log10(F) 计算波长缩减量 F^e 的 log10（含软上限缩放，代数式永不溢出）
 function up3WavelengthFromFLog(lf) {
   const e = up3Exp();
   if (!isFinite(lf)) return Infinity;
   if (lf <= 100) return e * lf;
-  const scale = up3SoftcapScale(lf);
-  return e * 100 + e * scale * (lf - 100);
-}
-// e100 软上限：超出部分（log10 F > 100）的指数缩放增量
-function softcapExtraLog(lf) {
-  if (lf <= 100) return 0;
-  const scale = up3SoftcapScale(lf);
-  return up3Exp() * (scale - 1) * (lf - 100);
-}
-// 上者的 log10（代数式，永不溢出）
-function up3WavelengthLog(f) {
-  // f 为 F（double）；超 double 的 F 由调用方传 log 域（see buyUp3）
-  const e = up3Exp();
-  if (!isFinite(f) || f <= 0) return f === Infinity ? e * FLog() : -Infinity;
-  const lf = Math.log10(f);
-  if (f <= SOFTCAP_F) return e * lf;
   const scale = up3SoftcapScale(lf);
   return e * 100 + e * scale * (lf - 100);
 }
@@ -571,10 +567,13 @@ function baseSpGain(T) {
   }
   return 2 * Math.pow(T, 0.01);
 }
-// AU42 虚幻凝聚：基于虚粒子数量增加奇点获取 ×(1+VP)^0.15
-function vpSpMult() {
-  if (!auOwned("au42")) return 1;
-  return Math.pow(1 + state.virtualParticles, 0.3);
+// AU42 虚幻凝聚：基于虚粒子数量增加奇点获取 ×(1+VP)^0.3。
+// log10 版本（权威）：VP 超 double（缓存 Infinity）时 pow(1+VP,0.3)=Infinity 会污染整条 Sp 获取链
+function vpSpMultLog() {
+  if (!auOwned("au42")) return 0;
+  const vp = getLogVP();
+  const lg1p = vp > 15 ? vp : Math.log10(Math.pow(10, vp) + 1); // lg(1+VP)：大值近似，小值精确
+  return clampLog(0.3 * lg1p);
 }
 // Sp 获取的 log10（log 域全链路，温度超 double 也不产生 Infinity）。
 // base = baseSpGain 的 log：T<1e50 为 1~10 小数（直接算）；之后 lg(T)/5 或 lg2+0.01·lgT
@@ -590,24 +589,21 @@ function spGainBaseLog() {
   return Math.log10(2) + 0.01 * tLog;          // 2·T^0.01 的 log
 }
 function spGainExact() {
-  if (state.testBreakRules) return 0;
   const mLog = Math.log10(state.distortMult) + state.sau4 * Math.log10(2)
-    + Math.log10(Math.max(1, phononSpMult())) + Math.log10(Math.max(1, vpSpMult()));
+    + Math.log10(Math.max(1, phononSpMult())) + vpSpMultLog();
   const bLog = spGainBaseLog() + mLog;
   const first = state.annihilations === 0 ? 1 : 0;
   const log = first > 0 ? Math.log10(1 + Math.pow(10, bLog)) : bLog; // 首次保底 max(1,b)
   return log > 308 ? Infinity : Math.pow(10, log);
 }
 function spGain() {
-  if (state.testBreakRules) return 0;
   const v = spGainExact();
   return v === Infinity ? Infinity : Math.floor(v);
 }
 // spGain 的 log10（用于 fmtNum 显示，超 double 时显示 1eN）。与 spGain() 同一 log 域链路。
 function spGainLog() {
-  if (state.testBreakRules) return NLOG;
   const mLog = Math.log10(state.distortMult) + state.sau4 * Math.log10(2)
-    + Math.log10(Math.max(1, phononSpMult())) + Math.log10(Math.max(1, vpSpMult()));
+    + Math.log10(Math.max(1, phononSpMult())) + vpSpMultLog();
   const bLog = spGainBaseLog() + mLog;
   const first = state.annihilations === 0 ? 1 : 0;
   return clampLog(first > 0 ? Math.log10(1 + Math.pow(10, bLog)) : bLog);
@@ -799,10 +795,10 @@ function fmtLog(logV) {
   // 以 log10 显示：|logV| 在 double 范围内用 double 指数；超出用 log 域还原尾数（a.bbe±N）
   if (!isFinite(logV) || logV >= LOG_CAP) return "∞"; // LOG_CAP 钳制值视为无穷
   if (logV <= NLOG + 1) return "0";
-  if (logV > -308 && logV < 308) return Math.pow(10, logV).toExponential(3).replace("e+", "e");
+  const d = Math.min(6, Math.max(3, (state.settings && state.settings.decimals) || 3));
+  if (logV > -308 && logV < 308) return Math.pow(10, logV).toExponential(d).replace("e+", "e");
   // log 域：logV = floor(logV) + frac；值 = 10^frac × 10^floor(logV)
   // （负指数也走此分支：10^frac 是 1~10 间的有限数，不会下溢）
-  const d = Math.min(6, Math.max(3, (state.settings && state.settings.decimals) || 3));
   const exp = Math.floor(logV);
   const frac = logV - exp;
   const mant = Math.pow(10, frac);
@@ -828,6 +824,7 @@ function fmtInt(doubleVal, logVal) {
 }
 function fmtTime(seconds, precise) {
   // precise=true 时显示最小分度 25ms（挑战计时用；计算精度也是 25ms）
+  if (!isFinite(seconds) || seconds < 0) return "—"; // NaN/Infinity/负数兜底
   const total = precise ? seconds : Math.floor(seconds);
   const d = Math.floor(total / 86400);
   // 超过 1e4 天：只显示 XXXd 并用科学计数法
@@ -940,6 +937,15 @@ function migrateState() {
   // 测试开关不跨会话残留：加载存档时重置（温度无上限的测试状态若被保存，
   // 热反馈失控会让每次湮灭后十几秒就再次到达 Tcap 且不获 Sp）
   if (state.testBreakRules) state.testBreakRules = false;
+  // 膨胀宇宙进入时刻恢复：模块变量 distortEnterAt 不入存档，重载后归零会让
+  // t=Date.now()/1000≈1.7e9 → 波长×1e20^(t-1) 天文级膨胀、F≈0，该次挑战报废。
+  // 有记录用记录；旧档无记录则从现在重新计时（尽力恢复）。
+  if (state.distortActive) {
+    distortEnterAt = (state.distortEnterAt > 0) ? state.distortEnterAt : Date.now();
+    state.distortEnterAt = distortEnterAt;
+  } else {
+    distortEnterAt = 0;
+  }
   // JSON 无法存 Infinity：超 double 的 double 缓存在存档里是 null。
   // 若不恢复，Math.abs(null)=0 会令 tick 误走 double 路径（setU(null+gd) 打塌 logU10），
   // 且各级回填把 null 当 0。统一从 log 权威恢复缓存。
@@ -988,7 +994,8 @@ function loadGame() {
     if (!raw) return false;
     const obj = decodeSave(raw);
     state = Object.assign(defaultState(), obj);
-    state.settings = Object.assign({ theme: "black", notation: "scientific", decimals: 3 }, obj.settings || {});
+    currentSlot = 0; // 主存档与槽位存档互斥：载入主档后槽位高亮复位
+    state.settings = Object.assign({}, defaultState().settings, obj.settings || {});
     state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
     migrateState();
     // 迁移：v0.1 旧存档用 frequency 字段
@@ -1070,13 +1077,15 @@ function loadFromSlot(i) {
     if (!raw) { setAutosaveStatus("该槽为空"); return; }
     const obj = decodeSave(raw);
     state = Object.assign(defaultState(), obj);
-    state.settings = Object.assign({ theme: "black", notation: "scientific", decimals: 3 }, obj.settings || {});
+    state.settings = Object.assign({}, defaultState().settings, obj.settings || {});
     state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
     migrateState();
     state.lastTick = Date.now();
     currentSlot = i;
     applyTheme(state.settings.theme);
     applyNotation(state.settings.notation);
+    applyDecimals(state.settings.decimals); // 槽位存档可能带不同的小数位/刷新率设置
+    applyUiFps(state.settings.uiFps);
     saveGame();
     renderAll();
     setAutosaveStatus(`已从存档槽 ${i + 1} 载入`);
@@ -1353,9 +1362,12 @@ function updateUpgradesUI() {
   }
   const f = F();
   const fLog = FLog();
+  // 定向宇宙的随机符号：gainRate 与 gainRateLog 各自掷骰会不一致，同一帧只取一次结果
+  const g1 = gainRate();
+  const g1Log = (isFinite(g1) && g1 !== 0) ? Math.log10(Math.abs(g1)) : gainRateLog().log;
   up1Card.update({
     level: `等级 ${state.up1}`,
-    effect: `当前获取速率: ${fmtNum(gainRate() * timeRate(), gainRateLog().log + timeRateLog())} m/s²`,
+    effect: `当前获取速率: ${fmtNum(g1 * timeRate(), g1Log + timeRateLog())} m/s²`,
     cost: fmtNum(up1Cost(), up1CostLog()) + " Hz",
     affordable: cmpGE(f, up1Cost(), FLog(), up1CostLog()),
   });
@@ -1449,7 +1461,7 @@ function buyPG2() {
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
   const c = pg2Cost();
   if (cmpLT(state.phonons, c, getLogPhonons(), pg2CostLog())) return;
-  if (!upgradesFree()) setPhonons(state.phonons - c);
+  if (!upgradesFree()) subPhonons(c);
   markPurchase();
       state.pg2++;
   updatePhononUI();
@@ -1460,7 +1472,7 @@ function buyPG3() {
   if (inDistort("rigid") || inDistort("adiabatic") || inDistort("simple")) return; // 刚性/热寂/简洁：无法购买声子升级3
   const c = pg3Cost();
   if (cmpLT(state.phonons, c, getLogPhonons(), pg3CostLog())) return;
-  if (!upgradesFree()) setPhonons(state.phonons - c);
+  if (!upgradesFree()) subPhonons(c);
   markPurchase();
       state.pg3++;
   updatePhononUI();
@@ -1469,7 +1481,7 @@ function buyFluct() {
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
   if (state.phFluct) return;
   if (cmpLT(state.phonons, costOf(FLUCT_COST), getLogPhonons(), costOfLog(LOG_FLUCT_COST))) return;
-  if (!upgradesFree()) setPhonons(state.phonons - FLUCT_COST);
+  if (!upgradesFree()) subPhonons(FLUCT_COST);
   markPurchase();
       state.phFluct = 1;
   updatePhononUI();
@@ -1479,7 +1491,7 @@ function buyCoupling() {
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
   if (state.phCoupling) return;
   if (cmpLT(state.phonons, costOf(COUPLING_COST), getLogPhonons(), costOfLog(LOG_COUPLING_COST))) return;
-  if (!upgradesFree()) setPhonons(state.phonons - COUPLING_COST);
+  if (!upgradesFree()) subPhonons(COUPLING_COST);
   markPurchase();
       state.phCoupling = 1;
   checkAchievements(); // A23 耦合
@@ -1608,7 +1620,7 @@ const LOG_T_P0 = Math.log10(T_P0);
 function annihilationReady() {
   // log 域比较：用**有效温度**（滞涨为平方根后的温度，其余宇宙等于 raw）与目标比较；
   // 打破规则时无上限，直接用 raw。
-  const tLog = state.rulesBroken || state.testBreakRules ? temperatureLog() : temperatureCappedLog();
+  const tLog = state.rulesBroken ? temperatureLog() : temperatureCappedLog();
   // 扭曲宇宙：目标是该宇宙自己的普朗克温度（未知宇宙 id 视为不在扭曲中）
   if (state.distortActive) {
     const u = DISTORT_UNIVERSES.find(x => x.id === state.distortActive);
@@ -1631,7 +1643,7 @@ function doAnnihilation() {
   const inDistortMode = !!state.distortActive;
   const dUniverse = inDistortMode ? DISTORT_UNIVERSES.find(x => x.id === state.distortActive) : null;
   const gained = inDistortMode ? 0 : spGain(); // Sp 获取不受 SVPU2 加成
-  if (!inDistortMode && gained < 1 && !state.testBreakRules) return; // 测试模式：Sp=0 也执行湮灭
+  if (!inDistortMode && gained < 1) return;
   const wasFirst = state.annihilations === 0;
 
   // 统计（扭曲宇宙内不刷新 Sp 相关纪录，但记入历史）
@@ -1640,13 +1652,14 @@ function doAnnihilation() {
   const gameDur = state.annGameElapsed || (state.playTime - state.annStartGame);
   const rate = realDur > 0 && isFinite(gained) ? (gained / realDur) * 60 : 0; // Sp/分
   if (!inDistortMode) {
-    // log 域加法：gained 超 double（Infinity）时也不会污染存档
-    if (isFinite(gained)) {
+    // log 域加法：gained 或当前 sp/totalSp 任一超 double（缓存 Infinity）时走 log 域累积，
+    // 否则 setSp(Infinity + 有限值) 会把 logDsp 压成 LOG_CAP，触发 migrateState 存档净化
+    if (isFinite(gained) && isFinite(state.sp + gained) && isFinite(state.totalSp + gained)) {
       setSp(state.sp + gained);
       setTotalSp(state.totalSp + gained);
       if (gained > state.annBestSp) state.annBestSp = gained;
     } else {
-      // gained 超 double：log 域累积（log 为权威，double 缓存 Infinity）
+      // 任一侧超 double：log 域累积（log 为权威，double 缓存 Infinity）
       const gLog = spGainLog();
       const newSpLog = logAddLogs(getLogSp(), gLog);
       state.logDsp = newSpLog;
@@ -1654,7 +1667,8 @@ function doAnnihilation() {
       const newTotalLog = logAddLogs(getLogTotalSp(), gLog);
       state.logDtotal = newTotalLog;
       state.totalSp = newTotalLog > 308 ? Infinity : Math.pow(10, newTotalLog);
-      state.annBestSp = Infinity;
+      if (!isFinite(gained)) state.annBestSp = Infinity;
+      else if (gained > state.annBestSp) state.annBestSp = gained;
     }
     if (rate > state.annBestRate) state.annBestRate = rate;
     if (state.annFastest === 0 || realDur < state.annFastest) state.annFastest = realDur;
@@ -1671,6 +1685,7 @@ function doAnnihilation() {
   // 重置（几乎全部）。累计频率与统计极值（通用统计）不重置。
   setU(resetU()); state.L = 1; state.logL10 = 0;
   state.up1 = 0; state.up2 = 0; state.up3 = 0; state.up3LastF = 0; state.logUp3LastF = NLOG;
+  state.lastPurchaseAt = 0; state.narrowPurchases = 0; // 与 applyAnnihilationResetBody 保持一致（冷却/狭窄状态不跨湮灭残留）
   if (!auOwned("au24")) setPhonons(0); // AU24 量子涟漪：湮灭保留声子
   state.pg1 = 0; state.pg2 = 0; state.pg3 = 0; // 发生器重复升级等级总是重置
   if (!hasMilestone(1)) state.phUnlocked = 0;
@@ -1746,6 +1761,7 @@ function enterDistort(id) {
   setPhonons(0);
   state.distortActive = id;
   distortEnterAt = Date.now();
+  state.distortEnterAt = distortEnterAt;
   if (id === "simple") setPhonons(1); // 简洁宇宙：声子恒 1
   if (id === "narrow") state.narrowPurchases = 0; // 狭窄宇宙：进入时购买次数强制重置（防残留）
   state.annStartReal = Date.now();
@@ -1765,7 +1781,16 @@ function forceAnnihilationReset(gained) {
   const gameDur = state.annGameElapsed || (state.playTime - state.annStartGame);
   const rate = realDur > 0 ? (gained / realDur) * 60 : 0;
   if (gained > 0) {
-    setSp(state.sp + gained); setTotalSp(state.totalSp + gained);
+    if (isFinite(state.sp + gained) && isFinite(state.totalSp + gained)) {
+      setSp(state.sp + gained); setTotalSp(state.totalSp + gained);
+    } else {
+      // 任一侧超 double：log 域累积（与 doAnnihilation 同防污染）
+      const gLog = Math.log10(gained);
+      const newSpLog = logAddLogs(getLogSp(), gLog);
+      state.logDsp = newSpLog; state.sp = newSpLog > 308 ? Infinity : Math.pow(10, newSpLog);
+      const newTotalLog = logAddLogs(getLogTotalSp(), gLog);
+      state.logDtotal = newTotalLog; state.totalSp = newTotalLog > 308 ? Infinity : Math.pow(10, newTotalLog);
+    }
     if (gained > state.annBestSp) state.annBestSp = gained;
     if (rate > state.annBestRate) state.annBestRate = rate;
     if (state.annFastest === 0 || realDur < state.annFastest) state.annFastest = realDur;
@@ -1829,6 +1854,7 @@ function retryDistort() {
   // 再次进入
   state.distortActive = id;
   distortEnterAt = Date.now();
+  state.distortEnterAt = distortEnterAt;
   state.annStartReal = Date.now();
   state.annStartGame = state.playTime; state.annGameElapsed = 0;
   applyAnnihilationVisibility();
@@ -1848,10 +1874,7 @@ function exitDistortBtn() {
   }
   const u = DISTORT_UNIVERSES.find(x => x.id === state.distortActive);
   // 退出/重试不记录挑战时长（只有 doAnnihilation 完成才记录 distortBest/distortTotal）
-  state.distortFails = (state.distortFails || 0) + 1;
-  if (state.distortFails >= 10 && !state.ach.hidden.includes("S14")) {
-    grantHidden("S14"); updateAchievementsUI();
-  }
+  // 失败计数与 S14 判定统一在 exitDistort 内做一次（此处曾重复 +1，点一次退出记两次失败）
   exitDistort();
   setAutosaveStatus("已退出扭曲宇宙「" + (u ? u.name : "") + "」");
 }
@@ -1967,7 +1990,6 @@ function applyHelpVisibility() {
 }
 
 // ---------- 奇点升级 ----------
-const SP_UPGRADES = [];
 // spu1 移至 SAU 区（与奇点升级同尺寸按钮）：
 const SPU1_DEF = { id: "spu1", name: "奇点之前的升级不再消耗资源", desc: "购买除升级3外奇点之前的升级不再消耗资源" };
 
@@ -2018,8 +2040,9 @@ function buySAU(id) {
   const n = state[u.key] + 1; // 第 n 次购买（1 起）
   if (state[u.key] >= u.max) return;
   const c = u.cost(n);
+  if (!isFinite(c)) return; // 可重复升级远期价格超 double，无法有意义地支付
   if (state.sp < c) return;
-  setSp(state.sp - c);
+  subSp(c);
   state[u.key]++;
   checkAchievements(); // A35
   updateSpUI();
@@ -2029,7 +2052,7 @@ function buyAU(id) {
   const u = AU_DEFS.flat().find(x => x.id === id);
   if (!u || auOwned(id)) return;
   if (state.sp < u.cost) return;
-  setSp(state.sp - u.cost);
+  subSp(u.cost);
   state.au[id] = 1;
   checkAchievements(); // A35
   updateSpUI();
@@ -2082,6 +2105,7 @@ function getLogBhMass() {
 }
 function setBhMass(v) {
   state.bhMass = v;
+  // 防污染同 setU/setSp：非有限正数保留 logBhMass 权威
   if (v > 0 && isFinite(v)) state.logBhMass = clampLog(Math.log10(v));
   else if (v <= 0) state.logBhMass = NLOG;
 }
@@ -2095,8 +2119,16 @@ function getLogVP() {
 }
 function setVP(v) {
   state.virtualParticles = v;
+  // 防污染同 setU/setSp：非有限正数保留 logVP 权威
   if (v > 0 && isFinite(v)) state.logVP = clampLog(Math.log10(v));
   else if (v <= 0) state.logVP = NLOG;
+}
+// 支出虚粒子（c 为有限正数）：VP 超 double 时 log 域减法，防 logVP 被 LOG_CAP 污染
+function subVP(c) {
+  if (isFinite(c) && isFinite(state.virtualParticles) && state.virtualParticles >= c) { setVP(state.virtualParticles - c); return; }
+  const r = logAddSigned(getLogVP(), 1, Math.log10(c), -1);
+  if (r.sign < 0) setVP(0);
+  else setVPLog(r.log);
 }
 function setVPLog(logV) {
   state.logVP = clampLog(logV);
@@ -2125,13 +2157,20 @@ function bhTimeMult() {
   if (auOwned("au34")) el = clampLog(el * 2);
   return el > 0 ? (1 + (el > 308 ? Infinity : Math.pow(10, el))) : 1;
 }
-// 吸积效率倍率（SBU1 事件视界 ×2/级；AU43 奇点塌缩额外 ×spAccretionMult）
-function bhAccretionMult() { return Math.pow(2, state.sbu1) * spAccretionMult(); }
 // AU43 奇点塌缩：黑洞吸积效率倍率 = (lg(Sp+1) + (Sp+1)^0.01)^3
+// log10 版本（权威）：totalSp 超 double（缓存 Infinity）时 pow 链产生 Infinity，会把 logBhMass 污染成 LOG_CAP
+function spAccretionMultLog() {
+  if (!auOwned("au43")) return 0;
+  const lgSp1 = getLogTotalSp() > 15 ? getLogTotalSp() : Math.log10(1 + state.totalSp); // lg(Sp+1)（线性值）
+  const aLog = clampLog(Math.log10(Math.max(lgSp1, 1e-300))); // log10(lg(Sp+1))；lgSp1=0 时为 NLOG（可忽略）
+  const bLog = 0.01 * lgSp1;                                  // log10((Sp+1)^0.01)
+  return clampLog(3 * logAddLogs(aLog, bLog));                // 3·lg(lg(Sp+1) + (Sp+1)^0.01)
+}
+// double 版（仅显示用；超 double 返回 Infinity）
 function spAccretionMult() {
   if (!auOwned("au43")) return 1;
-  const sp1 = 1 + state.totalSp;
-  return Math.pow(Math.log10(sp1) + Math.pow(sp1, 0.01), 3);
+  const l = spAccretionMultLog();
+  return l > 308 ? Infinity : Math.pow(10, l);
 }
 // 虚粒子获取倍率（SBU3 霍金辐射 ×2/级）
 function bhVPMult() { return Math.pow(2, state.sbu3); }
@@ -2145,10 +2184,10 @@ function bhAccretionRateLog() {
   const mLog = getLogBhMass();
   const fLog = FLog();
   const au44 = auOwned("au44");
-  // AU44 已购买：软上限前的 Gain 不含 SBU1 倍率（SBU1 在软上限后乘）
-  const accMult = Math.pow(2, au44 ? 0 : state.sbu1) * spAccretionMult();
+  // AU44 已购买：软上限前的 Gain 不含 SBU1 倍率（SBU1 在软上限后乘）；AU43 走 log 域（防 Infinity）
+  const accMultLog = (au44 ? 0 : state.sbu1) * Math.log10(2) + spAccretionMultLog();
   const massExp = bhAccretionMassExp();
-  let gainLog = clampLog(massExp * mLog + 0.01 * (fLog - 200) + Math.log10(Math.max(accMult, 1e-300)));
+  let gainLog = clampLog(massExp * mLog + 0.01 * (fLog - 200) + Math.max(0, accMultLog));
   // 软上限：Gain 超 1e50（log50）的部分缩放
   const SOFT = 50;
   if (gainLog > SOFT) {
@@ -2162,8 +2201,8 @@ function bhAccretionRateLog() {
 function bhMassSoftcapped() {
   if (!bhUnlocked()) return false;
   const au44 = auOwned("au44");
-  const accMult = Math.pow(2, au44 ? 0 : state.sbu1) * spAccretionMult();
-  const gainLog = clampLog(bhAccretionMassExp() * getLogBhMass() + 0.01 * (FLog() - 200) + Math.log10(Math.max(accMult, 1e-300)));
+  const accMultLog = (au44 ? 0 : state.sbu1) * Math.log10(2) + spAccretionMultLog();
+  const gainLog = clampLog(bhAccretionMassExp() * getLogBhMass() + 0.01 * (FLog() - 200) + Math.max(0, accMultLog));
   return gainLog > 50;
 }
 // 脉冲状态：虚粒子获取速率（每秒）= floor(mult × (M^0.1 − 1))；M=1 时自然为 0。返回 log10
@@ -2193,8 +2232,9 @@ function buySBU(id) {
   if (!u) return;
   const n = state[u.key] + 1;
   const c = u.cost(n);
+  if (!isFinite(c)) return; // 远期价格超 double，无法有意义地支付
   if (state.sp < c) return;
-  setSp(state.sp - c);
+  subSp(c);
   state[u.key]++;
   updateBlackholeUI();
   setAutosaveStatus("已购买黑洞升级：" + u.name);
@@ -2214,7 +2254,7 @@ function buySVPU(id) {
   const cLog = u.costLog(n);
   const c = Math.pow(10, cLog);
   if (cmpLT(state.virtualParticles, c, getLogVP(), cLog)) return;
-  setVP(state.virtualParticles - c);
+  subVP(c);
   state[u.key]++;
   updateBlackholeUI();
   setAutosaveStatus("已购买黑洞升级：" + u.name);
@@ -2248,7 +2288,7 @@ function buyVPU(id) {
   const u = VPU_DEFS.find(x => x.id === id);
   if (!u || vpuOwned(id)) return;
   if (state.sp < u.cost) return;
-  setSp(state.sp - u.cost);
+  subSp(u.cost);
   state.au["vpu_" + id] = 1;
   updateBlackholeUI();
   setAutosaveStatus("已购买黑洞升级：" + u.name);
@@ -2398,13 +2438,14 @@ function buildBlackholeOnce() {
   bhBuilt = true;
 }
 
+// 页面宽度缓存：避免动画每帧读 offsetWidth 强制重排（随黑洞 stats 节流刷新）
+let bhPageW = 760;
 function bhRadius() {
   // 直径比例 = max(0.1, min(0.6, lg(M)/50))（界面宽度的倍数）；返回半径
   // 初始 M=1 时直径约为界面宽度的 0.1 倍，M=1e30 后封顶 0.6 倍
   const mLog = Math.max(0, getLogBhMass());
   const scale = Math.max(0.1, Math.min(0.6, mLog / 50));
-  const pageW = document.getElementById("app").offsetWidth || 760;
-  return { r: pageW * scale / 2, pageW };
+  return { r: bhPageW * scale / 2, pageW: bhPageW };
 }
 
 function drawBlackhole(state2) {
@@ -2468,10 +2509,19 @@ function drawBlackhole(state2) {
   }
 }
 
+let bhStatsLast = 0;
 function bhAnimLoop() {
-  if (!bhBuilt) { bhAnimRAF = requestAnimationFrame(bhAnimLoop); return; }
+  bhAnimRAF = requestAnimationFrame(bhAnimLoop); // 先排队，早退不影响循环
+  if (!bhBuilt) return;
+  // 黑洞子页隐藏时不绘制、不刷新（原先无论可见与否都 60fps 重绘 + 每帧重建 innerHTML）
+  const sub = document.getElementById("sub-ann-blackhole");
+  if (!sub || sub.classList.contains("hidden")) return;
   drawBlackhole(state.bhState);
-  // 快变数字刷新（黑洞状态行）
+  // 快变数字刷新（黑洞状态行）：节流至 ~10Hz，顺带刷新页面宽度缓存
+  const now = Date.now();
+  if (now - bhStatsLast < 100) return;
+  bhStatsLast = now;
+  bhPageW = document.getElementById("app").offsetWidth || 760;
   const stats = document.getElementById("bh-stats");
   if (stats) {
     const stNames = { accrete: "吸积", distorl: "扭曲", pulse: "脉冲" };
@@ -2482,7 +2532,6 @@ function bhAnimLoop() {
       `<div class="bh-stat-row"><span>基础效果</span><span>×${fmtNum(bhEffect(), bhEffectLog())}</span></div>` +
       (bhMassSoftcapped() ? `<div class="bh-softcap-note">由于黑洞质量溢出，超过1e50的部分将受到软上限影响</div>` : "");
   }
-  bhAnimRAF = requestAnimationFrame(bhAnimLoop);
 }
 
 function updateBlackholeUI() {
@@ -2555,7 +2604,7 @@ function buyAnnCDUpgrade() {
   if (state.autoAnnCDLvl >= ANN_CD_UPG.max) return; // 3 级后 CD 已到 25ms 下限，拒绝购买
   const cost = ANN_CD_UPG.cost();
   if (state.sp < cost) return;
-  setSp(state.sp - cost);
+  subSp(cost);
   state.autoAnnCDLvl++;
   updateAutomationUI();
   setAutosaveStatus("已购买：自动湮灭 CD 缩减");
@@ -2565,46 +2614,28 @@ function buyBatchUpgrade() {
   // 打破规则且上限已超 128（「最大购买」状态）后不可购买
   if (batchLimit() === Infinity) return;
   const cost = BATCH_UPG.cost();
+  if (!isFinite(cost)) return; // 远期价格超 double，无法有意义地支付
   if (state.sp < cost) return;
-  setSp(state.sp - cost);
+  subSp(cost);
   state.batchLvl++;
   state.batchMax = Math.pow(2, state.batchLvl + 1);
   updateAutomationUI();
   setAutosaveStatus("已购买：批量购买上限翻倍");
 }
 function buySpUpgrade(id) {
-  // spu1 单独处理（已移至 SAU 区）
-  if (id === "spu1") {
-    if (state.spu1 >= 1) return;
-    if (state.sp < 1) return;
-    setSp(state.sp - 1);
-    state.spu1 = 1;
-    checkAchievements(); // A31
-    updateSpUI();
-    setAutosaveStatus("已购买湮灭升级");
-    return;
-  }
-  const u = SP_UPGRADES.find(x => x.id === id);
-  if (!u) return;
-  if (u.requiresA34 && !state.ach.normal.includes("A34")) return; // A34 解锁
-  const cost = u.repeat ? u.cost() : u.cost;
-  if (!u.repeat && state[u.key]) return;
-  if (state.sp < cost) return;
-  setSp(state.sp - cost);
-  if (u.repeat) {
-    state[u.key]++;
-    if (u.id === "batch") { state.batchMax = Math.pow(2, state.batchLvl + 1); }
-  } else {
-    state[u.key] = 1;
-  }
+  // spu1 单独处理（已移至 SAU 区）；旧版通用 SP_UPGRADES 数组体系已移除，无其他条目
+  if (id !== "spu1") return;
+  if (state.spu1 >= 1) return;
+  if (state.sp < 1) return;
+  subSp(1);
+  state.spu1 = 1;
   checkAchievements(); // A31
   updateSpUI();
-  updateAutomationUI();
   setAutosaveStatus("已购买湮灭升级");
 }
 
 // 湮灭页 UI（build-once, in-place update）
-let spBuilt = false, spRefs = [], msRefs = [], sauRefs = [], auRefs = {}, spu1Ref = null, vacRef = null;
+let spBuilt = false, msRefs = [], sauRefs = [], auRefs = {}, spu1Ref = null, vacRef = null;
 function buildAnnihilationOnce() {
   if (spBuilt) return;
   // 里程碑
@@ -2638,7 +2669,7 @@ function buildAnnihilationOnce() {
   }
   // 奇点升级
   const uList = document.getElementById("sp-upgrade-list");
-  uList.innerHTML = ""; spRefs = [];
+  uList.innerHTML = "";
   // spu1（奇点升级区顶部，与 SAU 按钮同尺寸）
   const spuRow = document.createElement("div");
   spuRow.className = "sau-row spu-row";
@@ -2709,23 +2740,6 @@ function buildAnnihilationOnce() {
     }
     uList.appendChild(rowEl);
   }
-  for (const u of SP_UPGRADES) {
-    if (u.requiresA34 && !state.ach.normal.includes("A34")) continue; // 未获得 A34 前隐藏
-    const row = document.createElement("div");
-    row.className = "sp-upgrade";
-    const left = document.createElement("div");
-    const nm = document.createElement("div"); nm.className = "spu-name"; nm.textContent = u.name;
-    const ds = document.createElement("div"); ds.className = "spu-desc"; ds.textContent = u.desc;
-    left.append(nm, ds);
-    const right = document.createElement("div"); right.className = "auto-controls";
-    const cost = document.createElement("div"); cost.className = "spu-cost";
-    const btn = document.createElement("button"); btn.textContent = "购买";
-    btn.addEventListener("click", () => buySpUpgrade(u.id));
-    right.append(cost, btn);
-    row.append(left, right);
-    uList.appendChild(row);
-    spRefs.push({ u, row, costEl: cost, btn });
-  }
   spBuilt = true;
 }
 function updateSpUI() {
@@ -2757,22 +2771,6 @@ function updateSpUI() {
     r.row.classList.toggle("done", done);
     const cur = r.distort ? distortDA() : effAnnihilations();
     r.countEl.textContent = done ? "✓" : (cur + " / " + r.m.n);
-  }
-  for (const r of spRefs) {
-    const cost = r.u.repeat ? r.u.cost() : r.u.cost;
-    if (r.u.repeat) {
-      // 可重复升级：显示等级与下一价
-      r.row.classList.toggle("affordable", state.sp >= cost);
-      r.costEl.textContent = `${fmt(cost)} Sp（等级 ${state[r.u.key]}）`;
-      r.btn.textContent = "购买";
-      r.btn.disabled = state.sp < cost;
-    } else {
-      const owned = state[r.u.key] >= 1;
-      r.row.classList.toggle("affordable", owned || state.sp >= cost);
-      r.costEl.textContent = owned ? "已购买" : `${fmt(cost)} Sp`;
-      r.btn.textContent = owned ? "已购买" : "购买";
-      r.btn.disabled = owned || state.sp < cost;
-    }
   }
   // spu1（始终显示，与 SAU 同尺寸）
   if (spu1Ref) {
@@ -2847,7 +2845,7 @@ function updateSpUI() {
     ["波速获取倍率", "×" + fmtNum(hasDistortMilestone(1) ? Decimal.pow(1 + state.totalSp, 2 * daExpMult()).toNumber() : Math.pow(1 + state.totalSp, 2), 2 * daExpMult() * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp)))],
     ["普朗克常数倍率", "×" + fmtNum(planckMult(), planckMultLog())],
   ];
-  if (auOwned("au43")) rows.push(["黑洞吸积效率倍率", "×" + fmt(spAccretionMult())]);
+  if (auOwned("au43")) rows.push(["黑洞吸积效率倍率", "×" + fmtNum(spAccretionMult(), spAccretionMultLog())]);
   rows.push(["当前宇宙普朗克温度", fmtNum(temperatureCap(), temperatureCapLog()) + " K"]);
   panel.innerHTML = "";
   for (const [label, value] of rows) {
@@ -3191,14 +3189,16 @@ function runAutomation() {
   if (inDistort("narrow")) return; // 狭窄宇宙：禁用所有自动化
   if (state.autoOn.wave && state.autoWaveUpg) {
     const n = autoBuyTimes("wave");
-    for (let i = 0; i < n; i++) { if (cmpGE(F(), up1Cost(), FLog(), up1CostLog())) buyUp1(); else break; }
-    for (let i = 0; i < n; i++) { if (cmpGE(F(), up2Cost(), FLog(), up2CostLog())) buyUp2(); else break; }
+    // 批量上限可为 Infinity（最大购买）：购买被宇宙规则禁止（如简洁禁升级1/2）时等级不变，
+    // 必须检测「未实际购买」并 break，否则 cmpGE 恒真 + n=Infinity 会死循环卡死页面
+    for (let i = 0; i < n; i++) { const b4 = state.up1; if (cmpGE(F(), up1Cost(), FLog(), up1CostLog())) buyUp1(); else break; if (state.up1 === b4) break; }
+    for (let i = 0; i < n; i++) { const b4 = state.up2; if (cmpGE(F(), up2Cost(), FLog(), up2CostLog())) buyUp2(); else break; if (state.up2 === b4) break; }
   }
   if (state.autoOn.phonon && state.autoPhononUpg && state.phUnlocked) {
     const n = autoBuyTimes("phonon");
-    for (let i = 0; i < n; i++) { if (cmpGE(F(), pg1Cost(), FLog(), pg1CostLog())) buyPG1(); else break; }
-    for (let i = 0; i < n; i++) { if (cmpGE(state.phonons, pg2Cost(), getLogPhonons(), pg2CostLog())) buyPG2(); else break; }
-    for (let i = 0; i < n; i++) { if (state.pg3 < pg3Cap() && cmpGE(state.phonons, pg3Cost(), getLogPhonons(), pg3CostLog())) buyPG3(); else break; }
+    for (let i = 0; i < n; i++) { const b4 = state.pg1; if (cmpGE(F(), pg1Cost(), FLog(), pg1CostLog())) buyPG1(); else break; if (state.pg1 === b4) break; }
+    for (let i = 0; i < n; i++) { const b4 = state.pg2; if (cmpGE(state.phonons, pg2Cost(), getLogPhonons(), pg2CostLog())) buyPG2(); else break; if (state.pg2 === b4) break; }
+    for (let i = 0; i < n; i++) { const b4 = state.pg3; if (state.pg3 < pg3Cap() && cmpGE(state.phonons, pg3Cost(), getLogPhonons(), pg3CostLog())) buyPG3(); else break; if (state.pg3 === b4) break; }
   }
   if (state.autoOn.up3 && state.autoUp3 && up3Card) {
     if (auOwned("au21") && state.autoUp3Mode === "time") {
@@ -3276,9 +3276,10 @@ function renderFast() {
   document.getElementById("freq-value").textContent = fmtNum(f, fLog);
   // Hz/s 显示：膨胀宇宙需除以含倍率的有效波长（log 域防溢出）
   {
-    const gLog = clampLog(gainRateLog().log + timeRateLog() - getLogL10() - distortLModLog());
+    const gr = gainRateLog(); // 只掷一次随机符号（定向宇宙），符号与数值保持一致
+    const gLog = clampLog(gr.log + timeRateLog() - getLogL10() - distortLModLog());
     const gainHz = gLog > 308 ? Infinity : (gLog < -308 ? 0 : Math.pow(10, gLog));
-    document.getElementById("freq-gain").textContent = (gainRateLog().sign > 0 ? "+" : "") + fmtNum(gainHz, gLog) + " Hz/s";
+    document.getElementById("freq-gain").textContent = (gr.sign > 0 ? "+" : "") + fmtNum(gainHz, gLog) + " Hz/s";
   }
   // 冷却宇宙：实时显示当前指数 k
   const cdEl = document.getElementById("cooldown-display");
@@ -3439,11 +3440,11 @@ const NORMAL_ACH = [
   { id: "A32", name: "Qol", desc: "获得所有自动化", check: () => state.autoWaveUpg && state.autoPhononUpg && state.autoUp3 && state.autoAnn },
   { id: "A33", name: "扭曲", desc: "解锁扭曲选项卡", check: () => state.annihilations >= 20 },
   { id: "A34", name: "秩序", desc: "湮灭一个被扭曲的宇宙", star: true, reward: "解锁批量购买", check: () => state.distortDone.length >= 1 },
-  { id: "A35", name: "刻写", desc: "购买第一个奇点升级", check: () => (state.sau1 + state.sau2 + state.sau3 > 0) || Object.keys(state.au).length > 0 },
+  { id: "A35", name: "刻写", desc: "购买第一个奇点升级", check: () => state.spu1 >= 1 || (state.sau1 + state.sau2 + state.sau3 + state.sau4 > 0) || Object.keys(state.au).length > 0 },
   // 第 4 行 (A41-A45) 奇点
   { id: "A41", name: "视界", desc: "解锁黑洞", star: true, reward: "总时间倍率再 ^1.1", check: () => bhUnlocked() },
   { id: "A42", name: "烂柯", desc: "总时间倍率超过 3.65e5", star: true, reward: "自动湮灭 CD 变为 200ms，并解锁一个新的自动化升级", check: () => timeRate() >= 3.65e5 },
-  { id: "A43", name: "无限", desc: "打破多元宇宙的规则", check: () => state.rulesBroken && !state.testBreakRules }, // 原 A35
+  { id: "A43", name: "无限", desc: "打破多元宇宙的规则", check: () => state.rulesBroken }, // 原 A35
   { id: "A44", name: "永炽", desc: "温度超过 1.79e308 K", check: () => temperature() >= 1.79e308 },
   { id: "A45", name: "万物", desc: "购买所有奇点升级", star: true, reward: "解锁黑洞页的虚粒子单次升级（VPU 系列）", check: () => ALL_SP_UPGRADES_OWNED() },
 ];
@@ -3479,17 +3480,15 @@ const HIDDEN_ACH = [
   { id: "S21", name: "这是饼干点点乐吗？", check: () => false }, // 点击黑洞动画界面 100 次
   { id: "S22", name: "白洞", check: () => false }, // 黑洞保持脉冲状态 5 分钟以上
   { id: "S23", name: "裸奇点", check: () => false }, // 黑洞倍率为 1 时保持扭曲状态 10 分钟以上
-  { id: "S24", name: "你变秃了，也变强了", check: () => false }, // 一小时内 rua 摆线 200 次
+  { id: "S24", name: "你变秃了，也变强了", check: () => false }, // 一天内 rua 摆线 200 次（每日计数器 ruaClicksToday）
   { id: "S25", name: "这是旮旯给木吗？", check: () => false }, // 好感度达到 1000
 ];
 // S5 目标序列：S1,S1,S4,S5,S1,S4
 const S5_SEQUENCE = ["S1", "S1", "S4", "S5", "S1", "S4"];
-// A45 万物：是否拥有所有奇点升级（当前已实装的：spu1、SAU1-3、真空衰变、13 个 AU）
+// A45 万物：是否拥有所有奇点升级（spu1、SAU1-3、真空衰变、全部 16 个 AU——含 au44 需打破规则后才可购买）
 function ALL_SP_UPGRADES_OWNED() {
   if (state.spu1 < 1) return false;
   if (state.sau1 < 1 || state.sau2 < 1 || state.sau3 < 1 || state.sau4 < 1) return false;
-  // 所有单次奇点升级（AU 全系列，含尚未实装的 au13/au14/au45 等）——
-  // 未实装的 cost=Infinity 永远无法购买，故 A45 在全部实装并购买后才能达成
   return AU_DEFS.flat().every(u => auOwned(u.id));
 }
 
@@ -3717,8 +3716,9 @@ function tick() {
     state.playTime += dt;
   }
   state.realTime += realDt;
-  // 本次湮灭的游戏时长独立累计（避免 playTime 饱和后 playTime-annStartGame 恒为 0）
-  if (state.annihilations >= 1) state.annGameElapsed = (state.annGameElapsed || 0) + dt;
+  // 本次湮灭的游戏时长独立累计（避免 playTime 饱和后 playTime-annStartGame 恒为 0）；
+  // dt 在 timeRate 超 double 时为 MAX_VALUE 占位，裸累加两次即 Infinity（统计显示 Infinityd）——钳制
+  if (state.annihilations >= 1) state.annGameElapsed = Math.min(Number.MAX_VALUE, (state.annGameElapsed || 0) + dt);
 
   // 波速生产（double 链不溢出时走原路径，零回归；饱和时退 log 域累积）
   const g = gainRate();
@@ -3820,8 +3820,9 @@ function tick() {
   }
   // S19：滚木 —— 生产为 0 Hz/s 超过 10 分钟（连续）
   {
-    const gain = gainRate() * timeRate() / Math.max(state.L, 1e-300) * (state.L > 0 ? 1 : 0);
-    const zero = Math.abs(gain) < 1e-30;
+    // log 域判零：L 下溢为 0 或 timeRate 超 double 时，double 公式会把巨大的真实产额误判为 0
+    const gainLog = gainRateLog().log + timeRateLog() - getLogL10();
+    const zero = gainLog < -30;
     if (zero) {
       if (!state.zeroGainSince) state.zeroGainSince = Date.now();
       else if (!state.ach.hidden.includes("S19") && Date.now() - state.zeroGainSince >= 600000) grantHidden("S19");
@@ -3934,7 +3935,8 @@ function setupUI() {
       }
       const obj = decodeSave(str);
       state = Object.assign(defaultState(), obj);
-      state.settings = Object.assign({ theme: "black", notation: "scientific", decimals: 3 }, obj.settings || {});
+      currentSlot = 0; // 导入主档后槽位高亮复位
+      state.settings = Object.assign({}, defaultState().settings, obj.settings || {});
       state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
       migrateState();
       if (obj.frequency !== undefined && obj.U === undefined) { setU(obj.frequency); state.L = 1; state.logL10 = 0; }
@@ -3943,6 +3945,7 @@ function setupUI() {
       applyTheme(state.settings.theme);
       applyNotation(state.settings.notation);
       applyDecimals(state.settings.decimals);
+      applyUiFps(state.settings.uiFps);
       saveGame();
       renderAll();
       setAutosaveStatus("已导入存档");
