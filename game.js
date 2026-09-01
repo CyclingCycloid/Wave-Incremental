@@ -810,6 +810,8 @@ function fmtLog(logV) {
 }
 // 统一显示：double 在范围内走 fmt（现状），饱和/超 1e308 走 fmtLog（输出 1eN）
 function fmtNum(doubleVal, logVal) {
+  // double 为 0 但 logVal 表示非零值（double 下溢，如波长 <1e-324）时走 log 域显示
+  if (doubleVal === 0 && logVal !== undefined && isFinite(logVal) && logVal > NLOG + 1) return fmtLog(logVal);
   if (isFinite(doubleVal) && Math.abs(doubleVal) < LOG_FALLBACK) return fmt(doubleVal);
   if (logVal !== undefined && isFinite(logVal)) return fmtLog(logVal);
   return "∞";
