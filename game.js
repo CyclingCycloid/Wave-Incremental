@@ -2489,9 +2489,10 @@ function updateBlackholeUI() {
   for (const b of bhStateBtns) {
     b.classList.toggle("active", b.dataset.bhState === state.bhState);
   }
-  // SBU 升级（花 Sp）与 SVPU 升级（花 VP）
+  // SBU 升级（花 Sp）与 SVPU 升级（花 VP）；VPU 单次升级在下方单独处理
   for (const id in bhRefs) {
     const r = bhRefs[id];
+    if (r.vpu) continue; // VPU 走下方专属处理（无 key/max/cost 函数）
     const n = state[r.u.key] + 1;
     const maxed = r.u.max !== Infinity && state[r.u.key] >= r.u.max;
     let c, cLog, affordable, costStr, resUnit;
