@@ -3021,9 +3021,14 @@ function updateAutomationUI() {
       if (batchUnlocked && unlocked) {
         // 先定外观再控显隐（className 整体替换会清掉 hidden，顺序不能反）
         const limit = batchLimit();
-        if (limit === Infinity) {
+        if (limit === Infinity && state.batchMode[key]) {
+          // 最大购买（开启状态）
           r.batchBtn.textContent = "最大购买";
           r.batchBtn.className = "batch-btn max";
+        } else if (limit === Infinity && !state.batchMode[key]) {
+          // 最大购买能力下的单次购买模式（点击可切回最大购买）
+          r.batchBtn.textContent = "单次购买";
+          r.batchBtn.className = "batch-btn single";
         } else if (state.batchMode[key]) {
           r.batchBtn.textContent = "批量购买 ×" + limit;
           r.batchBtn.className = "batch-btn batch";
