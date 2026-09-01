@@ -2002,7 +2002,7 @@ const AU_DEFS = [
     { id: "au41", name: "共轭湮灭", desc: "湮灭次数加成奇点效果", cost: 3e8 },
     { id: "au42", name: "虚幻凝聚", desc: "基于虚粒子数量增加奇点获取", cost: 5e9 },
     { id: "au43", name: "奇点塌缩", desc: "新增一个奇点效果", cost: 5e12 },
-    { id: "au44", name: "监察原理", desc: "全息原理的加成在软上限后生效", cost: 1e14 },
+    { id: "au44", name: "监察原理", desc: "事件视界的加成在软上限外生效", cost: 1e14 },
   ],
 ];
 function auOwned(id) { return !!state.au[id]; }
