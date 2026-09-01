@@ -2143,7 +2143,7 @@ function bhAccretionRateLog() {
   // 软上限：Gain 超 1e50（log50）的部分缩放
   const SOFT = 50;
   if (gainLog > SOFT) {
-    gainLog = clampLog(SOFT + (gainLog - SOFT) * Math.sqrt(5 / gainLog));
+    gainLog = clampLog(SOFT + (gainLog - SOFT) * Math.sqrt(15 / gainLog));
     // AU44：SBU1 倍率在软上限之后乘上
     if (au44 && state.sbu1 > 0) gainLog = clampLog(gainLog + state.sbu1 * Math.log10(2));
   }
