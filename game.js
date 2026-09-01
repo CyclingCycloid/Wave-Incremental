@@ -157,7 +157,7 @@ const DISTORT_UNIVERSES = [
   {
     id: "adiabatic", name: "热寂",
     desc: "热涨落与声子涨落无效，声波耦合无效，无法购买声子发生器效率，温度以 ^-0.5 的倍率除波速获取",
-    tp: 1e165,
+    tp: 1e155,
   },
   {
     id: "narrow", name: "狭窄",
