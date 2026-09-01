@@ -1352,7 +1352,7 @@ function updateUpgradesUI() {
   const fLog = FLog();
   up1Card.update({
     level: `等级 ${state.up1}`,
-    effect: `当前获取速率: ${fmtNum(gainRate() * timeRate(), gainRateLog().log + Math.log10(timeRate()))} m/s²`,
+    effect: `当前获取速率: ${fmtNum(gainRate() * timeRate(), gainRateLog().log + timeRateLog())} m/s²`,
     cost: fmtNum(up1Cost(), up1CostLog()) + " Hz",
     affordable: cmpGE(f, up1Cost(), FLog(), up1CostLog()),
   });
@@ -3144,9 +3144,11 @@ function extrapolatedU() {
     if (inDistort("directed") && v < 0) return 0;
     return v;
   }
-  // log 域外推：U ≈ U + (g·timeRate)·dt。log10(|g·dt|) = gainRateLog + log10(timeRate) + log10(dt)
+  // log 域外推：U ≈ U + (g·timeRate)·dt。log10(|g·dt|) = gainRateLog + log10(timeRate) + log10(dt)。
+  // timeRate 超 double 时 Math.log10(timeRate())=Infinity——必须走 timeRateLog（log 域权威）
   const gr = gainRateLog();
-  const gdLog = gr.log + Math.log10(Math.max(timeRate(), 1e-300)) + Math.log10(Math.max(dt, 1e-300));
+  const trLogD = timeRateLog();
+  const gdLog = gr.log + trLogD + Math.log10(Math.max(dt, 1e-300));
   if (inDistort("directed") && gr.sign < 0) return state.U; // 定向负向不外推（硬下限 0）
   return logAddLogs(dispUBaseLog, gdLog) <= NLOG + 1 ? state.U : Infinity;
 }
@@ -3161,7 +3163,8 @@ function extrapolatedULog() {
   }
   const gr = gainRateLog();
   if (inDistort("directed") && gr.sign < 0) return getLogU10(); // 定向负向不外推
-  const gdLog = gr.log + Math.log10(Math.max(timeRate(), 1e-300)) + Math.log10(Math.max(dt, 1e-300));
+  const trLogD = timeRateLog();
+  const gdLog = gr.log + trLogD + Math.log10(Math.max(dt, 1e-300));
   return logAddLogs(dispUBaseLog, gdLog);
 }
 function renderFast() {
@@ -3179,7 +3182,7 @@ function renderFast() {
   document.getElementById("freq-value").textContent = fmtNum(f, fLog);
   // Hz/s 显示：膨胀宇宙需除以含倍率的有效波长（log 域防溢出）
   {
-    const gLog = clampLog(gainRateLog().log + Math.log10(Math.max(timeRate(), 1e-300)) - getLogL10() - distortLModLog());
+    const gLog = clampLog(gainRateLog().log + timeRateLog() - getLogL10() - distortLModLog());
     const gainHz = gLog > 308 ? Infinity : (gLog < -308 ? 0 : Math.pow(10, gLog));
     document.getElementById("freq-gain").textContent = (gainRateLog().sign > 0 ? "+" : "") + fmtNum(gainHz, gLog) + " Hz/s";
   }
@@ -3605,15 +3608,19 @@ function tick() {
   // 游戏时间倍率走 log 域（timeRateLog 权威），倍率超 double（黑洞扭曲状态等）时
   // 用 Decimal 计算游戏时间增量，不再产生 Infinity
   const trLog = timeRateLog();
+  // gameDtLog：本 tick 游戏时间增量 dt 的 log10（log 域权威，供所有生产累积使用）
+  let gameDtLog;
   let dt;
   if (trLog > 308) {
+    gameDtLog = trLog + Math.log10(Math.max(realDt, 1e-300));
     // 倍率超 double：游戏时间以 log 权威累积，double 缓存封顶 MAX_VALUE
     if (state.playTimeLog === undefined) state.playTimeLog = Math.log10(Math.max(state.playTime, 1e-300));
-    state.playTimeLog = clampLog(logAddLogs(state.playTimeLog, clampLog(trLog + Math.log10(Math.max(realDt, 1e-300)))));
+    state.playTimeLog = clampLog(logAddLogs(state.playTimeLog, clampLog(gameDtLog)));
     state.playTime = Number.MAX_VALUE;
-    dt = Number.MAX_VALUE; // 下游量级标记（生产按 log 域另行累积）
+    dt = Number.MAX_VALUE; // 仅作下游量级标记；生产累积一律走 gameDtLog
   } else {
     dt = realDt * Math.pow(10, trLog);
+    gameDtLog = Math.log10(Math.max(dt, 1e-300));
     state.playTime += dt;
   }
   state.realTime += realDt;
@@ -3630,9 +3637,12 @@ function tick() {
       // double 路径（现状）
       setU(state.U + gd);
     } else {
-      // log 域累积：U_new = U_old + g·dt（U≥0；定向 0 下限）
+      // log 域累积：U_new = U_old + g·dt（U≥0；定向 0 下限）。
+      // 游戏时间倍率超 double（trLog>308，dt 为 MAX_VALUE 占位）时，
+      // log10(|g·dt|) 必须用 trLog + log10(realDt) 而非 log10(dt)，
+      // 否则每 tick 会少算 (trLog-308) 个数量级
       const { log: gLog, sign } = gainRateLog();
-      const gdLog = gLog + Math.log10(Math.max(dt, 1e-300)); // log10(|g·dt|)
+      const gdLog = gLog + (trLog > 308 ? trLog + Math.log10(Math.max(realDt, 1e-300)) : Math.log10(Math.max(dt, 1e-300)));
       let newLogU = logAddLogs(getLogU10(), gdLog);
       if (inDistort("directed") && sign < 0) {
         // 定向：U 可能被减到 0。log 域相减：max(0, U - |gd|)
@@ -3646,7 +3656,7 @@ function tick() {
 
     // 累计频率 F 增量 = (g/L)·dt；扭曲宇宙中的产生不计入通用统计
     if (!state.distortActive) {
-      const gOverLLog = (gFinite ? Math.log10(Math.max(Math.abs(g), 1e-300)) : gainRateLog().log) + Math.log10(Math.max(dt, 1e-300)) - getLogL10();
+      const gOverLLog = (gFinite ? Math.log10(Math.max(Math.abs(g), 1e-300)) : gainRateLog().log) + gameDtLog - getLogL10();
       if (gFinite && uFinite && isFinite(state.totalFGained) && state.totalFGained < LOG_FALLBACK && Math.abs(state.totalFGained + gd / Math.max(state.L, 1e-300)) < LOG_FALLBACK) {
         state.totalFGained += (g / state.L) * dt;
         state.logTotalF = state.totalFGained > 0 ? Math.log10(state.totalFGained) : NLOG;
@@ -3673,7 +3683,7 @@ function tick() {
       setPhonons(state.phonons + pr * dt);
     } else {
       // log 域：logPhonons + log10(pr·dt)（pr·dt 可能为 0 当 pr=0）
-      const prLog = phononRateLog() + Math.log10(Math.max(dt, 1e-300));
+      const prLog = phononRateLog() + gameDtLog;
       if (prLog <= NLOG + 1) {
         // pr·dt ≈ 0，保持原值（double 微调）
         setPhonons(state.phonons + (prFinite ? pr * dt : 0));
