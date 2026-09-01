@@ -3349,7 +3349,7 @@ const NORMAL_ACH = [
   { id: "A35", name: "刻写", desc: "购买第一个奇点升级", check: () => (state.sau1 + state.sau2 + state.sau3 > 0) || Object.keys(state.au).length > 0 },
   // 第 4 行 (A41-A45) 奇点
   { id: "A41", name: "视界", desc: "解锁黑洞", star: true, reward: "总时间倍率再 ^1.1", check: () => bhUnlocked() },
-  { id: "A42", name: "烂柯", desc: "总时间倍率超过 3.65e6", star: true, reward: "自动湮灭 CD 变为 200ms，并解锁一个新的自动化升级", check: () => timeRate() >= 3.65e6 },
+  { id: "A42", name: "烂柯", desc: "总时间倍率超过 3.65e5", star: true, reward: "自动湮灭 CD 变为 200ms，并解锁一个新的自动化升级", check: () => timeRate() >= 3.65e5 },
   { id: "A43", name: "无限", desc: "打破多元宇宙的规则", check: () => state.rulesBroken && !state.testBreakRules }, // 原 A35
   { id: "A44", name: "永炽", desc: "温度超过 1.79e308 K", check: () => temperature() >= 1.79e308 },
   { id: "A45", name: "万物", desc: "购买所有奇点升级", check: () => ALL_SP_UPGRADES_OWNED(),
