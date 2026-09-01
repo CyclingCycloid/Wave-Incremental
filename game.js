@@ -838,6 +838,10 @@ function fmtTime(seconds, precise) {
   if (m > 0) return `${m}m ${sStr}s`;
   return `${sStr}s`;
 }
+// 湮灭次数等大计数的显示：≥1e4 用科学计数法（如 3.00e4）
+function fmtAnnNum(n) {
+  return n >= 1e4 ? n.toExponential(2).replace("e+", "e") : `${n}`;
+}
 
 // ---------- Base64 (Unicode-safe) ----------
 function encodeSave(obj) {
@@ -928,6 +932,8 @@ function migrateState() {
   if (state.ruaBoostCD === undefined) state.ruaBoostCD = 0;
   // v0.4.3.2：自动湮灭 CD 升级字段回填
   if (state.autoAnnCDLvl === undefined) state.autoAnnCDLvl = 0;
+  // v0.5.0：本次湮灭游戏时长独立累计字段回填
+  if (state.annGameElapsed === undefined) state.annGameElapsed = 0;
   // 测试开关不跨会话残留：加载存档时重置（温度无上限的测试状态若被保存，
   // 热反馈失控会让每次湮灭后十几秒就再次到达 Tcap 且不获 Sp）
   if (state.testBreakRules) state.testBreakRules = false;
@@ -1627,7 +1633,7 @@ function doAnnihilation() {
   // 统计（扭曲宇宙内不刷新 Sp 相关纪录，但记入历史）
   const realNow = Date.now();
   const realDur = (realNow - state.annStartReal) / 1000;
-  const gameDur = state.playTime - state.annStartGame;
+  const gameDur = state.annGameElapsed || (state.playTime - state.annStartGame);
   const rate = realDur > 0 && isFinite(gained) ? (gained / realDur) * 60 : 0; // Sp/分
   if (!inDistortMode) {
     // log 域加法：gained 超 double（Infinity）时也不会污染存档
@@ -1651,7 +1657,7 @@ function doAnnihilation() {
   }
   // 历史记录
   pushAnnHistory({
-    label: inDistortMode ? `扭曲·${dUniverse.name}` : `第 ${state.annihilations + 1} 次`,
+    label: inDistortMode ? `扭曲·${dUniverse.name}` : `第 ${fmtAnnNum(state.annihilations + 1)} 次`,
     distort: inDistortMode ? dUniverse.id : "",
     sp: gained, realDur, gameDur, rate, at: realNow,
   });
@@ -1705,7 +1711,7 @@ function doAnnihilation() {
 
   // 湮灭计时重置
   state.annStartReal = realNow;
-  state.annStartGame = state.playTime;
+  state.annStartGame = state.playTime; state.annGameElapsed = 0;
 
   applyPhononVisibility();
   applyAnnihilationVisibility();
@@ -1738,7 +1744,7 @@ function enterDistort(id) {
   if (id === "simple") setPhonons(1); // 简洁宇宙：声子恒 1
   if (id === "narrow") state.narrowPurchases = 0; // 狭窄宇宙：进入时购买次数强制重置（防残留）
   state.annStartReal = Date.now();
-  state.annStartGame = state.playTime;
+  state.annStartGame = state.playTime; state.annGameElapsed = 0;
   applyAnnihilationVisibility(); // 重设按钮为扭曲模式文案
   updateDistortUI();
   switchTab("wave");
@@ -1750,7 +1756,7 @@ function enterDistort(id) {
 function forceAnnihilationReset(gained) {
   const realNow = Date.now();
   const realDur = (realNow - state.annStartReal) / 1000;
-  const gameDur = state.playTime - state.annStartGame;
+  const gameDur = state.annGameElapsed || (state.playTime - state.annStartGame);
   const rate = realDur > 0 ? (gained / realDur) * 60 : 0;
   if (gained > 0) {
     setSp(state.sp + gained); setTotalSp(state.totalSp + gained);
@@ -1758,7 +1764,7 @@ function forceAnnihilationReset(gained) {
     if (rate > state.annBestRate) state.annBestRate = rate;
     if (state.annFastest === 0 || realDur < state.annFastest) state.annFastest = realDur;
   }
-  pushAnnHistory({ label: `第 ${state.annihilations + 1} 次`, distort: "", sp: gained, realDur, gameDur, rate, at: realNow });
+  pushAnnHistory({ label: `第 ${fmtAnnNum(state.annihilations + 1)} 次`, distort: "", sp: gained, realDur, gameDur, rate, at: realNow });
   state.annihilations += annSpMult();
   applyAnnihilationResetBody(realNow);
   setAutosaveStatus(gained > 0 ? `湮灭完成：获得 ${fmtNum(gained, gained > 0 ? Math.log10(gained) : NLOG)} 奇点` : "湮灭完成");
@@ -1785,7 +1791,7 @@ function applyAnnihilationResetBody(realNow) {
   if (hasMilestone(8)) state.autoUp3 = 1;
   if (hasMilestone(10)) state.autoAnn = 1;
   state.annStartReal = realNow;
-  state.annStartGame = state.playTime;
+  state.annStartGame = state.playTime; state.annGameElapsed = 0;
   applyPhononVisibility();
   applyAnnihilationVisibility();
   checkAchievements();
@@ -1818,7 +1824,7 @@ function retryDistort() {
   state.distortActive = id;
   distortEnterAt = Date.now();
   state.annStartReal = Date.now();
-  state.annStartGame = state.playTime;
+  state.annStartGame = state.playTime; state.annGameElapsed = 0;
   applyAnnihilationVisibility();
   updateDistortUI();
   switchTab("wave");
@@ -1860,7 +1866,7 @@ function exitDistort() {
   state.pg1 = 0; state.pg2 = 0; state.pg3 = 0;
   state.lastPurchaseAt = 0; state.narrowPurchases = 0;
   state.annStartReal = Date.now();
-  state.annStartGame = state.playTime;
+  state.annStartGame = state.playTime; state.annGameElapsed = 0;
   applyPhononVisibility();
   applyAnnihilationVisibility();
   renderAll();
@@ -3235,7 +3241,7 @@ function renderStats() {
   document.getElementById("stat-timerate").textContent = "×" + fmt(timeRate());
   // 湮灭统计
   const annReal = state.annihilations >= 1 ? (Date.now() - state.annStartReal) / 1000 : 0;
-  const annGame = state.annihilations >= 1 ? state.playTime - state.annStartGame : 0;
+  const annGame = state.annihilations >= 1 ? (state.annGameElapsed || (state.playTime - state.annStartGame)) : 0;
   document.getElementById("stat-ann-time").textContent =
     state.annihilations >= 1 ? `${fmtTime(annReal, true)} / ${fmtTime(annGame, true)}` : "— / —";
   document.getElementById("stat-ann-total-sp").textContent = fmtNum(state.totalSp, getLogTotalSp());
@@ -3261,7 +3267,7 @@ function renderStats() {
       row.append(label, val);
       chList.appendChild(row);
     }
-    // 总和行：所有挑战时间之和
+    // 总和行：各宇宙最佳完成时间之和（而非历史累计 distortTotal）
     const sumRow = document.createElement('div');
     sumRow.className = 'stat-row';
     const sumLabel = document.createElement('span'); sumLabel.className = 'stat-label';
@@ -3269,7 +3275,8 @@ function renderStats() {
     const sumVal = document.createElement('span'); sumVal.className = 'stat-value';
     // 所有宇宙都已湮灭才显示总和；否则视为未定（+∞）
     const allDone = DISTORT_UNIVERSES.every(u => state.distortBest[u.id]);
-    sumVal.textContent = allDone ? fmtTime(state.distortTotal || 0, true) : "+∞";
+    const bestSum = DISTORT_UNIVERSES.reduce((s, u) => s + (state.distortBest[u.id] || 0), 0);
+    sumVal.textContent = allDone ? fmtTime(bestSum, true) : "+∞";
     sumRow.append(sumLabel, sumVal);
     chList.appendChild(sumRow);
   }
@@ -3610,6 +3617,8 @@ function tick() {
     state.playTime += dt;
   }
   state.realTime += realDt;
+  // 本次湮灭的游戏时长独立累计（避免 playTime 饱和后 playTime-annStartGame 恒为 0）
+  if (state.annihilations >= 1) state.annGameElapsed = (state.annGameElapsed || 0) + dt;
 
   // 波速生产（double 链不溢出时走原路径，零回归；饱和时退 log 域累积）
   const g = gainRate();
@@ -3979,7 +3988,7 @@ function init() {
   applyAnnihilationVisibility();
   if (state.annihilations >= 1 && !state.annStartReal) {
     state.annStartReal = Date.now();
-    state.annStartGame = state.playTime;
+    state.annStartGame = state.playTime; state.annGameElapsed = 0;
   }
   switchTab("wave");
   switchSubtab("main");
