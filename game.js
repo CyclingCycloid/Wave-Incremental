@@ -1982,7 +1982,7 @@ const AU_DEFS = [
   [ // 第1组
     { id: "au11", name: "机械共振", desc: "基于波动升级1等级给予其指数加成：^max(1,√n/5)", cost: 1e6 },
     { id: "au12", name: "受激跃迁", desc: "每个声子升级1等级给予声子升级2免费2级", cost: 1e10 },
-    { id: "au13", name: "光子共振", desc: "基于波动升级2等级增强其底数：+min(1, lg(1+n)/3)", cost: 1e16 },
+    { id: "au13", name: "光子共振", desc: "基于波动升级2等级增强其底数：+min(2, lg(1+n)/4)", cost: 1e16 },
     { id: "au14", name: "黑体辐射", desc: "波长倒数增强声子产生：×max(1, L^-0.05)", cost: Infinity },
   ],
   [ // 第2组
@@ -2041,7 +2041,7 @@ function up1Exp() { return auOwned("au11") ? Math.max(1, Math.sqrt(state.up1) / 
 // AU12：pg2 免费等级
 function pg2Free() { return auOwned("au12") ? state.pg1 * 2 : 0; }
 // AU13：up2 底数加成
-function up2Base() { return 2 + (auOwned("au13") ? Math.min(1, Math.log10(1 + state.up2) / 3) : 0); }
+function up2Base() { return 2 + (auOwned("au13") ? Math.min(2, Math.log10(1 + state.up2) / 4) : 0); }
 // AU14：波长倒数增强声子产生
 function invLMult() { return auOwned("au14") ? Math.max(1, Math.pow(10, -0.05 * getLogL10())) : 1; }
 // 波长倒数增强声子产生的 log10：max(0, -0.05·logL10)
