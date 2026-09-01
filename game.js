@@ -1717,6 +1717,7 @@ function doAnnihilation() {
   state.annStartReal = realNow;
   state.annStartGame = state.playTime; state.annGameElapsed = 0;
 
+  updateDispAnchor();
   applyPhononVisibility();
   applyAnnihilationVisibility();
   checkAchievements();
@@ -1753,6 +1754,7 @@ function enterDistort(id) {
   updateDistortUI();
   switchTab("wave");
   switchSubtab("main");
+  updateDispAnchor(); // 重置显示锚点，防止旧宇宙的 gainRate 缓存继续外推
   setAutosaveStatus(`进入扭曲宇宙「${u.name}」`);
 }
 
@@ -1833,6 +1835,7 @@ function retryDistort() {
   updateDistortUI();
   switchTab("wave");
   switchSubtab("main");
+  updateDispAnchor();
   setAutosaveStatus("已重试：" + (DISTORT_UNIVERSES.find(u => u.id === id) || {name:id}).name);
 }
 
@@ -1874,6 +1877,7 @@ function exitDistort() {
   applyPhononVisibility();
   applyAnnihilationVisibility();
   renderAll();
+  updateDispAnchor();
   setAutosaveStatus(`已退出扭曲宇宙「${u ? u.name : ""}」（未达成目标）`);
 }
 
