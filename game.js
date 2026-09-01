@@ -152,7 +152,7 @@ const DISTORT_UNIVERSES = [
   {
     id: "inflation", name: "滞涨",
     desc: "前奇点资源不消耗被禁用，所有升级价格折算从10Hz开始并且变得更严重，声子升级价格平方，波速获取变为原来的平方根，有效温度变为原来的平方根",
-    tp: 1e115,
+    tp: 1e110,
   },
   {
     id: "adiabatic", name: "热寂",
@@ -1603,8 +1603,9 @@ function hasDistortMilestone(n) { return distortDA() >= n; }
 
 const LOG_T_P0 = Math.log10(T_P0);
 function annihilationReady() {
-  // log 域比较：temperatureLog 与目标温度的 log10；double 路径不变（零回归）
-  const tLog = temperatureLog();
+  // log 域比较：用**有效温度**（滞涨为平方根后的温度，其余宇宙等于 raw）与目标比较；
+  // 打破规则时无上限，直接用 raw。
+  const tLog = state.rulesBroken || state.testBreakRules ? temperatureLog() : temperatureCappedLog();
   // 扭曲宇宙：目标是该宇宙自己的普朗克温度（未知宇宙 id 视为不在扭曲中）
   if (state.distortActive) {
     const u = DISTORT_UNIVERSES.find(x => x.id === state.distortActive);
