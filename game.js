@@ -2027,7 +2027,7 @@ const AU_DEFS = [
     { id: "au11", name: "机械共振", desc: "基于波动升级1等级给予其指数加成：^max(1,√n/5)", cost: 1e6 },
     { id: "au12", name: "受激跃迁", desc: "每个声子升级1等级给予声子升级2免费2级", cost: 1e10 },
     { id: "au13", name: "光子共振", desc: "基于波动升级2等级增强其底数：+min(2, lg(1+n)/4)", cost: 1e16 },
-    { id: "au14", name: "黑体辐射", desc: "波长倒数增强声子产生：×max(1, L^-0.05)", cost: 5e16 },
+    { id: "au14", name: "黑体辐射", desc: "波长倒数增强声子产生：×max(1, L^-0.1)", cost: 3e16 },
   ],
   [ // 第2组
     { id: "au21", name: "时序扩张", desc: "解锁升级3自动化的间隔模式", cost: 1e5 },
@@ -2088,9 +2088,9 @@ function pg2Free() { return auOwned("au12") ? state.pg1 * 2 : 0; }
 // AU13：up2 底数加成
 function up2Base() { return 2 + (auOwned("au13") ? Math.min(2, Math.log10(1 + state.up2) / 4) : 0); }
 // AU14：波长倒数增强声子产生
-function invLMult() { return auOwned("au14") ? Math.max(1, Math.pow(10, -0.05 * getLogL10())) : 1; }
-// 波长倒数增强声子产生的 log10：max(0, -0.05·logL10)
-function invLMultLog() { return auOwned("au14") ? Math.max(0, -0.05 * getLogL10()) : 0; }
+function invLMult() { return auOwned("au14") ? Math.max(1, Math.pow(10, -0.1 * getLogL10())) : 1; }
+// 波长倒数增强声子产生的 log10：max(0, -0.1·logL10)
+function invLMultLog() { return auOwned("au14") ? Math.max(0, -0.1 * getLogL10()) : 0; }
 // AU41：共轭湮灭——湮灭次数 A 加成奇点效果：×(1+lg(1+A)/3)^(1/2)
 function phononSpMult() {
   if (!auOwned("au41")) return 1;
@@ -2268,21 +2268,23 @@ function buySVPU(id) {
   updateBlackholeUI();
   setAutosaveStatus("已购买黑洞升级：" + u.name);
 }
-// ---------- 虚粒子单次升级（VPU1-9，AU45 星标奖励解锁；九宫格）----------
-// 解锁条件统一由 vpuUnlocked(id) 判定；目前仅 VPU5 实装，其余为占位（cost=Infinity 永不可购）
+// ---------- 虚粒子单次升级（VPU1-9，A45 星标奖励解锁；九宫格）----------
+// 达成 A45 前整区不可见；解锁条件统一由 vpuUnlocked(id) 判定。
+// 目前所有 VPU 均不可购买（cost=Infinity）：VPU5 暂未开放购买，
+// 未达成解锁条件时卡片显示具体达成条件（vpuCondText），其余为占位
 const VPU_DEFS = [
   { id: "vpu1", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu2", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu3", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu4", name: "???", desc: "（占位）", cost: Infinity },
-  { id: "vpu5", name: "临界湮灭", desc: "取消自动湮灭的 CD，并把共轭湮灭的效果变为原来的^2", cost: 1e17 },
+  { id: "vpu5", name: "临界湮灭", desc: "取消自动湮灭的 CD，并把共轭湮灭的效果变为原来的^2", cost: Infinity },
   { id: "vpu6", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu7", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu8", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu9", name: "???", desc: "（占位）", cost: Infinity },
 ];
-// VPU 解锁条件：解锁 AU45 星标奖励（购买所有奇点升级）后全部可见；
-// VPU5 额外要求总挑战时间 < 3s
+// VPU 解锁条件：解锁 A45 星标奖励（购买所有奇点升级）后全部可见；
+// VPU5 额外要求总挑战时间 < 3s（满足后仍暂不可购买）
 function vpuUnlocked(id) {
   if (!state.ach.normal.includes("A45")) return false;
   if (id === "vpu5") {
@@ -2290,6 +2292,16 @@ function vpuUnlocked(id) {
     return bestSum > 0 && bestSum < 3;
   }
   return false; // 其余 VPU 尚未实装
+}
+// 未达成解锁条件的 VPU 显示的具体条件文本（空串 = 无（占位））
+function vpuCondText(id) {
+  if (id === "vpu5") {
+    const bestSum = DISTORT_UNIVERSES.reduce((s, u) => s + (state.distortBest[u.id] || 0), 0);
+    if (bestSum > 0 && bestSum < 3) return "解锁条件已达成（暂未开放购买）";
+    return "解锁条件：所有扭曲宇宙最佳完成时间之和 < 3 秒（当前 "
+      + (bestSum > 0 ? bestSum.toFixed(2) + " 秒" : "尚无完成记录") + "）";
+  }
+  return "";
 }
 function vpuOwned(id) { return !!state.au["vpu_" + id]; }
 function buyVPU(id) {
@@ -2360,7 +2372,7 @@ function tickBlackhole(dt) {
 }
 
 // ---------- 黑洞 UI（build-once, in-place update）+ 旋转动画 ----------
-let bhBuilt = false, bhRefs = {}, bhStateBtns = [], bhAnimRAF = 0, bhAngle = 0, bhParticles = [];
+let bhBuilt = false, bhRefs = {}, bhStateBtns = [], bhAnimRAF = 0, bhAngle = 0, bhParticles = [], bhVpuSection = null;
 
 function buildBlackholeOnce() {
   if (bhBuilt) return;
@@ -2409,11 +2421,14 @@ function buildBlackholeOnce() {
     svpuRow.appendChild(btn);
     bhRefs[u.id] = { u, btn, descEl: ds, costEl: ct, vp: true };
   }
-  // 虚粒子单次升级（VPU1-9 九宫格，AU45 星标奖励解锁；花 Sp）
-  list.appendChild(mkTitle("虚粒子单次升级"));
+  // 虚粒子单次升级（VPU1-9 九宫格，A45 星标奖励解锁；达成 A45 前整区不可见）
+  bhVpuSection = document.createElement("div");
+  bhVpuSection.appendChild(mkTitle("虚粒子单次升级"));
   const vpuRow = document.createElement("div");
   vpuRow.className = "bh-vpu-grid";
-  list.appendChild(vpuRow);
+  bhVpuSection.appendChild(vpuRow);
+  list.appendChild(bhVpuSection);
+  bhVpuSection.classList.toggle("hidden", !state.ach.normal.includes("A45"));
   for (const u of VPU_DEFS) {
     const btn = document.createElement("button");
     btn.className = "sau-btn bh-upg-btn vpu-btn";
@@ -2539,6 +2554,8 @@ function updateBlackholeUI() {
   if (!bhUnlocked()) return;
   buildBlackholeOnce();
   document.getElementById("subtab-blackhole").classList.toggle("hidden", !bhUnlocked());
+  // VPU 虚粒子单次升级区：达成 A45「万物」前整区不可见
+  if (bhVpuSection) bhVpuSection.classList.toggle("hidden", !state.ach.normal.includes("A45"));
   // 状态按钮高亮
   for (const b of bhStateBtns) {
     b.classList.toggle("active", b.dataset.bhState === state.bhState);
@@ -2571,17 +2588,17 @@ function updateBlackholeUI() {
     r.btn.classList.toggle("bought", maxed);
     r.btn.classList.toggle("affordable", !maxed && affordable);
   }
-  // VPU 虚粒子单次升级（花 Sp；AU45 奖励解锁，各自有解锁条件）
+  // VPU 虚粒子单次升级（A45 奖励解锁，各自有解锁条件；达成条件前显示具体条件）
   for (const id in bhRefs) {
     const r = bhRefs[id];
     if (!r.vpu) continue;
     const owned = vpuOwned(r.u.id);
     const unlocked = vpuUnlocked(r.u.id);
     if (!unlocked) {
-      // 未解锁：显示锁定状态
-      r.descEl.textContent = r.u.cost === Infinity ? "（占位）" : "（未达成解锁条件）";
-      r.costEl.textContent = r.u.cost === Infinity ? "未开放" : "???";
-      if (r.nameEl) r.nameEl.textContent = r.u.cost === Infinity ? "???" : r.u.name;
+      // 未解锁：有具体条件的显示条件（含当前进度），其余为占位
+      r.descEl.textContent = vpuCondText(r.u.id) || "（占位）";
+      r.costEl.textContent = "未开放";
+      if (r.nameEl) r.nameEl.textContent = r.u.name;
       r.btn.disabled = true;
       r.btn.classList.remove("bought");
       r.btn.classList.remove("affordable");
@@ -2589,10 +2606,11 @@ function updateBlackholeUI() {
     }
     r.descEl.textContent = r.u.desc;
     if (r.nameEl) r.nameEl.textContent = r.u.name;
-    r.costEl.textContent = owned ? "已购买" : fmt(r.u.cost) + " Sp";
-    r.btn.disabled = owned || !spAfford(r.u.cost);
+    // 价格已删除（cost=Infinity）：显示「未开放」且不可购买
+    r.costEl.textContent = owned ? "已购买" : (isFinite(r.u.cost) ? fmt(r.u.cost) + " Sp" : "未开放");
+    r.btn.disabled = owned || !isFinite(r.u.cost) || !spAfford(r.u.cost);
     r.btn.classList.toggle("bought", owned);
-    r.btn.classList.toggle("affordable", !owned && spAfford(r.u.cost));
+    r.btn.classList.toggle("affordable", !owned && isFinite(r.u.cost) && spAfford(r.u.cost));
   }
 }
 
