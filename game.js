@@ -1986,7 +1986,7 @@ const AU_DEFS = [
     { id: "au11", name: "机械共振", desc: "基于波动升级1等级给予其指数加成：^max(1,√n/5)", cost: 1e6 },
     { id: "au12", name: "受激跃迁", desc: "每个声子升级1等级给予声子升级2免费2级", cost: 1e10 },
     { id: "au13", name: "光子共振", desc: "基于波动升级2等级增强其底数：+min(2, lg(1+n)/4)", cost: 1e16 },
-    { id: "au14", name: "黑体辐射", desc: "波长倒数增强声子产生：×max(1, L^-0.05)", cost: Infinity },
+    { id: "au14", name: "黑体辐射", desc: "波长倒数增强声子产生：×max(1, L^-0.05)", cost: 5e16 },
   ],
   [ // 第2组
     { id: "au21", name: "时序扩张", desc: "解锁升级3自动化的间隔模式", cost: 1e5 },
