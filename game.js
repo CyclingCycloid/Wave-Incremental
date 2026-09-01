@@ -3227,11 +3227,11 @@ function renderFast() {
   }
   // U 显示：超 double 走 fmtLog（外推 U 的 log 权威）
   document.getElementById("u-value").textContent = fmtNum(Math.abs(extrapolatedU()), extrapolatedULog());
-  // 波长显示：膨胀宇宙下用 log 域（倍率可能超 double）
+  // 波长显示：超 double（logL10 < -308）走 fmtLog（1eN 带尾数）；膨胀宇宙用 log 域（倍率可能超 double）
   const ml2 = distortLModLog();
   document.getElementById("l-value").textContent = ml2 > 0
     ? fmtLog(getLogL10() + ml2)
-    : fmt(Math.pow(10, Math.max(getLogL10(), -320)));
+    : fmtNum(Math.pow(10, getLogL10()), getLogL10());
 }
 function renderWave() {
   renderFast();
