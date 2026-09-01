@@ -1982,7 +1982,7 @@ const AU_DEFS = [
   [ // 第1组
     { id: "au11", name: "机械共振", desc: "基于波动升级1等级给予其指数加成：^max(1,√n/5)", cost: 1e6 },
     { id: "au12", name: "受激跃迁", desc: "每个声子升级1等级给予声子升级2免费2级", cost: 1e10 },
-    { id: "au13", name: "光子共振", desc: "基于波动升级2等级增强其底数：+min(0.5, log₂n/30)", cost: Infinity },
+    { id: "au13", name: "光子共振", desc: "基于波动升级2等级增强其底数：+min(0.5, log₂n/30)", cost: 1e16 },
     { id: "au14", name: "黑体辐射", desc: "波长倒数增强声子产生：×max(1, L^-0.05)", cost: Infinity },
   ],
   [ // 第2组
@@ -2737,7 +2737,8 @@ function updateSpUI() {
     // 未解锁时名字显示？？？、描述显示解锁条件
     const au42Unlocked = hasDistortMilestone(6);
     const au43Unlocked = hasDistortMilestone(7);
-    const au44Unlocked = state.rulesBroken;
+    // AU44：7DA 前始终隐藏（？？？？？），7DA 后以「打破多元宇宙的规则」解锁
+    const au44Unlocked = hasDistortMilestone(7) && state.rulesBroken;
     const thisUnlocked = !isAu4 ? true : (id === "au42" ? au42Unlocked : id === "au43" ? au43Unlocked : id === "au44" ? au44Unlocked : au4Unlocked);
     if (isAu4 && !thisUnlocked) {
       r.descEl.textContent = id === "au42" ? "（6DA 解锁）" : id === "au43" ? "（7DA 解锁）" : id === "au44" ? "（打破多元宇宙的规则解锁）" : "（4DA 解锁）";
