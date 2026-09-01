@@ -2125,34 +2125,31 @@ function bhVPMult() { return Math.pow(2, state.sbu3); }
 // accretionMult = SBU1 ×2^sbu1 × AU43 奇点塌缩倍率（spAccretionMult）
 // 本 tick 的质量获取 Gain（log10）超 1e50 时受软上限：
 // 实际获得 = 1e50 × (Gain/1e50)^( (5/lg(Gain))^(1/2) )
-// AU44 监察原理：SVPU1 全息原理的加成移动到软上限之后（即软上限前的 Gain 不含 SVPU1 指数加成）
+// AU44 监察原理：SBU1 事件视界（×2^sbu1）的加成移动到软上限之后生效
 function bhAccretionRateLog() {
   const mLog = getLogBhMass();
   const fLog = FLog();
-  const accMult = Math.pow(2, state.sbu1) * spAccretionMult();
-  // AU44 未购买：SVPU1 的指数加成作用于软上限前的 Gain 计算
-  const massExp = (auOwned("au44") ? 0.75 : bhAccretionMassExp());
-  const gainLog = clampLog(massExp * mLog + 0.01 * (fLog - 200) + Math.log10(Math.max(accMult, 1e-300)));
+  const au44 = auOwned("au44");
+  // AU44 已购买：软上限前的 Gain 不含 SBU1 倍率（SBU1 在软上限后乘）
+  const accMult = Math.pow(2, au44 ? 0 : state.sbu1) * spAccretionMult();
+  const massExp = bhAccretionMassExp();
+  let gainLog = clampLog(massExp * mLog + 0.01 * (fLog - 200) + Math.log10(Math.max(accMult, 1e-300)));
   // 软上限：Gain 超 1e50（log50）的部分缩放
   const SOFT = 50;
   if (gainLog > SOFT) {
-    let softGainLog = SOFT + (gainLog - SOFT) * Math.sqrt(5 / gainLog);
-    // AU44 已购买：SVPU1 全息原理加成在软上限之后生效
-    if (auOwned("au44") && state.svpu1 > 0) {
-      // SVPU1 加成作用于软上限后的获取：Gain' = Gain^(1+0.03·svpu1/原指数)——
-      // 等价实现：软上限后的 log 乘以 (0.75+0.03·svpu1)/0.75
-      softGainLog = clampLog(softGainLog * (bhAccretionMassExp() / 0.75));
-    }
-    return clampLog(softGainLog);
+    gainLog = clampLog(SOFT + (gainLog - SOFT) * Math.sqrt(5 / gainLog));
+    // AU44：SBU1 倍率在软上限之后乘上
+    if (au44 && state.sbu1 > 0) gainLog = clampLog(gainLog + state.sbu1 * Math.log10(2));
   }
   return gainLog;
 }
-// 黑洞质量获取是否正受软上限影响（显示提示用）
+// 黑洞质量获取是否正受软上限影响（显示提示用）：用与 bhAccretionRateLog 相同的软上限前 Gain
 function bhMassSoftcapped() {
   if (!bhUnlocked()) return false;
-  const accMult = Math.pow(2, state.sbu1) * spAccretionMult();
-  const massExp = auOwned("au44") ? 0.75 : bhAccretionMassExp();
-  return clampLog(massExp * getLogBhMass() + 0.01 * (FLog() - 200) + Math.log10(Math.max(accMult, 1e-300))) > 50;
+  const au44 = auOwned("au44");
+  const accMult = Math.pow(2, au44 ? 0 : state.sbu1) * spAccretionMult();
+  const gainLog = clampLog(bhAccretionMassExp() * getLogBhMass() + 0.01 * (FLog() - 200) + Math.log10(Math.max(accMult, 1e-300)));
+  return gainLog > 50;
 }
 // 脉冲状态：虚粒子获取速率（每秒）= floor(mult × (M^0.1 − 1))；M=1 时自然为 0。返回 log10
 function bhVPGainLog() {
@@ -3388,8 +3385,9 @@ const S5_SEQUENCE = ["S1", "S1", "S4", "S5", "S1", "S4"];
 function ALL_SP_UPGRADES_OWNED() {
   if (state.spu1 < 1) return false;
   if (state.sau1 < 1 || state.sau2 < 1 || state.sau3 < 1 || state.sau4 < 1) return false;
-  const needAU = ["au11","au12","au21","au22","au23","au24","au31","au32","au33","au34","au41","au42","au43"];
-  return needAU.every(id => auOwned(id));
+  // 所有单次奇点升级（AU 全系列，含尚未实装的 au13/au14/au45 等）——
+  // 未实装的 cost=Infinity 永远无法购买，故 A45 在全部实装并购买后才能达成
+  return AU_DEFS.flat().every(u => auOwned(u.id));
 }
 
 function checkAchievements() {
