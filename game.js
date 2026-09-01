@@ -796,11 +796,12 @@ function fmt(num) {
 }
 
 function fmtLog(logV) {
-  // 以 log10 显示：logV < 308 用 double 指数；≥308 用 log 域还原尾数，显示 a.bbeN
+  // 以 log10 显示：|logV| 在 double 范围内用 double 指数；超出用 log 域还原尾数（a.bbe±N）
   if (!isFinite(logV) || logV >= LOG_CAP) return "∞"; // LOG_CAP 钳制值视为无穷
   if (logV <= NLOG + 1) return "0";
-  if (logV < 308) return Math.pow(10, logV).toExponential(3).replace("e+", "e");
+  if (logV > -308 && logV < 308) return Math.pow(10, logV).toExponential(3).replace("e+", "e");
   // log 域：logV = floor(logV) + frac；值 = 10^frac × 10^floor(logV)
+  // （负指数也走此分支：10^frac 是 1~10 间的有限数，不会下溢）
   const d = Math.min(6, Math.max(3, (state.settings && state.settings.decimals) || 3));
   const exp = Math.floor(logV);
   const frac = logV - exp;
