@@ -3155,8 +3155,12 @@ function updateAutomationUI() {
 // 注意：即使 spu1 已购（购买免费），自动化仍以"资源达到价格"为触发条件，
 // 防止免费升级被自动化每 tick 无限购买导致指数爆炸；手动购买不受此限制。
 // 批量执行：mode 下每 tick 最多买 batchLimit() 次（单次=1）
+// batchLimit() 返回 Infinity 时（打破规则且 >128）封顶 256 防止死循环
 function autoBuyTimes(key) {
-  if (state.ach.normal.includes("A34") && state.batchMode[key]) return batchLimit();
+  if (state.ach.normal.includes("A34") && state.batchMode[key]) {
+    const lim = batchLimit();
+    return lim === Infinity ? 256 : lim;
+  }
   return 1;
 }
 // 自动湮灭统一入口：所有模式判断与时间戳更新集中在此（tick 与 rAF 共用，防双执行）
@@ -3164,8 +3168,9 @@ function autoAnnTick() {
   if (state.annihilations < 1 || !state.autoOn.ann || !state.autoAnn) return;
   if (inDistort("narrow")) return;
   if (state.distortActive) {
-    // 扭曲宇宙：达标即秒（不受模式影响）
-    if (annihilationReady() && doAnnihilation()) state.lastAutoAnnAt = Date.now();
+    // 扭曲宇宙：达标时自动完成（由 tick 触发 doAnnihilation 完成该宇宙）
+    // 但需要 CD 防抖（简洁等低阈值宇宙会正反馈触发→完成→回主宇宙→连环湮灭→再次进入→循环）
+    if (annihilationReady() && Date.now() - state.lastAutoAnnAt >= 1000 && doAnnihilation()) state.lastAutoAnnAt = Date.now();
     return;
   }
   if (auOwned("au22") && state.autoAnnMode === "time") {
@@ -3191,14 +3196,15 @@ function runAutomation() {
   if (inDistort("narrow")) return; // 狭窄宇宙：禁用所有自动化
   if (state.autoOn.wave && state.autoWaveUpg) {
     const n = autoBuyTimes("wave");
-    for (let i = 0; i < n; i++) { if (cmpGE(F(), up1Cost(), FLog(), up1CostLog())) buyUp1(); else break; }
-    for (let i = 0; i < n; i++) { if (cmpGE(F(), up2Cost(), FLog(), up2CostLog())) buyUp2(); else break; }
+    // 防御：购买被宇宙规则拒绝或 spu1 免费但价格达标不变化时，不会因 n=∞ 死循环
+    for (let i = 0; i < n; i++) { const lv = state.up1; if (cmpGE(F(), up1Cost(), FLog(), up1CostLog())) buyUp1(); else break; if (state.up1 === lv) break; }
+    for (let i = 0; i < n; i++) { const lv = state.up2; if (cmpGE(F(), up2Cost(), FLog(), up2CostLog())) buyUp2(); else break; if (state.up2 === lv) break; }
   }
   if (state.autoOn.phonon && state.autoPhononUpg && state.phUnlocked) {
     const n = autoBuyTimes("phonon");
-    for (let i = 0; i < n; i++) { if (cmpGE(F(), pg1Cost(), FLog(), pg1CostLog())) buyPG1(); else break; }
-    for (let i = 0; i < n; i++) { if (cmpGE(state.phonons, pg2Cost(), getLogPhonons(), pg2CostLog())) buyPG2(); else break; }
-    for (let i = 0; i < n; i++) { if (state.pg3 < pg3Cap() && cmpGE(state.phonons, pg3Cost(), getLogPhonons(), pg3CostLog())) buyPG3(); else break; }
+    for (let i = 0; i < n; i++) { const lv = state.pg1; if (cmpGE(F(), pg1Cost(), FLog(), pg1CostLog())) buyPG1(); else break; if (state.pg1 === lv) break; }
+    for (let i = 0; i < n; i++) { const lv = state.pg2; if (cmpGE(state.phonons, pg2Cost(), getLogPhonons(), pg2CostLog())) buyPG2(); else break; if (state.pg2 === lv) break; }
+    for (let i = 0; i < n; i++) { const lv = state.pg3; if (state.pg3 < pg3Cap() && cmpGE(state.phonons, pg3Cost(), getLogPhonons(), pg3CostLog())) buyPG3(); else break; if (state.pg3 === lv) break; }
   }
   if (state.autoOn.up3 && state.autoUp3 && up3Card) {
     if (auOwned("au21") && state.autoUp3Mode === "time") {
