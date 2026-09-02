@@ -2214,10 +2214,12 @@ function bhAccretionRateLog() {
   const massExp = bhAccretionMassExp();
   let gainLog = clampLog(massExp * mLog + 0.01 * (fLog - 200) + accMultLog);
   // 软上限：Gain 超起始点（log50，潮汐撕裂每级 +10 个数量级）的部分缩放：
-  // 实际获得 = 1e(10n+50) × (Gain/1e(10n+50))^((15/lg(Gain))^(1/2))，n 为潮汐撕裂（svpu5）等级
+  // 实际获得 = 1e(10n+50) × (Gain/1e(10n+50))^((15/lg(Gain))^e)——e=1/2；
+  // 对偶原理（VPU4）削弱软上限：e=1/3（超出部分保留更多）
   const SOFT = bhMassSoftcapLog();
   if (gainLog > SOFT) {
-    gainLog = clampLog(SOFT + (gainLog - SOFT) * Math.sqrt(15 / gainLog));
+    const e = vpuOwned("vpu4") ? 1 / 3 : 1 / 2;
+    gainLog = clampLog(SOFT + (gainLog - SOFT) * Math.pow(15 / gainLog, e));
     // AU44：SBU1 倍率在软上限之后乘上
     if (au44 && state.sbu1 > 0) gainLog = clampLog(gainLog + state.sbu1 * Math.log10(2));
   }
@@ -2273,8 +2275,8 @@ const SVPU_DEFS = [
   { id: "svpu4", key: "svpu4", name: "热能超载", desc: "削弱温度的软上限", max: Infinity, costLog: (n) => 7 + (n - 1) * 3 },              // 1e7×1000^(n-1) VP
   { id: "svpu5", key: "svpu5", name: "潮汐撕裂", desc: "黑洞质量的软上限起始点每级 +10 个数量级", max: Infinity, costLog: (n) => Math.log10(5e7) + (n - 1) * Math.log10(2000) }, // 5e7×2000^(n-1) VP
 ];
-// 全息原理的实际等级上限（对偶原理 VPU4：4 → 6）
-function svpu1Max() { return vpuOwned("vpu4") ? 6 : 4; }
+// 全息原理的实际等级上限（对偶原理 VPU4：4 → 无上限）
+function svpu1Max() { return vpuOwned("vpu4") ? Infinity : 4; }
 // 黑洞质量软上限起始点（log10）：1e50 起始，潮汐撕裂每级 +10 个数量级
 function bhMassSoftcapLog() { return 50 + 10 * state.svpu5; }
 function buySVPU(id) {
@@ -2300,7 +2302,7 @@ const VPU_DEFS = [
   { id: "vpu1", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu2", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu3", name: "???", desc: "（占位）", cost: Infinity },
-  { id: "vpu4", name: "对偶原理", desc: "全息原理的等级上限+2，并把吸积公式的质量指数+0.05", cost: 2e8 },
+  { id: "vpu4", name: "对偶原理", desc: "取消全息原理的等级限制，吸积公式的质量指数+0.05，并削弱黑洞质量的软上限", cost: 2e8 },
   { id: "vpu5", name: "临界湮灭", desc: "取消自动湮灭的 CD，并把共轭湮灭的效果变为原来的^2，增加两个虚粒子升级", cost: 1e7 },
   { id: "vpu6", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu7", name: "???", desc: "（占位）", cost: Infinity },
