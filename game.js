@@ -2494,10 +2494,11 @@ function buildBlackholeOnce() {
 }
 
 function bhRadius() {
-  // 直径比例 = max(0.1, min(0.6, lg(M)/50))（界面宽度的倍数）；返回半径
-  // 初始 M=1 时直径约为界面宽度的 0.1 倍，M=1e30 后封顶 0.6 倍
+  // 直径比例 = max(0.1, min(0.6, min((lg(M)/800)^0.5, lg(M)/200)))（界面宽度的倍数）；返回半径
+  // M=1（lg=0）时取下限 0.1 倍界面宽；先按 lg/200 线性增长、(lg/800)^0.5 在大质量时更缓，
+  // 最终在 lg(M)≥288 处封顶 0.6 倍
   const mLog = Math.max(0, getLogBhMass());
-  const scale = Math.max(0.1, Math.min(0.6, mLog / 50));
+  const scale = Math.max(0.1, Math.min(0.6, Math.min(Math.sqrt(mLog / 800), mLog / 200)));
   const pageW = document.getElementById("app").offsetWidth || 760;
   return { r: pageW * scale / 2, pageW };
 }
