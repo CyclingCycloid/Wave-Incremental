@@ -27,6 +27,7 @@
     </div>
 
     <!-- 首次湮灭遮罩 -->
+
     <div id="first-annihilation-overlay" class="ann-overlay hidden">
       <div class="ann-phase1" id="ann-phase1">你达到了普朗克温度</div>
       <div class="ann-phase2" id="ann-phase2">
@@ -35,6 +36,15 @@
       </div>
     </div>
     <div id="ann-flash" class="ann-flash hidden"></div>
+
+    <!-- 离线收益结算弹窗 -->
+    <div id="offline-overlay" class="hidden">
+      <div id="offline-box">
+        <h2>欢迎回来</h2>
+        <div id="offline-text"></div>
+        <button id="offline-claim">收取</button>
+      </div>
+    </div>
 
     <nav id="tabs">
       <button class="tab active" data-tab="wave">波动</button>
@@ -214,6 +224,15 @@
             <button id="theme-white">白色</button>
             <button id="theme-black">黑色</button>
           </div>
+        </div>
+
+        <div class="setting-group">
+          <h3>离线收益</h3>
+          <div class="btn-row">
+            <button id="offline-on">开启</button>
+            <button id="offline-off">关闭</button>
+          </div>
+          <p class="muted small">重新打开页面时结算离开期间的波速、声子与自动化（上限 8 小时）。</p>
         </div>
 
         <div class="setting-group">
@@ -489,6 +508,7 @@
           <summary>通用：时间速率、统计与存档 <span class="help-ver">v0.2–v0.4</span></summary>
           <div class="help-body">
             <p><strong>时间速率</strong>：每个普通成就使游戏时间流速 ×1.1（乘法叠加），作用于产出与声子发生器，不影响真实时间。</p>
+            <p><strong>离线收益</strong>：重新打开页面时，自动结算离开期间的生产（波速/声子/黑洞）与自动化（自动购买/自动湮灭），上限 8 小时，可在设置中关闭。标签页挂起不结算（仅关闭页面后重开生效）。</p>
             <p><strong>统计</strong>：分「数据 / 重置」子页；数据页记录游戏/真实双时钟与各项极值，更多分区将随游戏进度开放。</p>
             <p><strong>数值显示</strong>：设置页可选科学 / 工程 / 对数记数法与小数位数（3–6 位）。</p>
             <p><strong>存档</strong>：每 15 秒自动保存，另有 3 个手动槽位与 base64 导出导入。</p>

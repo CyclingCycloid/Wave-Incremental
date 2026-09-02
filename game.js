@@ -94,7 +94,7 @@ function defaultState() {
     notationSwitches: [],  // S6 显示方式切换时间戳
     phToggles: [],         // S7 声子发生器开关时间戳
     capReachedAt: 0,       // S11 达到温度上限的时间戳
-    settings: { theme: "black", notation: "scientific", decimals: 3, uiFps: 33, hideLockedRows: true, hideDoneRows: false },
+    settings: { theme: "black", notation: "scientific", decimals: 3, uiFps: 33, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true },
     lastTick: Date.now(),
   };
 }
@@ -124,6 +124,15 @@ function clampLog(v) {
 let state = defaultState();
 let currentSlot = 0;
 let dirty = false;
+// 虚拟时钟：离线模拟期间 simTimeOffset>0，生产链中依赖墙钟的公式（膨胀波长、
+// 冷却指数、rua 倍率、自动化节流等）经 gameNow() 读到连续推进的虚拟时间。
+// 在线时恒为 0，gameNow() === Date.now()，行为逐位不变
+let simTimeOffset = 0;
+function gameNow() { return Date.now() + simTimeOffset; }
+// 离线模拟进行中标志：UI 函数（渲染/弹窗/保存）见此标志早退，防止模拟步进触发 DOM 操作
+let simActive = false;
+// 待结算的离线时长（秒）：加载存档时记录，init 尾部 DOM 就绪后统一模拟并弹窗
+let pendingOffline = null;
 
 // ---------- 扭曲宇宙（v0.4.2.1 测试）----------
 // 进入扭曲宇宙会立刻湮灭重置；达到该宇宙的普朗克温度即可湮灭它（首杀奖励 Sp 获取 ×2）。
@@ -341,21 +350,21 @@ function getLogL10() { return (state.logL10 !== undefined && isFinite(state.logL
 // F = U / L（定向宇宙：波速取绝对值；膨胀宇宙：波长乘以膨胀倍率）
 function distortLMod() {
   if (!inDistort("expand")) return 1;
-  const t = (Date.now() - distortEnterAt) / 1000;
+  const t = (gameNow() - distortEnterAt) / 1000;
   if (t <= 1) return 1;
   return Math.pow(1e20, t - 1); // 进入 1 秒后，每秒波长 ×1e20
 }
 // 波长倍率的 log10（代数式，避免 double 溢出）
 function distortLModLog() {
   if (!inDistort("expand")) return 0;
-  const t = (Date.now() - distortEnterAt) / 1000;
+  const t = (gameNow() - distortEnterAt) / 1000;
   if (t <= 1) return 0;
   return 20 * (t - 1);
 }
 // 膨胀宇宙：波速获取指数随时间下降，每秒 -0.1，到 0 为止（gain^exp → log *= exp）
 function distortGainExp() {
   if (!inDistort("expand")) return 1;
-  const t = (Date.now() - distortEnterAt) / 1000;
+  const t = (gameNow() - distortEnterAt) / 1000;
   if (t <= 1) return 1;
   return Math.max(0, 1 - 0.1 * (t - 1));
 }
@@ -528,12 +537,12 @@ function up3WavelengthFromFLog(lf) {
 // 期间再次购买则 k 重置为 0（获取量瞬间跌到 1）
 function narrowBlocked() { return inDistort("narrow") && state.narrowPurchases >= 10; }
 function markPurchase() {
-  if (inDistort("cooldown")) state.lastPurchaseAt = Date.now();
+  if (inDistort("cooldown")) state.lastPurchaseAt = gameNow();
   if (inDistort("narrow")) state.narrowPurchases++;
 }
 function cooldownExp() {
   if (!inDistort("cooldown") || !state.lastPurchaseAt) return 1;
-  const t = (Date.now() - state.lastPurchaseAt) / 1000;
+  const t = (gameNow() - state.lastPurchaseAt) / 1000;
   if (t >= 15) return 0.75;
   return 0.75 * (t / 15); // k: 0 → 0.75 线性（最大指数 0.75）
 }
@@ -707,7 +716,7 @@ function gainRateDispLog(extraLog) {
 function timeRate() {
   let tr = Math.pow(achTimeBase(), state.ach.normal.length) * timeArrowMult() * absZeroMult() * bhTimeMult();
   if (state.ach.normal.includes("A41")) tr = Math.pow(tr, 1.1);
-  if (state.ruaBoostUntil && Date.now() < state.ruaBoostUntil) tr *= state.ruaBoostMult;
+  if (state.ruaBoostUntil && gameNow() < state.ruaBoostUntil) tr *= state.ruaBoostMult;
   // 时间倍率可能超 double（黑洞扭曲状态效果巨大）：用 Decimal 承载，tick 侧走 timeRateLog
   return tr;
 }
@@ -727,7 +736,7 @@ function timeRateLog() {
     if (el > 0) log = clampLog(log + logAddLogs(0, el));
   }
   if (state.ach.normal.includes("A41")) log = clampLog(log * 1.1);
-  if (state.ruaBoostUntil && Date.now() < state.ruaBoostUntil) log += Math.log10(Math.max(state.ruaBoostMult, 1e-300));
+  if (state.ruaBoostUntil && gameNow() < state.ruaBoostUntil) log += Math.log10(Math.max(state.ruaBoostMult, 1e-300));
   return clampLog(log);
 }
 // A25 奖励：每次重置后初始波速 100 m/s（否则 10）
@@ -1010,7 +1019,7 @@ function loadGame() {
     if (!raw) return false;
     const obj = decodeSave(raw);
     state = Object.assign(defaultState(), obj);
-    state.settings = Object.assign({ theme: "black", notation: "scientific", decimals: 3, hideLockedRows: true, hideDoneRows: false }, obj.settings || {});
+    state.settings = Object.assign({ theme: "black", notation: "scientific", decimals: 3, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true }, obj.settings || {});
     state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
     migrateState();
     // 迁移：v0.1 旧存档用 frequency 字段
@@ -1030,6 +1039,7 @@ function loadGame() {
     }
     applyTheme(state.settings.theme);
     applyNotation(state.settings.notation);
+    queueOfflineProgress();
     state.lastTick = Date.now();
     return true;
   } catch (e) {
@@ -1039,6 +1049,7 @@ function loadGame() {
 }
 
 function saveGame() {
+  if (simActive) return; // 离线模拟中不触碰 DOM/存档
   state.lastTick = Date.now();
   try {
     localStorage.setItem(SAVE_KEY, encodeSave(state));
@@ -1093,13 +1104,15 @@ function loadFromSlot(i) {
     if (!raw) { setAutosaveStatus("该槽为空"); return; }
     const obj = decodeSave(raw);
     state = Object.assign(defaultState(), obj);
-    state.settings = Object.assign({ theme: "black", notation: "scientific", decimals: 3, hideLockedRows: true, hideDoneRows: false }, obj.settings || {});
+    state.settings = Object.assign({ theme: "black", notation: "scientific", decimals: 3, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true }, obj.settings || {});
     state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
     migrateState();
+    queueOfflineProgress();
     state.lastTick = Date.now();
     currentSlot = i;
     applyTheme(state.settings.theme);
     applyNotation(state.settings.notation);
+    processPendingOffline(); // 槽位加载发生在 init 之后：离线结算须就地执行
     saveGame();
     renderAll();
     setAutosaveStatus(`已从存档槽 ${i + 1} 载入`);
@@ -1180,6 +1193,7 @@ function checkS6() {
 const DEFAULT_SUBTAB = { wave: "main", stats: "stats-data", annihilation: "ann-sp" };
 let lastSubtab = {}; // 记录每个主标签上次停留的子标签页
 function switchTab(name) {
+  if (simActive) return; // 离线模拟中不触碰 DOM/存档
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === name));
   document.querySelectorAll(".page").forEach(p => p.classList.add("hidden"));
   const page = document.getElementById("page-" + name);
@@ -1193,6 +1207,7 @@ function switchTab(name) {
   if (name === "automation") updateAutomationUI();
 }
 function switchSubtab(name) {
+  if (simActive) return; // 离线模拟中不触碰 DOM/存档
   document.querySelectorAll(".subtab").forEach(t => t.classList.toggle("active", t.dataset.subtab === name));
   document.querySelectorAll(".subpage").forEach(p => p.classList.add("hidden"));
   document.getElementById("sub-" + name).classList.remove("hidden");
@@ -1364,6 +1379,7 @@ function buildMetaOnce() {
 }
 
 function updateUpgradesUI() {
+  if (simActive) return; // 离线模拟中不触碰 DOM/存档
   buildUpgradesOnce();
   // 升级3 随可见性增删（仅切换时操作 DOM，非每 tick）
   const vis = up3Visible();
@@ -1530,6 +1546,7 @@ function buildPhononOnce() {
 
 // 声子页快变显示（资源行与热涨落）——由显示循环高频率刷新
 function renderPhononFast() {
+  if (simActive) return; // 离线模拟中不触碰 DOM/存档
   if (!state.phUnlocked) return;
   const T = temperature();
   // 显示必须用裁剪后的温度 log（temperatureCappedLog），传 raw 会在 T=Infinity 时
@@ -1549,6 +1566,7 @@ function renderPhononFast() {
   }
 }
 function updatePhononUI() {
+  if (simActive) return; // 离线模拟中不触碰 DOM/存档
   if (!state.phUnlocked) return;
   buildPhononOnce();
   renderPhononFast();
@@ -1591,6 +1609,7 @@ function updatePhononUI() {
 }
 
 function applyPhononVisibility() {
+  if (simActive) return; // 离线模拟中不触碰 DOM/存档
   document.getElementById("subtab-phonon").classList.toggle("hidden", !state.phUnlocked);
 }
 
@@ -1659,7 +1678,7 @@ function doAnnihilation() {
   const wasFirst = state.annihilations === 0;
 
   // 统计（扭曲宇宙内不刷新 Sp 相关纪录，但记入历史）
-  const realNow = Date.now();
+  const realNow = gameNow();
   const realDur = (realNow - state.annStartReal) / 1000;
   const gameDur = state.annGameElapsed || (state.playTime - state.annStartGame);
   const rate = realDur > 0 && isFinite(gained) ? (gained / realDur) * 60 : 0; // Sp/分
@@ -1769,10 +1788,10 @@ function enterDistort(id) {
   // AU24 的「湮灭保留声子」在进出扭曲宇宙时不生效：进入扭曲必须清零声子
   setPhonons(0);
   state.distortActive = id;
-  distortEnterAt = Date.now();
+  distortEnterAt = gameNow();
   if (id === "simple") setPhonons(1); // 简洁宇宙：声子恒 1
   if (id === "narrow") state.narrowPurchases = 0; // 狭窄宇宙：进入时购买次数强制重置（防残留）
-  state.annStartReal = Date.now();
+  state.annStartReal = gameNow();
   state.annStartGame = state.playTime; state.annGameElapsed = 0;
   applyAnnihilationVisibility(); // 重设按钮为扭曲模式文案
   updateDistortUI();
@@ -1784,7 +1803,7 @@ function enterDistort(id) {
 
 // 强制重置（进入扭曲用）：gained 为获得的 Sp（可为 0）
 function forceAnnihilationReset(gained) {
-  const realNow = Date.now();
+  const realNow = gameNow();
   const realDur = (realNow - state.annStartReal) / 1000;
   const gameDur = state.annGameElapsed || (state.playTime - state.annStartGame);
   const rate = realDur > 0 ? (gained / realDur) * 60 : 0;
@@ -1861,8 +1880,8 @@ function retryDistort() {
   state.lastPurchaseAt = 0; state.narrowPurchases = 0;
   // 再次进入
   state.distortActive = id;
-  distortEnterAt = Date.now();
-  state.annStartReal = Date.now();
+  distortEnterAt = gameNow();
+  state.annStartReal = gameNow();
   state.annStartGame = state.playTime; state.annGameElapsed = 0;
   applyAnnihilationVisibility();
   updateDistortUI();
@@ -1902,7 +1921,7 @@ function exitDistort() {
   setPhonons(0);
   state.pg1 = 0; state.pg2 = 0; state.pg3 = 0;
   state.lastPurchaseAt = 0; state.narrowPurchases = 0;
-  state.annStartReal = Date.now();
+  state.annStartReal = gameNow();
   state.annStartGame = state.playTime; state.annGameElapsed = 0;
   applyPhononVisibility();
   applyAnnihilationVisibility();
@@ -1942,6 +1961,7 @@ function confirmFirstAnnihilation() {
 }
 
 function applyAnnihilationVisibility() {
+  if (simActive) return; // 离线模拟中不触碰 DOM/存档
   applyHelpVisibility();
   const done = state.annihilations >= 1;
   document.getElementById("sp-display").classList.toggle("hidden", !done);
@@ -1987,6 +2007,7 @@ function applyAnnihilationVisibility() {
 
 // 帮助页章节与统计湮灭区随游戏进度开放（避免剧透重置层）
 function applyHelpVisibility() {
+  if (simActive) return; // 离线模拟中不触碰 DOM/存档
   document.getElementById("help-phonon").classList.toggle("hidden", !state.phUnlocked);
   document.getElementById("help-annihilation").classList.toggle("hidden", state.annihilations < 1);
   document.getElementById("help-distort").classList.toggle("hidden", state.annihilations < 20);
@@ -2543,6 +2564,7 @@ function bhAnimLoop() {
 }
 
 function updateBlackholeUI() {
+  if (simActive) return; // 离线模拟中不触碰 DOM/存档
   if (!bhUnlocked()) return;
   buildBlackholeOnce();
   document.getElementById("subtab-blackhole").classList.toggle("hidden", !bhUnlocked());
@@ -2756,6 +2778,7 @@ function buildAnnihilationOnce() {
   spBuilt = true;
 }
 function updateSpUI() {
+  if (simActive) return; // 离线模拟中不触碰 DOM/存档
   if (state.annihilations < 1) return;
   buildAnnihilationOnce();
   // 扭曲里程碑：解锁扭曲（20 湮灭）前不可见
@@ -2912,6 +2935,7 @@ function buildDistortOnce() {
   distortBuilt = true;
 }
 function updateDistortUI() {
+  if (simActive) return; // 离线模拟中不触碰 DOM/存档
   if (state.annihilations < 20) return;
   buildDistortOnce();
   // 重试/退出按钮：仅在扭曲宇宙中可见
@@ -3071,6 +3095,7 @@ function batchLimit() {
   return state.batchMax;
 }
 function updateAutomationUI() {
+  if (simActive) return; // 离线模拟中不触碰 DOM/存档
   if (state.annihilations < 1) return;
   buildAutomationOnce();
   for (const key in autoRefs) {
@@ -3183,17 +3208,17 @@ function autoAnnTick() {
   if (state.distortActive) {
     // 扭曲宇宙：达标时自动完成（由 tick 触发 doAnnihilation 完成该宇宙）
     // 但需要 CD 防抖（简洁等低阈值宇宙会正反馈触发→完成→回主宇宙→连环湮灭→再次进入→循环）
-    if (annihilationReady() && Date.now() - state.lastAutoAnnAt >= 1000 && doAnnihilation()) state.lastAutoAnnAt = Date.now();
+    if (annihilationReady() && gameNow() - state.lastAutoAnnAt >= 1000 && doAnnihilation()) state.lastAutoAnnAt = gameNow();
     return;
   }
   if (auOwned("au22") && state.autoAnnMode === "time") {
     // 时间模式：距上次自动湮灭超过设定真实秒且达标
-    if (Date.now() - state.lastAutoAnnAt >= state.autoAnnInterval * 1000 && annihilationReady()) {
-      if (doAnnihilation()) state.lastAutoAnnAt = Date.now();
+    if (gameNow() - state.lastAutoAnnAt >= state.autoAnnInterval * 1000 && annihilationReady()) {
+      if (doAnnihilation()) state.lastAutoAnnAt = gameNow();
     }
-  } else if (Date.now() - state.lastAutoAnnAt >= autoAnnCD() && annihilationReady() && spGainExact() >= state.autoAnnSp) {
+  } else if (gameNow() - state.lastAutoAnnAt >= autoAnnCD() && annihilationReady() && spGainExact() >= state.autoAnnSp) {
     // Sp 模式：CD 防抖（基础 1s，A42 星标 200ms，A44 升级进一步缩减，最低 25ms）
-    if (doAnnihilation()) state.lastAutoAnnAt = Date.now();
+    if (doAnnihilation()) state.lastAutoAnnAt = gameNow();
   }
 }
 // 自动湮灭 CD（ms）：基础 1000ms；A42 星标奖励 200ms；A42 解锁的升级每级 ÷2，最低 25ms
@@ -3222,8 +3247,8 @@ function runAutomation() {
   if (state.autoOn.up3 && state.autoUp3 && up3Card) {
     if (auOwned("au21") && state.autoUp3Mode === "time") {
       // 时间模式：距上次自动升级3超过设定秒数即触发（仍需 F 超过峰值，log 域比较）
-      if (Date.now() - state.lastAutoUp3At >= state.autoUp3Interval * 1000 && FLog() > getLogUp3LastF()) {
-        if (buyUp3()) state.lastAutoUp3At = Date.now();
+      if (gameNow() - state.lastAutoUp3At >= state.autoUp3Interval * 1000 && FLog() > getLogUp3LastF()) {
+        if (buyUp3()) state.lastAutoUp3At = gameNow();
       }
     } else {
       // 比例模式：在当前加成倍率达到设定值时购买升级3（log 域，防 mult 溢出）
@@ -3241,6 +3266,7 @@ function runAutomation() {
 // 显示插值：记录逻辑结算时刻的 U 与增速，显示层用真实时间外推，消除 100ms 阶跃感
 let dispUAt = 0, dispUBase = 0, dispGRate = 0, dispUBaseLog = NLOG;
 function updateDispAnchor() {
+  if (simActive) return; // 离线模拟中不触碰 DOM/存档
   dispUAt = Date.now();
   dispUBase = state.U;
   dispUBaseLog = getLogU10();
@@ -3281,6 +3307,7 @@ function extrapolatedULog() {
   return logAddLogs(dispUBaseLog, gdLog);
 }
 function renderFast() {
+  if (simActive) return; // 离线模拟中不触碰 DOM/存档
   // 膨胀宇宙下 distortLMod 可能超 double：借用 F() 的 log 域逻辑（此处用外推 U）
   let f, fLog;
   const ml3 = distortLModLog();
@@ -3341,11 +3368,13 @@ function renderFast() {
     : fmtNum(Math.pow(10, getLogL10()), getLogL10());
 }
 function renderWave() {
+  if (simActive) return; // 离线模拟中不触碰 DOM/存档
   renderFast();
   updateUpgradesUI();
 }
 
 function renderStats() {
+  if (simActive) return; // 离线模拟中不触碰 DOM/存档
   document.getElementById("stat-playtime").textContent = fmtTime(state.playTime);
   document.getElementById("stat-realtime").textContent = fmtTime(state.realTime);
   document.getElementById("stat-total").textContent = fmtNum(state.totalFGained, getLogTotalF()) + " Hz";
@@ -3420,11 +3449,18 @@ function renderStats() {
   }
 }
 
-function renderAll() { applyPhononVisibility(); renderWave(); updatePhononUI(); renderStats(); renderSlots(); updateAchievementsUI(); updateDistortUI(); updateBlackholeUI(); }
-function setAutosaveStatus(msg) { document.getElementById("autosave-status").textContent = msg; }
+function renderAll() {
+  if (simActive) return; // 离线模拟中不触碰 DOM/存档
+  applyPhononVisibility(); renderWave(); updatePhononUI(); renderStats(); renderSlots(); updateAchievementsUI(); updateDistortUI(); updateBlackholeUI();
+}
+function setAutosaveStatus(msg) {
+  if (simActive) return; // 离线模拟中不触碰 DOM/存档
+  document.getElementById("autosave-status").textContent = msg;
+}
 
 // ---------- 成就弹窗系统（左上角，堆叠+补位动画）----------
 function showAchPopup(name, isHidden) {
+  if (simActive) return; // 离线模拟中不触碰 DOM/存档
   const stack = document.getElementById("ach-popup-stack");
   if (!stack) return;
   const popup = document.createElement("div");
@@ -3677,6 +3713,7 @@ function buildAchievementsOnce() {
 }
 
 function updateAchievementsUI() {
+  if (simActive) return; // 离线模拟中不触碰 DOM/存档
   buildAchievementsOnce();
   // 成就页只显示成就本身的乘数（1.1 或 1.2/个），不含时间之矢/成就刻印以外的升级、黑洞与 A41 加成
   document.getElementById("ach-time-rate").textContent = `你的成就将时间速率变为原来的${fmt(Math.pow(achTimeBase(), state.ach.normal.length))}倍`;
@@ -3742,14 +3779,104 @@ function updateAchievementsUI() {
   }
 }
 
+// ---------- 离线进度（加载存档时粗步长模拟生产与自动化）----------
+// 上次保存距现在超过 60s 即结算；时长上限 8h；设置页可整体关闭。
+// 模拟复用 applyProduction + runAutomation（与在线共用公式），经虚拟时钟推进
+const OFFLINE_MIN_SEC = 60;
+const OFFLINE_CAP_SEC = 8 * 3600;
+// 加载点调用：在覆盖 state.lastTick 之前记录离线时长（开关关闭/时钟异常/过短则跳过）
+function queueOfflineProgress() {
+  pendingOffline = null;
+  const raw = (Date.now() - state.lastTick) / 1000;
+  if (state.settings.offlineEnabled === false || !isFinite(raw) || raw < OFFLINE_MIN_SEC) return;
+  pendingOffline = { raw, capped: Math.min(raw, OFFLINE_CAP_SEC) };
+}
+// log 差值 b−a（b 为零哨兵按无增量处理；a 为零哨兵时增量即 b）
+function offlineLogDiff(a, b) {
+  if (b <= NLOG + 1) return -Infinity;
+  if (a <= NLOG + 1) return b;
+  return b - a;
+}
+// 粗步长模拟：每步推进虚拟时钟 → 生产累积 → 自动化（含自动湮灭）。
+// simActive 使全部 UI/保存函数早退，模拟中途不触碰 DOM 与 localStorage
+function runOfflineSimulation(cappedSec) {
+  const res = {
+    uLog0: getLogU10(), ph0: getLogPhonons(), m0: getLogBhMass(), vp0: getLogVP(),
+    phAbs0: state.phonons, ann0: state.annihilations, simmed: false,
+  };
+  simActive = true;
+  try {
+    // 目标约 800 步：8h → 步长 36s；短离线步长收敛到 1s。步长内自动化至多触发一次（保守方向）
+    const step = Math.max(1, Math.min(60, cappedSec / 800));
+    let remaining = cappedSec;
+    while (remaining > 1e-9) {
+      const dt = Math.min(step, remaining);
+      simTimeOffset += dt * 1000;
+      applyProduction(dt);
+      runAutomation();
+      remaining -= dt;
+    }
+    res.simmed = true;
+  } catch (e) {
+    // 模拟异常即中止：保留已结算部分，时间线归位，绝不让异常拖垮加载
+    console.error("离线模拟异常（已中止，保留当前进度）:", e);
+  }
+  simTimeOffset = 0;
+  simActive = false;
+  res.uLog1 = getLogU10(); res.ph1 = getLogPhonons();
+  res.m1 = getLogBhMass(); res.vp1 = getLogVP();
+  res.phAbs1 = state.phonons;
+  res.ann1 = state.annihilations;
+  return res;
+}
+// 设置页开关高亮随当前档同步（init、导入、槽位加载后各调一次）
+function syncOfflineToggleUI() {
+  document.getElementById("offline-on").classList.toggle("active", state.settings.offlineEnabled !== false);
+  document.getElementById("offline-off").classList.toggle("active", state.settings.offlineEnabled === false);
+}
+// init 尾部（DOM 就绪后）调用：执行模拟 → 成就 → 刷新显示 → 保存 → 弹窗
+function processPendingOffline() {
+  syncOfflineToggleUI(); // 导入/槽位加载会换掉 settings，按钮高亮须随档同步
+  if (!pendingOffline) return;
+  const { raw, capped } = pendingOffline;
+  pendingOffline = null;
+  const res = runOfflineSimulation(capped);
+  checkAchievements();
+  updateDispAnchor();
+  renderAll();
+  saveGame();
+  showOfflineModal(raw, capped, res);
+}
+// 离线收益弹窗（收益已先行入账，按钮仅关闭；无实质收益则不弹）
+function showOfflineModal(raw, capped, res) {
+  const lines = ["你离开了 " + fmtTime(raw) + (raw > capped + 1 ? "（结算上限 " + fmtTime(capped) + "）" : "")];
+  const uD = offlineLogDiff(res.uLog0, res.uLog1);
+  if (uD > 1e-4) lines.push("波速 +" + (uD < 308 ? fmt(Math.pow(10, uD)) : fmtLog(uD)) + " m/s");
+  // 声子优先显示绝对增量（大基数上的小增量 log 差趋 0 会漏报），超 double 回退 log 差
+  const phAbsD = (isFinite(res.phAbs0) && isFinite(res.phAbs1)) ? res.phAbs1 - res.phAbs0 : NaN;
+  const phD = offlineLogDiff(res.ph0, res.ph1);
+  if (isFinite(phAbsD) && phAbsD >= 1) lines.push("声子 +" + fmt(Math.floor(phAbsD)));
+  else if (phD > 1e-4) lines.push("声子 +" + fmtLog(phD));
+  if (bhUnlocked()) {
+    const mD = offlineLogDiff(res.m0, res.m1);
+    if (mD > 1e-4) lines.push("黑洞质量 +" + (mD < 308 ? fmt(Math.pow(10, mD)) : fmtLog(mD)) + " M☉");
+    else if (isFinite(mD) && mD < -1e-4) lines.push("黑洞质量 −" + fmt(Math.pow(10, -mD)) + " M☉");
+    const vpD = offlineLogDiff(res.vp0, res.vp1);
+    if (vpD > 1e-4) lines.push("虚粒子 +" + (vpD < 15 ? fmt(Math.floor(Math.pow(10, vpD))) : fmtLog(vpD)));
+    else if (isFinite(vpD) && vpD < -1e-4) lines.push("虚粒子 −" + fmt(Math.pow(10, -vpD)));
+  }
+  const annD = res.ann1 - res.ann0;
+  if (annD >= 1) lines.push("湮灭 +" + fmt(annD) + " 次");
+  if (lines.length <= 1) return; // 无实质收益（如生产为 0 挂机）不弹
+  document.getElementById("offline-text").textContent = lines.join("\n");
+  document.getElementById("offline-overlay").classList.remove("hidden");
+}
+
 // ---------- Game loop ----------
-function tick() {
-  const now = Date.now();
-  // realDt 钳制：本作无离线收益设计——挂起标签的一次性补发上限 60s，
-  // 系统时钟回拨产生的负值归 0（负 dt 会倒扣资源）
-  const rawDt = (now - state.lastTick) / 1000;
-  const realDt = Math.min(Math.max(rawDt, 0), 60);
-  state.lastTick = now;
+// 生产累积（游戏时间）：tick 与离线模拟共用的唯一实现，防止双份公式漂移。
+// 包含：游戏时间 dt 累积（playTime/annGameElapsed）、波速 U、累计频率、声子、黑洞 tick。
+// realTime（真实游玩时长）不在此处——离线模拟不累计真实游玩时间
+function applyProduction(realDt) {
   // 游戏时间倍率走 log 域（timeRateLog 权威），倍率超 double（黑洞扭曲状态等）时
   // 用 Decimal 计算游戏时间增量，不再产生 Infinity
   const trLog = timeRateLog();
@@ -3780,7 +3907,6 @@ function tick() {
   } else {
     state.playTime += dt;
   }
-  state.realTime += realDt;
   // 本次湮灭的游戏时长独立累计（避免 playTime 饱和后 playTime-annStartGame 恒为 0）
   if (state.annihilations >= 1) state.annGameElapsed = (state.annGameElapsed || 0) + dt;
 
@@ -3855,6 +3981,17 @@ function tick() {
 
   // 黑洞 tick：吸积/脉冲用真实时间（不受时间倍率影响），扭曲状态只给加成（无 tick 效果）
   tickBlackhole(realDt);
+}
+
+function tick() {
+  const now = Date.now();
+  // realDt 钳制：挂起标签的一次性补发上限 60s（真正的离线收益由加载时的
+  // 离线模拟系统结算），系统时钟回拨产生的负值归 0（负 dt 会倒扣资源）
+  const rawDt = (now - state.lastTick) / 1000;
+  const realDt = Math.min(Math.max(rawDt, 0), 60);
+  state.lastTick = now;
+  state.realTime += realDt;
+  applyProduction(realDt);
 
   // 自动化解锁门槛（首次湮灭后生效）
   if (state.annihilations >= 1) {
@@ -3881,7 +4018,7 @@ function tick() {
   checkS6();
   // S17：禅 —— 在扭曲宇宙中停留超过 1h 未完成
   if (!state.ach.hidden.includes("S17") && state.distortActive && state.annStartReal) {
-    if ((Date.now() - state.annStartReal) / 1000 >= 3600) grantHidden("S17");
+    if ((gameNow() - state.annStartReal) / 1000 >= 3600) grantHidden("S17");
   }
   // S19：滚木 —— 生产为 0 Hz/s 超过 10 分钟（连续）。
   // log 域判定：state.L 下溢为 0 时真实生产仍可能为正（波长 log 权威有限），double 乘除会误判为 0
@@ -3952,6 +4089,20 @@ function setupUI() {
   document.getElementById("theme-white").addEventListener("click", () => { applyTheme("white"); saveGame(); });
   document.getElementById("theme-black").addEventListener("click", () => { applyTheme("black"); saveGame(); });
 
+  // 离线收益开关 + 收益弹窗关闭按钮
+  document.getElementById("offline-on").addEventListener("click", () => {
+    state.settings.offlineEnabled = true; syncOfflineToggleUI(); saveGame();
+    setAutosaveStatus("离线收益已开启（上限 8 小时）");
+  });
+  document.getElementById("offline-off").addEventListener("click", () => {
+    state.settings.offlineEnabled = false; syncOfflineToggleUI(); saveGame();
+    setAutosaveStatus("离线收益已关闭");
+  });
+  syncOfflineToggleUI();
+  document.getElementById("offline-claim").addEventListener("click", () => {
+    document.getElementById("offline-overlay").classList.add("hidden");
+  });
+
   document.querySelectorAll("#notation-row button").forEach(b => {
     b.addEventListener("click", () => {
       const prev = state.settings.notation;
@@ -4000,15 +4151,17 @@ function setupUI() {
       }
       const obj = decodeSave(str);
       state = Object.assign(defaultState(), obj);
-      state.settings = Object.assign({ theme: "black", notation: "scientific", decimals: 3, hideLockedRows: true, hideDoneRows: false }, obj.settings || {});
+      state.settings = Object.assign({ theme: "black", notation: "scientific", decimals: 3, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true }, obj.settings || {});
       state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
       migrateState();
       if (obj.frequency !== undefined && obj.U === undefined) { setU(obj.frequency); state.L = 1; state.logL10 = 0; }
       if (obj.totalFrequency !== undefined && state.totalFGained === undefined) setTotalFGained(obj.totalFrequency);
+      queueOfflineProgress();
       state.lastTick = Date.now();
       applyTheme(state.settings.theme);
       applyNotation(state.settings.notation);
       applyDecimals(state.settings.decimals);
+      processPendingOffline(); // 导入发生在 init 之后：离线结算须就地执行
       saveGame();
       renderAll();
       setAutosaveStatus("已导入存档");
@@ -4156,12 +4309,15 @@ function init() {
   applyPhononVisibility();
   applyAnnihilationVisibility();
   if (state.annihilations >= 1 && !state.annStartReal) {
-    state.annStartReal = Date.now();
+    state.annStartReal = gameNow();
     state.annStartGame = state.playTime; state.annGameElapsed = 0;
   }
   switchTab("wave");
   switchSubtab("main");
   renderAll();
+
+  // 离线结算：DOM 就绪后执行（模拟期间 UI 函数早退，此时已可安全刷新）
+  processPendingOffline();
 
   state.lastTick = Date.now();
   setInterval(tick, 100); // 逻辑 tick 恒定 100ms（数值节奏不变）
