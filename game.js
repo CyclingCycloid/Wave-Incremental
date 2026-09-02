@@ -695,6 +695,13 @@ function gainRateLog() {
   }
   return { log: clampLog(log), sign };
 }
+// 获取速率的显示口径 log：gain 为 0（gainRateLog 返回 NLOG 哨兵）时保持 NLOG（语义零）。
+// 哨兵上直接累加 timeRateLog 等修正会产生 NLOG+noise 噪声（如 -1e9+18.9），
+// 显示层会把它渲染成 1.000e-999999xxx（下溢误报）
+function gainRateDispLog(extraLog) {
+  const grLog = gainRateLog().log;
+  return grLog <= NLOG + 1 ? NLOG : clampLog(grLog + extraLog);
+}
 // 时间速率：每个普通成就给予 ×1.1 的游戏时间速率加成；黑洞扭曲状态给予 ×(1+bhEffect)；
 // A41 特殊奖励：总时间倍率再 ^1.1；rua摆线随机倍率加成（持续 10 分钟）
 function timeRate() {
@@ -1371,7 +1378,7 @@ function updateUpgradesUI() {
   const fLog = FLog();
   up1Card.update({
     level: `等级 ${state.up1}`,
-    effect: `当前获取速率: ${fmtNum(gainRate() * timeRate(), gainRateLog().log + timeRateLog())} m/s²`,
+    effect: `当前获取速率: ${fmtNum(gainRate() * timeRate(), gainRateDispLog(timeRateLog()))} m/s²`,
     cost: fmtNum(up1Cost(), up1CostLog()) + " Hz",
     affordable: cmpGE(f, up1Cost(), FLog(), up1CostLog()),
   });
@@ -3288,7 +3295,7 @@ function renderFast() {
   document.getElementById("freq-value").textContent = fmtNum(f, fLog);
   // Hz/s 显示：膨胀宇宙需除以含倍率的有效波长（log 域防溢出）
   {
-    const gLog = clampLog(gainRateLog().log + timeRateLog() - getLogL10() - distortLModLog());
+    const gLog = gainRateDispLog(timeRateLog() - getLogL10() - distortLModLog());
     const gainHz = gLog > 308 ? Infinity : (gLog < -308 ? 0 : Math.pow(10, gLog));
     document.getElementById("freq-gain").textContent = (gainRateLog().sign > 0 ? "+" : "") + fmtNum(gainHz, gLog) + " Hz/s";
   }
