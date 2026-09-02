@@ -2016,6 +2016,9 @@ function applyHelpVisibility() {
   document.getElementById("help-distort").classList.toggle("hidden", state.annihilations < 20);
   document.getElementById("help-sp-upgrades").classList.toggle("hidden", !hasDistortMilestone(3));
   document.getElementById("help-blackhole").classList.toggle("hidden", !bhUnlocked());
+  // 黑洞章节内防剧透：虚幻升级（VPU）区相关内容按进度显隐
+  document.getElementById("help-vpu-extra").classList.toggle("hidden", !state.ach.normal.includes("A45"));
+  document.getElementById("help-svpu-extra").classList.toggle("hidden", !vpuOwned("vpu5"));
   document.getElementById("stat-ann-group").classList.toggle("hidden", state.annihilations < 1);
   document.getElementById("subtab-stats-challenge").classList.toggle("hidden", state.annihilations < 20);
 }
@@ -2480,7 +2483,7 @@ function buildBlackholeOnce() {
   }
   // 虚粒子单次升级（VPU1-9 九宫格，A45 星标奖励解锁；达成 A45 前整区不可见）
   bhVpuSection = document.createElement("div");
-  bhVpuSection.appendChild(mkTitle("虚粒子单次升级"));
+  bhVpuSection.appendChild(mkTitle("虚幻升级"));
   const vpuRow = document.createElement("div");
   vpuRow.className = "bh-vpu-grid";
   bhVpuSection.appendChild(vpuRow);
@@ -3359,11 +3362,17 @@ function renderFast() {
   // 膨胀宇宙下 distortLMod 可能超 double：借用 F() 的 log 域逻辑（此处用外推 U）
   let f, fLog;
   const ml3 = distortLModLog();
-  if (ml3 > 0) {
-    fLog = clampLog(extrapolatedULog() - getLogL10() - ml3);
+  // 哨兵感知：U=0（零哨兵 NLOG）时 F 无意义，fLog 保持 NLOG（显示为 0）——
+  // 直接相减会产生 NLOG-logL10 哨兵噪声，被显示层渲染成 e-9999999xx
+  const uLogD = extrapolatedULog();
+  if (uLogD <= NLOG + 1) {
+    fLog = NLOG;
+    f = 0;
+  } else if (ml3 > 0) {
+    fLog = clampLog(uLogD - getLogL10() - ml3);
     f = fLog > 308 ? Infinity : (fLog < -308 ? 0 : Math.pow(10, fLog));
   } else {
-    fLog = clampLog(extrapolatedULog() - getLogL10());
+    fLog = clampLog(uLogD - getLogL10());
     f = (isFinite(extrapolatedU()) && state.L > 0) ? extrapolatedU() / state.L : Math.pow(10, fLog);
   }
   // F 显示：超 double 走 fmtLog（1eN），否则 fmt（现状）
@@ -3548,9 +3557,9 @@ const NORMAL_ACH = [
   { id: "A42", name: "烂柯", desc: "总时间倍率超过 3.65e5", star: true, reward: "自动湮灭 CD 变为 200ms，并解锁一个新的自动化升级", check: () => timeRate() >= 3.65e5 },
   { id: "A43", name: "无限", desc: "打破多元宇宙的规则", check: () => state.rulesBroken && !state.testBreakRules }, // 原 A35
   { id: "A44", name: "永炽", desc: "温度超过 1.79e308 K", check: () => temperature() >= 1.79e308 },
-  { id: "A45", name: "万物", desc: "购买所有奇点升级", star: true, reward: "解锁黑洞页的虚粒子单次升级（VPU 系列）", check: () => ALL_SP_UPGRADES_OWNED() },
+  { id: "A45", name: "万物", desc: "购买所有奇点升级", star: true, reward: "解锁虚幻升级", check: () => ALL_SP_UPGRADES_OWNED() },
   // 第 5 行 (A51-…) 虚粒子
-  { id: "A51", name: "虚幻", desc: "购买第一个虚粒子单次升级", check: () => VPU_DEFS.some(u => vpuOwned(u.id)) },
+  { id: "A51", name: "虚幻", desc: "购买第一个虚幻升级", check: () => VPU_DEFS.some(u => vpuOwned(u.id)) },
 ];
 const ACH_PER_ROW = 5;
 // 已定义行数；之后整行为未解锁 ???
