@@ -2030,13 +2030,17 @@ const SPU1_DEF = { id: "spu1", name: "奇点之前的升级不再消耗资源", 
 // ---------- 奇点升级（3DA 里程碑解锁）----------
 // 第一类：可重复（SAU1-3，一行三个）
 const SAU_DEFS = [
-  { id: "sau1", key: "sau1", name: "象限拓张", desc: "声子升级3的硬上限 +2/级", max: 10,
+  { id: "sau1", key: "sau1", name: "象限拓张", desc: "声子升级3的硬上限 +2/级", vpu1Desc: "声子升级3的硬上限 +3/级", max: 10,
     cost: (n) => Math.pow(10, sauCostLog(2, n)) }, // 第n次（1起）10^(2+2n)；超10级后增速×当前等级
   { id: "sau2", key: "sau2", name: "奇点凝聚", desc: "第 n 级使奇点效果指数额外乘以 (1+n/10)", max: Infinity,
     cost: (n) => Math.pow(10, 5 * n) },
-  { id: "sau3", key: "sau3", name: "紫外灾难", desc: "热涨落效果指数 +0.015/级", max: 10,
+  { id: "sau3", key: "sau3", name: "紫外灾难", desc: "热涨落效果指数 +0.015/级", vpu1Desc: "热涨落效果指数 +0.018/级", max: 10,
     cost: (n) => Math.pow(10, sauCostLog(3, n)) },
 ];
+// SAU1/SAU3 的显示描述：单圈重整（VPU1）后使用加强版描述
+function sauDesc(u) {
+  return (u.vpu1Desc && vpuOwned("vpu1")) ? u.vpu1Desc : u.desc;
+}
 // SAU1/SAU3 的实际等级上限：单圈重整（VPU1）后取消
 function effSauMax(key) {
   return (key === "sau1" || key === "sau3") && vpuOwned("vpu1") ? Infinity : 10;
@@ -2906,7 +2910,7 @@ function updateSpUI() {
     const effMax = r.u.max !== Infinity ? effSauMax(r.u.key) : Infinity; // 单圈重整取消 sau1/sau3 上限
     const maxed = state[r.u.key] >= effMax;
     const c = r.u.cost(n);
-    r.descEl.textContent = r.u.desc + (effMax !== Infinity ? "（" + state[r.u.key] + "/" + effMax + "）" : "（等级 " + state[r.u.key] + "）");
+    r.descEl.textContent = sauDesc(r.u) + (effMax !== Infinity ? "（" + state[r.u.key] + "/" + effMax + "）" : "（等级 " + state[r.u.key] + "）");
     r.costEl.textContent = maxed ? "已满级" : fmtNum(c, Math.log10(c)) + " Sp";
     r.btn.disabled = maxed || !spAfford(c);
     r.btn.classList.toggle("bought", maxed);
