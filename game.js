@@ -567,7 +567,7 @@ function planckMult() {
 function temperatureCapLog() {
   const exp = hasDistortMilestone(1) ? 10 * daExpMult() : 10;
   let logCap = Math.log10(T_P0) + exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp));
-  if (logCap > 250) logCap = 225 + 0.1 * logCap; // 软上限：超 1e250 部分开十次方根
+  if (logCap > 250) logCap = 225 + (vpuOwned("vpu1") ? 0.15 : 0.1) * logCap; // 软上限：超 1e250 部分开十次方根（单圈重整后 0.15 次方）
   return clampLog(logCap);
 }
 function temperatureCap() {
@@ -2031,12 +2031,25 @@ const SPU1_DEF = { id: "spu1", name: "奇点之前的升级不再消耗资源", 
 // 第一类：可重复（SAU1-3，一行三个）
 const SAU_DEFS = [
   { id: "sau1", key: "sau1", name: "象限拓张", desc: "声子升级3的硬上限 +2/级（20→40）", max: 10,
-    cost: (n) => Math.pow(10, 2 + 2 * n) }, // 第n次（1起）10^(2+2n)
+    cost: (n) => Math.pow(10, sauCostLog(2, n)) }, // 第n次（1起）10^(2+2n)；超10级后增速×当前等级
   { id: "sau2", key: "sau2", name: "奇点凝聚", desc: "第 n 级使奇点效果指数额外乘以 (1+n/10)", max: Infinity,
     cost: (n) => Math.pow(10, 5 * n) },
   { id: "sau3", key: "sau3", name: "紫外灾难", desc: "热涨落效果指数 +0.015/级", max: 10,
-    cost: (n) => Math.pow(10, 3 + 2 * n) },
+    cost: (n) => Math.pow(10, sauCostLog(3, n)) },
 ];
+// SAU1/SAU3 的实际等级上限：单圈重整（VPU1）后取消
+function effSauMax(key) {
+  return (key === "sau1" || key === "sau3") && vpuOwned("vpu1") ? Infinity : 10;
+}
+// SAU1/SAU3 价格的 log10：n≤10 为 base+2n（增速 ×100）；单圈重整后可超 10 级，
+// 超出部分每级增速 = 原增速 × 当前等级（买第 k 次前已有 k-1 级 → ×100×(k-1)，
+// 如紫外灾难 23 级时增速为 2300）
+function sauCostLog(base, n) {
+  if (n <= 10) return base + 2 * n;
+  let log = base + 20; // 第 10 次购买的价格
+  for (let k = 11; k <= n; k++) log += 2 + Math.log10(k - 1);
+  return log;
+}
 // 真空衰变（独立行，位于 spu1 下方、SAU 行上方）：每级奇点获取 ×2，价 10^(3+n)
 const VACUUM_DEF = { id: "sau4", key: "sau4", name: "真空衰变", desc: "每级使获得的奇点 ×2", max: Infinity,
   cost: (n) => Math.pow(10, 3 + n) };
@@ -2072,7 +2085,8 @@ function buySAU(id) {
   const u = SAU_DEFS.find(x => x.id === id) || (id === VACUUM_DEF.id ? VACUUM_DEF : null);
   if (!u) return;
   const n = state[u.key] + 1; // 第 n 次购买（1 起）
-  if (state[u.key] >= u.max) return;
+  const effMax = u.max !== Infinity ? effSauMax(u.key) : Infinity; // 单圈重整取消 sau1/sau3 上限
+  if (state[u.key] >= effMax) return;
   const c = u.cost(n);
   const cLog = Math.log10(c); // c 超 double（Infinity）时为 Infinity，恒不可负担
   if (cmpLT(state.sp, c, getLogSp(), cLog)) return;
@@ -2094,12 +2108,12 @@ function buyAU(id) {
 }
 
 // ---- 效果挂钩 ----
-// SAU1：声子升级3上限
-function pg3Cap() { return 20 + 2 * state.sau1; }
+// SAU1：声子升级3上限（单圈重整后每级 +3）
+function pg3Cap() { return 20 + (vpuOwned("vpu1") ? 3 : 2) * state.sau1; }
 // SAU2：奇点效果指数倍率
 function sauMult() { return 1 + state.sau2 / 10; } // 第 n 级总效果 ×(1+n/10)：1级1.1、2级1.2、…
-// SAU3：热涨落指数
-function thermalExp() { return 0.2 + 0.015 * state.sau3; }
+// SAU3：热涨落指数（单圈重整后每级 +0.018）
+function thermalExp() { return 0.2 + (vpuOwned("vpu1") ? 0.018 : 0.015) * state.sau3; }
 // AU11：up1 指数加成
 function up1Exp() { return auOwned("au11") ? Math.max(1, Math.sqrt(state.up1) / 5) : 1; }
 // AU12：pg2 免费等级
@@ -2302,7 +2316,7 @@ function buySVPU(id) {
 // 目前仅 VPU5 实装（1e7 VP），其余为占位（cost=Infinity 永不可购）；
 // 未达成解锁条件时卡片显示具体达成条件（vpuCondText）
 const VPU_DEFS = [
-  { id: "vpu1", name: "???", desc: "（占位）", cost: Infinity },
+  { id: "vpu1", name: "单圈重整", desc: "加强象限拓展和紫外灾害，并取消等级上限，削弱普朗克温度软上限", cost: 5e10 },
   { id: "vpu2", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu3", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu4", name: "对偶原理", desc: "取消全息原理的等级限制，吸积公式的质量指数+0.05，并削弱黑洞质量的软上限", cost: 2e8 },
@@ -2326,6 +2340,8 @@ function vpuUnlocked(id) {
     met = bestSum > 0 && bestSum < 3;
   } else if (id === "vpu4") {
     met = getLogBhMass() >= 70;
+  } else if (id === "vpu1") {
+    met = state.sau1 >= 10 && state.sau3 >= 10; // 象限拓张与紫外灾难均满级
   }
   if (met) {
     if (!state.vpuCondMet) state.vpuCondMet = [];
@@ -2347,6 +2363,10 @@ function vpuCondText(id) {
     if (mLog >= 70) return "解锁条件已达成";
     return "解锁条件：黑洞质量达到 1e70 太阳质量（当前 "
       + (mLog > NLOG + 1 ? fmtLog(mLog) : "1.00") + " M☉）";
+  }
+  if (id === "vpu1") {
+    if (state.sau1 >= 10 && state.sau3 >= 10) return "解锁条件已达成";
+    return "解锁条件：象限拓张与紫外灾难均达到满级（当前 " + state.sau1 + "/10、" + state.sau3 + "/10）";
   }
   return "";
 }
@@ -2883,10 +2903,11 @@ function updateSpUI() {
     r.btn.classList.toggle("hidden", !sauUnlocked);
     if (!sauUnlocked) continue;
     const n = state[r.u.key] + 1;
-    const maxed = state[r.u.key] >= r.u.max;
+    const effMax = r.u.max !== Infinity ? effSauMax(r.u.key) : Infinity; // 单圈重整取消 sau1/sau3 上限
+    const maxed = state[r.u.key] >= effMax;
     const c = r.u.cost(n);
-    r.descEl.textContent = r.u.desc + (r.u.max !== Infinity ? "（" + state[r.u.key] + "/" + r.u.max + "）" : "（等级 " + state[r.u.key] + "）");
-    r.costEl.textContent = maxed ? "已满级" : fmt(c) + " Sp";
+    r.descEl.textContent = r.u.desc + (effMax !== Infinity ? "（" + state[r.u.key] + "/" + effMax + "）" : "（等级 " + state[r.u.key] + "）");
+    r.costEl.textContent = maxed ? "已满级" : fmtNum(c, Math.log10(c)) + " Sp";
     r.btn.disabled = maxed || !spAfford(c);
     r.btn.classList.toggle("bought", maxed);
     r.btn.classList.toggle("affordable", !maxed && spAfford(c));
