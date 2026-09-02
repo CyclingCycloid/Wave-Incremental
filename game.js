@@ -2030,7 +2030,7 @@ const SPU1_DEF = { id: "spu1", name: "奇点之前的升级不再消耗资源", 
 // ---------- 奇点升级（3DA 里程碑解锁）----------
 // 第一类：可重复（SAU1-3，一行三个）
 const SAU_DEFS = [
-  { id: "sau1", key: "sau1", name: "象限拓张", desc: "声子升级3的硬上限 +2/级（20→40）", max: 10,
+  { id: "sau1", key: "sau1", name: "象限拓张", desc: "声子升级3的硬上限 +2/级", max: 10,
     cost: (n) => Math.pow(10, sauCostLog(2, n)) }, // 第n次（1起）10^(2+2n)；超10级后增速×当前等级
   { id: "sau2", key: "sau2", name: "奇点凝聚", desc: "第 n 级使奇点效果指数额外乘以 (1+n/10)", max: Infinity,
     cost: (n) => Math.pow(10, 5 * n) },
