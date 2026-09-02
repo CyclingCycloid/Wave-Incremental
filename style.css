@@ -407,6 +407,9 @@ textarea:focus { outline: none; border-color: var(--accent); }
 /* achievements */
 .ach-section { margin-bottom: 28px; }
 .ach-time-rate { text-align: center; font-size: 16px; margin: -8px 0 20px; }
+.ach-filters { display: flex; justify-content: center; gap: 22px; font-size: 13px; color: var(--text-dim); margin: -14px 0 12px; }
+.ach-filters label { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+.ach-filters input { accent-color: var(--accent); cursor: pointer; }
 .ach-section h3 { font-size: 15px; margin-bottom: 4px; }
 .ach-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 10px; }
 /* 普通成就：每个逻辑行独立容器。桌面 5 列；窄屏 3+2 居中，不与其他逻辑行混排 */

@@ -94,7 +94,7 @@ function defaultState() {
     notationSwitches: [],  // S6 显示方式切换时间戳
     phToggles: [],         // S7 声子发生器开关时间戳
     capReachedAt: 0,       // S11 达到温度上限的时间戳
-    settings: { theme: "black", notation: "scientific", decimals: 3, uiFps: 33 },
+    settings: { theme: "black", notation: "scientific", decimals: 3, uiFps: 33, hideLockedRows: true, hideDoneRows: false },
     lastTick: Date.now(),
   };
 }
@@ -564,33 +564,15 @@ function temperatureCap() {
   const logCap = temperatureCapLog();
   return logCap > 308 ? Infinity : Math.pow(10, logCap);
 }
-// 基础奇点获取：10 以下随温度指数线性增长（1 Sp @ T_P0，10 Sp @ 1e50 K），之后 10·(T/1e50)^0.024
-function baseSpGain(T) {
-  // 连续版本（floor 只在 spGain 最外层乘 distortMult 之后执行）：
-  // T < 1e50：旧公式 1~10 线性；1e50 ≤ T < 1e100：lg(T)/5（线性到 20）；T ≥ 1e100：2·T^0.01
-  // 注意：T=Infinity 时（软上限后超 double），log10(T)=Infinity 会污染结果——
-  // 一律用 log 域代数式 2·10^(0.01·lgT)，永不产生 Infinity/NaN。
-  if (T === Infinity || T > 1e300) {
-    // 2·T^0.01 超 double：返回 Infinity 由调用方（log 版）处理
-    return Infinity;
-  }
-  if (T < 1e50) {
-    const frac = Math.log10(T / T_P0) / Math.log10(1e50 / T_P0);
-    return 1 + 9 * Math.max(0, frac);
-  }
-  if (T < 1e100) {
-    return Math.log10(T) / 5; // e50→10, e70→14, e99→19.8（连续）
-  }
-  return 2 * Math.pow(T, 0.01);
-}
 // AU42 虚幻凝聚：基于虚粒子数量增加奇点获取 ×(1+VP)^0.3（返回 log10；
 // log 域计算：VP 缓存为 Infinity（log 权威仍有限）时不产生 Infinity/LOG_CAP 污染）
 function vpSpMultLog() {
   if (!auOwned("au42")) return 0;
   return 0.3 * logAddLogs(0, getLogVP());
 }
-// Sp 获取的 log10（log 域全链路，温度超 double 也不产生 Infinity）。
-// base = baseSpGain 的 log：T<1e50 为 1~10 小数（直接算）；之后 lg(T)/5 或 lg2+0.01·lgT
+// Sp 获取基础值的 log10（log 域全链路，温度超 double 也不产生 Infinity）。
+// 三段连续：T<1e50 为 1~10 线性（1 Sp @ T_P0）；1e50≤T<1e100 为 lg(T)/5（10~20）；
+// T≥1e100 为 2·T^0.01（在 1e50 与 1e100 处值与导数均连续）
 function spGainBaseLog() {
   const tLog = temperatureCappedLog();
   if (tLog < 50) {
@@ -608,7 +590,9 @@ function spGainExact() {
     + Math.log10(Math.max(1, phononSpMult())) + vpSpMultLog();
   const bLog = spGainBaseLog() + mLog;
   const first = state.annihilations === 0 ? 1 : 0;
-  const log = first > 0 ? Math.log10(1 + Math.pow(10, bLog)) : bLog; // 首次保底 max(1,b)
+  // 首次保底 max(1, b)：log 域即 max(0, bLog)。
+  // 注意不可写成 log10(1+10^bLog)（那是 1+b 的和）：普朗克温度处 b=1，首湮灭会变成 2 Sp
+  const log = first > 0 ? Math.max(0, bLog) : bLog;
   return log > 308 ? Infinity : Math.pow(10, log);
 }
 function spGain() {
@@ -623,7 +607,8 @@ function spGainLog() {
     + Math.log10(Math.max(1, phononSpMult())) + vpSpMultLog();
   const bLog = spGainBaseLog() + mLog;
   const first = state.annihilations === 0 ? 1 : 0;
-  return clampLog(first > 0 ? Math.log10(1 + Math.pow(10, bLog)) : bLog);
+  // 首次保底 max(1, b)（log 域 max(0, bLog)），与 spGainExact 同口径
+  return clampLog(first > 0 ? Math.max(0, bLog) : bLog);
 }
 // gainRate 的 log10 版本（完整乘法链在 log 域，永不溢出）
 function gainRate() {
@@ -1018,7 +1003,7 @@ function loadGame() {
     if (!raw) return false;
     const obj = decodeSave(raw);
     state = Object.assign(defaultState(), obj);
-    state.settings = Object.assign({ theme: "black", notation: "scientific", decimals: 3 }, obj.settings || {});
+    state.settings = Object.assign({ theme: "black", notation: "scientific", decimals: 3, hideLockedRows: true, hideDoneRows: false }, obj.settings || {});
     state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
     migrateState();
     // 迁移：v0.1 旧存档用 frequency 字段
@@ -1101,7 +1086,7 @@ function loadFromSlot(i) {
     if (!raw) { setAutosaveStatus("该槽为空"); return; }
     const obj = decodeSave(raw);
     state = Object.assign(defaultState(), obj);
-    state.settings = Object.assign({ theme: "black", notation: "scientific", decimals: 3 }, obj.settings || {});
+    state.settings = Object.assign({ theme: "black", notation: "scientific", decimals: 3, hideLockedRows: true, hideDoneRows: false }, obj.settings || {});
     state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
     migrateState();
     state.lastTick = Date.now();
@@ -3460,7 +3445,7 @@ const NORMAL_ACH = [
   { id: "A22", name: "室温", desc: "到达 300 K", check: () => temperature() >= 300 },
   { id: "A23", name: "耦合", desc: "购买声波耦合", check: () => state.phCoupling >= 1 },
   { id: "A24", name: "聚变", desc: "到达 1.5e7 K", check: () => temperature() >= 1.5e7 },
-  { id: "A25", name: "湮灭", desc: "完成第一次湮灭", star: true, reward: "各个重置后波速为 100 m/s", check: () => state.annihilations >= 1 },
+  { id: "A25", name: "湮灭", desc: "达到普朗克温度(1.417e32K)", star: true, reward: "各个重置后波速为 100 m/s", check: () => state.annihilations >= 1 },
   // 第 3 行 (A31-A35) 湮灭
   { id: "A31", name: "创生", desc: "购买第一个湮灭升级", check: () => state.spu1 >= 1 },
   { id: "A32", name: "Qol", desc: "获得所有自动化", check: () => state.autoWaveUpg && state.autoPhononUpg && state.autoUp3 && state.autoAnn },
@@ -3595,6 +3580,7 @@ function onHiddenClick(id) {
 // ---------- Achievements (build-once, in-place update) ----------
 let achBuilt = false;
 let normalCellRefs = [];
+let normalRowEls = [];
 let hiddenCellRefs = [];
 
 function buildAchievementsOnce() {
@@ -3602,6 +3588,7 @@ function buildAchievementsOnce() {
   const grid = document.getElementById("normal-ach-grid");
   grid.innerHTML = "";
   normalCellRefs = [];
+  normalRowEls = [];
   // 已定义行 + 1 行锁定行（展示 ??? 结构）。
   // 每个逻辑行包进独立的 .ach-row 行容器：手机窄屏时一行 5 个拆成 3+2 居中，
   // 不同逻辑行的成就永远不会混到同一视觉行。
@@ -3609,6 +3596,7 @@ function buildAchievementsOnce() {
     const rowEl = document.createElement("div");
     rowEl.className = "ach-row";
     grid.appendChild(rowEl);
+    normalRowEls[r] = rowEl;
     for (let c = 0; c < ACH_PER_ROW; c++) {
       const idx = r * ACH_PER_ROW + c;
       const a = NORMAL_ACH[idx];
@@ -3625,11 +3613,11 @@ function buildAchievementsOnce() {
       cell.append(idEl, nameEl, descEl, checkEl, lockEl, starEl, tipEl);
       if (a && a.reward) {
         cell.classList.add("has-reward");
-        // 「//」原意是换行：第一行成就编号，第二行奖励描述
+        // 「//」原意是换行：第一行成就编号，第二行奖励描述。
+        // 行解锁后即可点击查看奖励（无需完成该成就）
         tipEl.textContent = a.id + "\n" + a.reward;
-        // 仅在已完成时才可点击查看奖励；未完成时 disabled
         cell.addEventListener("click", () => {
-          if (!state.ach.normal.includes(a.id)) return;
+          if (!isRowUnlocked(r)) return; // 未解锁行不可点
           cell.classList.toggle("show-tip");
         });
       }
@@ -3665,6 +3653,19 @@ function buildAchievementsOnce() {
     hgrid.appendChild(cell);
     hiddenCellRefs.push({ root: cell, a, idEl, nameEl, descEl, lockEl, starEl });
   }
+  // 行显示过滤选项（勾选状态随存档保存，值同步在 updateAchievementsUI）
+  const lk = document.getElementById("ach-hide-locked");
+  const dn = document.getElementById("ach-hide-done");
+  lk.addEventListener("change", () => {
+    state.settings.hideLockedRows = lk.checked;
+    saveGame();
+    updateAchievementsUI();
+  });
+  dn.addEventListener("change", () => {
+    state.settings.hideDoneRows = dn.checked;
+    saveGame();
+    updateAchievementsUI();
+  });
   achBuilt = true;
 }
 
@@ -3672,7 +3673,21 @@ function updateAchievementsUI() {
   buildAchievementsOnce();
   // 成就页只显示成就本身的乘数（1.1 或 1.2/个），不含时间之矢/成就刻印以外的升级、黑洞与 A41 加成
   document.getElementById("ach-time-rate").textContent = `你的成就将时间速率变为原来的${fmt(Math.pow(achTimeBase(), state.ach.normal.length))}倍`;
-  // 普通成就
+  // 行显示过滤：未解锁行默认整体隐藏（勾选项可改回 ??? 占位），已完成行可选隐藏
+  const lk = document.getElementById("ach-hide-locked");
+  const dn = document.getElementById("ach-hide-done");
+  lk.checked = state.settings.hideLockedRows !== false;
+  dn.checked = !!state.settings.hideDoneRows;
+  for (let r = 0; r < NORMAL_ROWS + 1; r++) {
+    const defs = NORMAL_ACH.slice(r * ACH_PER_ROW, (r + 1) * ACH_PER_ROW);
+    const unlocked = isRowUnlocked(r);
+    const done = defs.length > 0 && defs.every(a => state.ach.normal.includes(a.id));
+    let visible = true;
+    if (lk.checked && !unlocked) visible = false;
+    if (dn.checked && done) visible = false;
+    if (normalRowEls[r]) normalRowEls[r].style.display = visible ? "" : "none";
+  }
+  // 普通成就：行解锁即显示真实名字与星标，奖励可点击查看（无需完成）
   for (const ref of normalCellRefs) {
     const { a, row, root, idEl, nameEl, descEl, checkEl, lockEl, starEl } = ref;
     const unlocked = isRowUnlocked(row);
@@ -3690,9 +3705,9 @@ function updateAchievementsUI() {
     const done = state.ach.normal.includes(a.id);
     root.classList.toggle("completed", done);
     lockEl.style.display = "none";
-    starEl.style.display = (a.star && done) ? "" : "none";
+    starEl.style.display = a.star ? "" : "none";
     idEl.style.display = ""; idEl.textContent = a.id;
-    nameEl.style.display = ""; nameEl.textContent = done ? a.name : "???";
+    nameEl.style.display = ""; nameEl.textContent = a.name;
     descEl.style.display = ""; descEl.textContent = a.desc;
     checkEl.style.display = ""; checkEl.textContent = done ? "✓ 已完成" : "未完成";
   }
@@ -3978,7 +3993,7 @@ function setupUI() {
       }
       const obj = decodeSave(str);
       state = Object.assign(defaultState(), obj);
-      state.settings = Object.assign({ theme: "black", notation: "scientific", decimals: 3 }, obj.settings || {});
+      state.settings = Object.assign({ theme: "black", notation: "scientific", decimals: 3, hideLockedRows: true, hideDoneRows: false }, obj.settings || {});
       state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
       migrateState();
       if (obj.frequency !== undefined && obj.U === undefined) { setU(obj.frequency); state.L = 1; state.logL10 = 0; }
