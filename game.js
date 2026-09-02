@@ -55,7 +55,8 @@ function defaultState() {
     lastAutoUp3At: 0,      // 上次自动升级3时刻
     lastAutoAnnAt: 0,      // 上次自动湮灭时刻
     autoAnnCDLvl: 0,       // A42 奖励解锁：自动湮灭 CD 缩减升级等级（每级 ÷2，最低 25ms）
-    sau1: 0, sau2: 0, sau3: 0, sau4: 0,  // 奇点可重复升级等级（3DA 解锁）
+    sau1: 0, sau2: 0, sau3: 0, sau4: 0,
+    vpuCondMet: [],        // VPU 解锁条件已达成记录（达成一次永久解锁；A45 后生效）  // 奇点可重复升级等级（3DA 解锁）
     au: {},                                 // 奇点单次升级已购标记（id→1）
     testBreakRules: false, // 测试按钮：临时打破规则（不获 Sp，v0.4.3 移除）
 
@@ -951,6 +952,8 @@ function migrateState() {
   if (state.ruaBoostMult === undefined) state.ruaBoostMult = 1;
   if (state.ruaBoostUntil === undefined) state.ruaBoostUntil = 0;
   if (state.ruaBoostCD === undefined) state.ruaBoostCD = 0;
+  // v0.5.0.2：VPU 解锁条件达成记录回填（达成一次永久解锁）
+  if (!Array.isArray(state.vpuCondMet)) state.vpuCondMet = [];
   // v0.4.3.2：自动湮灭 CD 升级字段回填
   if (state.autoAnnCDLvl === undefined) state.autoAnnCDLvl = 0;
   // v0.5.0：本次湮灭游戏时长独立累计字段回填
@@ -2305,18 +2308,29 @@ const VPU_DEFS = [
   { id: "vpu9", name: "???", desc: "（占位）", cost: Infinity },
 ];
 // VPU 解锁条件：解锁 A45 星标奖励（购买所有奇点升级）后全部可见；
-// VPU5 额外要求总挑战时间 < 3s；VPU4 要求黑洞质量达到 1e70 太阳质量
+// VPU5 额外要求总挑战时间 < 3s；VPU4 要求黑洞质量达到 1e70 太阳质量。
+// 条件「达成一次即永久解锁」（latch 于 state.vpuCondMet，随档保存）：
+// 之后即使条件回落（如黑洞质量被脉冲消耗到 1e70 以下）仍保持开放；
+// 仅当未来出现比湮灭更高层次的重置时才会清除该记录
 function vpuUnlocked(id) {
   if (!state.ach.normal.includes("A45")) return false;
+  if (state.vpuCondMet && state.vpuCondMet.includes(id)) return true;
+  let met = false;
   if (id === "vpu5") {
     const bestSum = DISTORT_UNIVERSES.reduce((s, u) => s + (state.distortBest[u.id] || 0), 0);
-    return bestSum > 0 && bestSum < 3;
+    met = bestSum > 0 && bestSum < 3;
+  } else if (id === "vpu4") {
+    met = getLogBhMass() >= 70;
   }
-  if (id === "vpu4") return getLogBhMass() >= 70;
-  return false; // 其余 VPU 尚未实装
+  if (met) {
+    if (!state.vpuCondMet) state.vpuCondMet = [];
+    state.vpuCondMet.push(id);
+  }
+  return met;
 }
 // 未达成解锁条件的 VPU 显示的具体条件文本（空串 = 无（占位））
 function vpuCondText(id) {
+  if (state.vpuCondMet && state.vpuCondMet.includes(id)) return "解锁条件已达成";
   if (id === "vpu5") {
     const bestSum = DISTORT_UNIVERSES.reduce((s, u) => s + (state.distortBest[u.id] || 0), 0);
     if (bestSum > 0 && bestSum < 3) return "解锁条件已达成";
