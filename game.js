@@ -2267,10 +2267,10 @@ function buySBU(id) {
 }
 // 黑洞虚粒子升级（花 VP，位于黑洞页）
 const SVPU_DEFS = [
-  { id: "svpu1", key: "svpu1", name: "全息原理", desc: "吸积公式中质量的指数 +0.03/级（最高 4 级，对偶原理后 6 级）", max: 6, costLog: (n) => 1 + 2 * (n - 1) }, // 10×100^(n-1) VP，每级 ×100
+  { id: "svpu1", key: "svpu1", name: "全息原理", desc: "吸积公式中质量的指数 +0.03/级", max: 6, costLog: (n) => 1 + 2 * (n - 1) }, // 10×100^(n-1) VP，每级 ×100
   { id: "svpu2", key: "svpu2", name: "虚幻湮灭", desc: "获得的湮灭次数×2", max: Infinity, costLog: (n) => Math.log10(3) + (n - 1) * Math.log10(5) },  // 3×5^(n-1) VP
-  { id: "svpu3", key: "svpu3", name: "非欧几何", desc: "削弱升级3软上限（最高 3 级）", max: 3, costLog: (n) => 5 * n - 4 },                  // 10^(5n-4) VP，增速 ×1e5
-  { id: "svpu4", key: "svpu4", name: "热能超载", desc: "削弱温度的软上限（超出普朗克温度部分的缩放指数更接近 1）", max: Infinity, costLog: (n) => 7 + (n - 1) * 3 },              // 1e7×1000^(n-1) VP
+  { id: "svpu3", key: "svpu3", name: "非欧几何", desc: "削弱升级3软上限", max: 3, costLog: (n) => 5 * n - 4 },                  // 10^(5n-4) VP，增速 ×1e5
+  { id: "svpu4", key: "svpu4", name: "热能超载", desc: "削弱温度的软上限", max: Infinity, costLog: (n) => 7 + (n - 1) * 3 },              // 1e7×1000^(n-1) VP
   { id: "svpu5", key: "svpu5", name: "潮汐撕裂", desc: "黑洞质量的软上限起始点每级 +10 个数量级", max: Infinity, costLog: (n) => Math.log10(5e7) + (n - 1) * Math.log10(2000) }, // 5e7×2000^(n-1) VP
 ];
 // 全息原理的实际等级上限（对偶原理 VPU4：4 → 6）
@@ -2301,7 +2301,7 @@ const VPU_DEFS = [
   { id: "vpu2", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu3", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu4", name: "对偶原理", desc: "全息原理的等级上限增加两级", cost: 2e8 },
-  { id: "vpu5", name: "临界湮灭", desc: "取消自动湮灭的 CD，并把共轭湮灭的效果变为原来的^2", cost: 1e7 },
+  { id: "vpu5", name: "临界湮灭", desc: "取消自动湮灭的 CD，并把共轭湮灭的效果变为原来的^2，增加两个虚粒子升级", cost: 1e7 },
   { id: "vpu6", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu7", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu8", name: "???", desc: "（占位）", cost: Infinity },
@@ -2386,10 +2386,13 @@ function tickBlackhole(dt) {
     if (rateLog > NLOG + 1) {
       setBhMassLog(logAddLogs(mLog, rateLog));
     }
-    // 虚粒子衰减：每秒 ×(9/10) → logVP += log10(0.9)·dt（负数，故衰减）
+    // 虚粒子衰减（分段）：VP<1e10 每秒 ×(9/10)；VP≥1e10 每秒 ÷(lg(VP)/9)
+    // （lg=10 处连续：两种公式都是 ÷(10/9)；lg 越大消耗越快）。
+    // log 域：÷D 每秒 = logVP -= log10(D)·dt
     const vpLog = getLogVP();
     if (vpLog > NLOG + 1) {
-      setVPLog(vpLog + Math.log10(0.9) * dt);
+      const rateLog = vpLog > 10 ? Math.log10(Math.max(vpLog / 9, 1e-300)) : Math.log10(10 / 9);
+      setVPLog(vpLog - rateLog * dt);
       if (getLogVP() <= NLOG + 1) setVPLog(NLOG); // 衰减到 0 停止
     }
   } else if (state.bhState === "distorl") {
@@ -2416,7 +2419,7 @@ function tickBlackhole(dt) {
 }
 
 // ---------- 黑洞 UI（build-once, in-place update）+ 旋转动画 ----------
-let bhBuilt = false, bhRefs = {}, bhStateBtns = [], bhAnimRAF = 0, bhAngle = 0, bhParticles = [], bhVpuSection = null;
+let bhBuilt = false, bhRefs = {}, bhStateBtns = [], bhAnimRAF = 0, bhAngle = 0, bhParticles = [], bhVpuSection = null, bhSvpuTopRow = null;
 
 function buildBlackholeOnce() {
   if (bhBuilt) return;
@@ -2452,10 +2455,12 @@ function buildBlackholeOnce() {
   }
   // 虚粒子升级（花 VP）
   list.appendChild(mkTitle("虚粒子升级"));
-  // 布局：SVPU4/5 居中首行，SVPU1/2/3 在下（两行按钮尺寸一致，各为行宽 1/3）
+  // 虚粒子升级（花 VP）。布局：SVPU4/5 居中首行（购买 VPU5 后解锁出现），
+  // SVPU1/2/3 在下（两行按钮尺寸一致，各为行宽 1/3）
   const svpuTopRow = mkRow();
   svpuTopRow.classList.add("svpu-top-row");
   list.appendChild(svpuTopRow);
+  bhSvpuTopRow = svpuTopRow;
   const svpuRow = mkRow();
   list.appendChild(svpuRow);
   for (const u of SVPU_DEFS) {
@@ -2607,6 +2612,8 @@ function updateBlackholeUI() {
   document.getElementById("subtab-blackhole").classList.toggle("hidden", !bhUnlocked());
   // VPU 虚粒子单次升级区：达成 A45「万物」前整区不可见
   if (bhVpuSection) bhVpuSection.classList.toggle("hidden", !state.ach.normal.includes("A45"));
+  // SVPU4/5（热能超载/潮汐撕裂）：购买 VPU5 后作为其奖励出现
+  if (bhSvpuTopRow) bhSvpuTopRow.classList.toggle("hidden", !vpuOwned("vpu5"));
   // 状态按钮高亮
   for (const b of bhStateBtns) {
     b.classList.toggle("active", b.dataset.bhState === state.bhState);
