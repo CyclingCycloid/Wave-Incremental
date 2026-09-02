@@ -1,9 +1,9 @@
-/* ===== Wave Incremental v0.5.0.1 — game logic ===== */
+/* ===== Wave Incremental v0.5.0.2 — game logic ===== */
 
 // ---------- Save schema ----------
 function defaultState() {
   return {
-    version: "0.5.0.1",
+    version: "0.5.0.2",
     // 物理资源
     U: 10,                 // 波速 m/s (默认国际单位制，double 缓存；极端值看 logU10)
     logU10: 1,             // log10(U) 权威表示（防溢出/下溢；U=0 时为 NLOG 哨兵）
@@ -66,7 +66,7 @@ function defaultState() {
     virtualParticles: 0,   // 虚粒子数（double 缓存）
     logVP: NLOG,           // log10(虚粒子) 权威
     sbu1: 0, sbu2: 0, sbu3: 0, // 黑洞升级：事件视界/引力潮汐/霍金辐射
-    svpu1: 0, svpu2: 0, svpu3: 0, // 黑洞虚粒子升级：全息原理/虚幻湮灭/非欧几何
+    svpu1: 0, svpu2: 0, svpu3: 0, svpu4: 0, svpu5: 0, // 黑洞虚粒子升级：全息原理/虚幻湮灭/非欧几何/热能超载/超大质量
     bhCanvasClicks: 0,     // S21：黑洞动画点击计数
     bhPulseSince: 0,       // S22：本次持续处于脉冲状态的起始时刻（0=不在脉冲）
     bhDistorlSince: 0,     // S23：本次持续处于扭曲状态的起始时刻（0=不在扭曲）
@@ -406,8 +406,8 @@ function temperatureCappedLog() {
   if (state.testBreakRules) return raw; // 测试按钮：无上限
   const capLog = effectiveCapLog();
   if (state.rulesBroken && !state.distortActive && raw > capLog) {
-    // 软上限：超出部分 × (lg(Tp)/lg(T))^(1/2)/2
-    const p = Math.sqrt(capLog / raw) / 2;
+    // 软上限：超出部分 × (lg(Tp)/lg(T))^(1/(n+2))/2，n 为热能超载（svpu4）等级（n=0 时为 1/2）
+    const p = Math.pow(capLog / raw, 1 / (state.svpu4 + 2)) / 2;
     return clampLog(capLog + (raw - capLog) * p);
   }
   // 滞涨宇宙：有效温度变为原来的平方根（log ÷ 2），热涨落等加成相应减弱
@@ -2199,7 +2199,7 @@ function bhVPMult() { return Math.pow(2, state.sbu3); }
 // → log = massExp*logM + 0.01*(FLog-200) + accretionMult；massExp 受 SVPU1 加成，
 // accretionMult = SBU1 ×2^sbu1 × AU43 奇点塌缩倍率（spAccretionMult）
 // 本 tick 的质量获取 Gain（log10）超 1e50 时受软上限：
-// 实际获得 = 1e50 × (Gain/1e50)^( (15/lg(Gain))^(1/2) )
+// 实际获得 = 1e(10n+50) × (Gain/1e(10n+50))^( (15/lg(Gain))^(1/2) )，n 为超大质量（svpu5）等级
 // AU44 监察原理：SBU1 事件视界（×2^sbu1）的加成移动到软上限之后生效
 function bhAccretionRateLog() {
   const mLog = getLogBhMass();
@@ -2210,8 +2210,9 @@ function bhAccretionRateLog() {
   const accMultLog = (au44 ? 0 : state.sbu1) * Math.log10(2) + spAccretionMultLog();
   const massExp = bhAccretionMassExp();
   let gainLog = clampLog(massExp * mLog + 0.01 * (fLog - 200) + accMultLog);
-  // 软上限：Gain 超 1e50（log50）的部分缩放
-  const SOFT = 50;
+  // 软上限：Gain 超起始点（log50，超大质量每级 +10 个数量级）的部分缩放：
+  // 实际获得 = 1e(10n+50) × (Gain/1e(10n+50))^((15/lg(Gain))^(1/2))，n 为超大质量（svpu5）等级
+  const SOFT = bhMassSoftcapLog();
   if (gainLog > SOFT) {
     gainLog = clampLog(SOFT + (gainLog - SOFT) * Math.sqrt(15 / gainLog));
     // AU44：SBU1 倍率在软上限之后乘上
@@ -2225,7 +2226,7 @@ function bhMassSoftcapped() {
   const au44 = auOwned("au44");
   const accMultLog = (au44 ? 0 : state.sbu1) * Math.log10(2) + spAccretionMultLog();
   const gainLog = clampLog(bhAccretionMassExp() * getLogBhMass() + 0.01 * (FLog() - 200) + accMultLog);
-  return gainLog > 50;
+  return gainLog > bhMassSoftcapLog();
 }
 // 脉冲状态：虚粒子获取速率（每秒）= floor(mult × (M^0.1 − 1))；M=1 时自然为 0。返回 log10
 function bhVPGainLog() {
@@ -2263,15 +2264,22 @@ function buySBU(id) {
 }
 // 黑洞虚粒子升级（花 VP，位于黑洞页）
 const SVPU_DEFS = [
-  { id: "svpu1", key: "svpu1", name: "全息原理", desc: "吸积公式中质量的指数 +0.03/级（最高 4 级）", max: 4, costLog: (n) => 1 + 2 * (n - 1) }, // 10×100^(n-1) VP，每级 ×100
+  { id: "svpu1", key: "svpu1", name: "全息原理", desc: "吸积公式中质量的指数 +0.03/级（最高 4 级，对偶原理后 6 级）", max: 6, costLog: (n) => 1 + 2 * (n - 1) }, // 10×100^(n-1) VP，每级 ×100
   { id: "svpu2", key: "svpu2", name: "虚幻湮灭", desc: "获得的湮灭次数×2", max: Infinity, costLog: (n) => Math.log10(3) + (n - 1) * Math.log10(5) },  // 3×5^(n-1) VP
   { id: "svpu3", key: "svpu3", name: "非欧几何", desc: "削弱升级3软上限（最高 3 级）", max: 3, costLog: (n) => 5 * n - 4 },                  // 10^(5n-4) VP，增速 ×1e5
+  { id: "svpu4", key: "svpu4", name: "热能超载", desc: "削弱温度的软上限（超出普朗克温度部分的缩放指数更接近 1）", max: Infinity, costLog: (n) => 7 + (n - 1) * 3 },              // 1e7×1000^(n-1) VP
+  { id: "svpu5", key: "svpu5", name: "超大质量", desc: "黑洞质量的软上限起始点每级 +10 个数量级", max: Infinity, costLog: (n) => Math.log10(5e7) + (n - 1) * Math.log10(2000) }, // 5e7×2000^(n-1) VP
 ];
+// 全息原理的实际等级上限（对偶原理 VPU4：4 → 6）
+function svpu1Max() { return vpuOwned("vpu4") ? 6 : 4; }
+// 黑洞质量软上限起始点（log10）：1e50 起始，超大质量每级 +10 个数量级
+function bhMassSoftcapLog() { return 50 + 10 * state.svpu5; }
 function buySVPU(id) {
   if (!bhUnlocked()) return;
   const u = SVPU_DEFS.find(x => x.id === id);
   if (!u) return;
-  if (state[u.key] >= u.max) return;
+  const effMax = id === "svpu1" ? svpu1Max() : u.max; // 全息原理：对偶原理后 4→6
+  if (state[u.key] >= effMax) return;
   const n = state[u.key] + 1;
   const cLog = u.costLog(n);
   const c = Math.pow(10, cLog);
@@ -2289,7 +2297,7 @@ const VPU_DEFS = [
   { id: "vpu1", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu2", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu3", name: "???", desc: "（占位）", cost: Infinity },
-  { id: "vpu4", name: "???", desc: "（占位）", cost: Infinity },
+  { id: "vpu4", name: "对偶原理", desc: "全息原理的等级上限增加两级", cost: 2e8 },
   { id: "vpu5", name: "临界湮灭", desc: "取消自动湮灭的 CD，并把共轭湮灭的效果变为原来的^2", cost: 1e7 },
   { id: "vpu6", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu7", name: "???", desc: "（占位）", cost: Infinity },
@@ -2297,13 +2305,14 @@ const VPU_DEFS = [
   { id: "vpu9", name: "???", desc: "（占位）", cost: Infinity },
 ];
 // VPU 解锁条件：解锁 A45 星标奖励（购买所有奇点升级）后全部可见；
-// VPU5 额外要求总挑战时间 < 3s
+// VPU5 额外要求总挑战时间 < 3s；VPU4 要求黑洞质量达到 1e70 太阳质量
 function vpuUnlocked(id) {
   if (!state.ach.normal.includes("A45")) return false;
   if (id === "vpu5") {
     const bestSum = DISTORT_UNIVERSES.reduce((s, u) => s + (state.distortBest[u.id] || 0), 0);
     return bestSum > 0 && bestSum < 3;
   }
+  if (id === "vpu4") return getLogBhMass() >= 70;
   return false; // 其余 VPU 尚未实装
 }
 // 未达成解锁条件的 VPU 显示的具体条件文本（空串 = 无（占位））
@@ -2313,6 +2322,12 @@ function vpuCondText(id) {
     if (bestSum > 0 && bestSum < 3) return "解锁条件已达成";
     return "解锁条件：所有扭曲宇宙最佳完成时间之和 < 3 秒（当前 "
       + (bestSum > 0 ? bestSum.toFixed(2) + " 秒" : "尚无完成记录") + "）";
+  }
+  if (id === "vpu4") {
+    const mLog = getLogBhMass();
+    if (mLog >= 70) return "解锁条件已达成";
+    return "解锁条件：黑洞质量达到 1e70 太阳质量（当前 "
+      + (mLog > NLOG + 1 ? fmtLog(mLog) : "1.00") + " M☉）";
   }
   return "";
 }
@@ -2326,6 +2341,7 @@ function buyVPU(id) {
   if (cmpLT(state.virtualParticles, u.cost, getLogVP(), cLog)) return;
   subVPLog(cLog);
   state.au["vpu_" + id] = 1;
+  checkAchievements(); // A51 虚幻：购买第一个虚粒子单次升级
   updateBlackholeUI();
   setAutosaveStatus("已购买黑洞升级：" + u.name);
 }
@@ -2559,7 +2575,7 @@ function bhAnimLoop() {
       `<div class="bh-stat-row"><span>虚粒子</span><span>${fmtInt(state.virtualParticles, getLogVP())}</span></div>` +
       `<div class="bh-stat-row"><span>当前状态</span><span>${stNames[state.bhState] || "—"}</span></div>` +
       `<div class="bh-stat-row"><span>基础效果</span><span>×${fmtNum(bhEffect(), bhEffectLog())}</span></div>` +
-      (bhMassSoftcapped() ? `<div class="bh-softcap-note">黑洞质量获取超过 1e50 的部分将受到软上限影响</div>` : "");
+      (bhMassSoftcapped() ? `<div class="bh-softcap-note">黑洞质量获取超过 1e${bhMassSoftcapLog()} 的部分将受到软上限影响</div>` : "");
   }
   bhAnimRAF = requestAnimationFrame(bhAnimLoop);
 }
@@ -2580,7 +2596,8 @@ function updateBlackholeUI() {
     const r = bhRefs[id];
     if (r.vpu) continue; // VPU 走下方专属处理（无 key/max/cost 函数）
     const n = state[r.u.key] + 1;
-    const maxed = r.u.max !== Infinity && state[r.u.key] >= r.u.max;
+    const effMax = r.u.id === "svpu1" ? svpu1Max() : r.u.max; // 全息原理：对偶原理后 4→6
+    const maxed = effMax !== Infinity && state[r.u.key] >= effMax;
     let c, cLog, affordable, costStr, resUnit;
     if (r.vp) {
       // SVPU：花 VP
@@ -2597,7 +2614,7 @@ function updateBlackholeUI() {
       costStr = fmtNum(c, cLog) + " Sp";
       resUnit = "Sp";
     }
-    r.descEl.textContent = r.u.desc + (r.u.max !== Infinity ? "（" + state[r.u.key] + "/" + r.u.max + "）" : "（等级 " + state[r.u.key] + "）");
+    r.descEl.textContent = r.u.desc + (effMax !== Infinity ? "（" + state[r.u.key] + "/" + effMax + "）" : "（等级 " + state[r.u.key] + "）");
     r.costEl.textContent = maxed ? "已满级" : costStr;
     r.btn.disabled = maxed || !affordable;
     r.btn.classList.toggle("bought", maxed);
@@ -2753,15 +2770,16 @@ function buildAnnihilationOnce() {
     sauRefs.push({ u, btn, descEl: ds, costEl: ct });
   }
   uList.appendChild(sauRow);
-  // AU 单次升级（四组，两组一行）
+  // AU 单次升级（四组；两组并排，按钮按行交错——AU2n 与 AU1n 同行对齐）
   auRefs = {};
   for (let grp = 0; grp < AU_DEFS.length; grp += 2) {
-    const rowEl = document.createElement("div");
-    rowEl.className = "au-row";
-    for (let k = 0; k < 2 && grp + k < AU_DEFS.length; k++) {
-      const col = document.createElement("div");
-      col.className = "au-col";
-      for (const u of AU_DEFS[grp + k]) {
+    const gA = AU_DEFS[grp], gB = AU_DEFS[grp + 1] || [];
+    for (let i = 0; i < Math.max(gA.length, gB.length); i++) {
+      const rowEl = document.createElement("div");
+      rowEl.className = "au-row";
+      for (const g of [gA, gB]) {
+        const u = g[i];
+        if (!u) continue;
         const btn = document.createElement("button");
         btn.className = "au-btn";
         const nm = document.createElement("div"); nm.className = "sau-name"; nm.textContent = u.name;
@@ -2769,12 +2787,11 @@ function buildAnnihilationOnce() {
         const ct = document.createElement("div"); ct.className = "sau-cost";
         btn.append(nm, ds, ct);
         btn.addEventListener("click", () => buyAU(u.id));
-        col.appendChild(btn);
+        rowEl.appendChild(btn);
         auRefs[u.id] = { u, btn, nameEl: nm, descEl: ds, costEl: ct };
       }
-      rowEl.appendChild(col);
+      uList.appendChild(rowEl);
     }
-    uList.appendChild(rowEl);
   }
   spBuilt = true;
 }
@@ -3502,6 +3519,8 @@ const NORMAL_ACH = [
   { id: "A43", name: "无限", desc: "打破多元宇宙的规则", check: () => state.rulesBroken && !state.testBreakRules }, // 原 A35
   { id: "A44", name: "永炽", desc: "温度超过 1.79e308 K", check: () => temperature() >= 1.79e308 },
   { id: "A45", name: "万物", desc: "购买所有奇点升级", star: true, reward: "解锁黑洞页的虚粒子单次升级（VPU 系列）", check: () => ALL_SP_UPGRADES_OWNED() },
+  // 第 5 行 (A51-…) 虚粒子
+  { id: "A51", name: "虚幻", desc: "购买第一个虚粒子单次升级", check: () => VPU_DEFS.some(u => vpuOwned(u.id)) },
 ];
 const ACH_PER_ROW = 5;
 // 已定义行数；之后整行为未解锁 ???
@@ -3536,7 +3555,7 @@ const HIDDEN_ACH = [
   { id: "S22", name: "白洞", check: () => false }, // 黑洞保持脉冲状态 5 分钟以上
   { id: "S23", name: "裸奇点", check: () => false }, // 黑洞倍率为 1 时保持扭曲状态 10 分钟以上
   { id: "S24", name: "你变秃了，也变强了", check: () => false }, // 一天（当日窗口）内 rua 摆线 200 次
-  { id: "S25", name: "这是旮旯给木吗？", check: () => false }, // 好感度达到 1000
+  { id: "S25", name: "这是旮旯给木吗？", check: () => false }, // 好感度达到 500
 ];
 // S5 目标序列：S1,S1,S4,S5,S1,S4
 const S5_SEQUENCE = ["S1", "S1", "S4", "S5", "S1", "S4"];
@@ -4246,8 +4265,8 @@ function setupUI() {
     }
     state.ruaCountToday++;
     state.ruaFav++;
-    // S25：好感度达到 1000
-    if (state.ruaFav >= 1000 && !state.ach.hidden.includes("S25")) { grantHidden("S25"); updateAchievementsUI(); }
+    // S25：好感度达到 500
+    if (state.ruaFav >= 500 && !state.ach.hidden.includes("S25")) { grantHidden("S25"); updateAchievementsUI(); }
     // rua 按钮下方文字
     ruaStatus.textContent = `你 rua 了 rua 摆线，好感度 +1（今天 ${state.ruaCountToday}/100）`;
     refreshRuaUI();

@@ -200,7 +200,7 @@ body {
 .sau-btn.bought .sau-name, .sau-btn.bought .sau-cost { color: #d4a017; }
 .sau-btn:disabled { opacity: 0.55; cursor: default; }
 /* AU：四组，两组共行 */
-.au-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 30px; margin-top: 26px; }
+.au-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 30px; margin: 10px 0; }
 .au-col { display: flex; flex-direction: column; gap: 14px; }
 .au-btn {
   background: var(--bg-panel); border: 2px solid var(--purple-dim); border-radius: 8px;
