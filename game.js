@@ -66,7 +66,7 @@ function defaultState() {
     virtualParticles: 0,   // 虚粒子数（double 缓存）
     logVP: NLOG,           // log10(虚粒子) 权威
     sbu1: 0, sbu2: 0, sbu3: 0, // 黑洞升级：事件视界/引力潮汐/霍金辐射
-    svpu1: 0, svpu2: 0, svpu3: 0, svpu4: 0, svpu5: 0, // 黑洞虚粒子升级：全息原理/虚幻湮灭/非欧几何/热能超载/超大质量
+    svpu1: 0, svpu2: 0, svpu3: 0, svpu4: 0, svpu5: 0, // 黑洞虚粒子升级：全息原理/虚幻湮灭/非欧几何/热能超载/潮汐撕裂
     bhCanvasClicks: 0,     // S21：黑洞动画点击计数
     bhPulseSince: 0,       // S22：本次持续处于脉冲状态的起始时刻（0=不在脉冲）
     bhDistorlSince: 0,     // S23：本次持续处于扭曲状态的起始时刻（0=不在扭曲）
@@ -2199,7 +2199,7 @@ function bhVPMult() { return Math.pow(2, state.sbu3); }
 // → log = massExp*logM + 0.01*(FLog-200) + accretionMult；massExp 受 SVPU1 加成，
 // accretionMult = SBU1 ×2^sbu1 × AU43 奇点塌缩倍率（spAccretionMult）
 // 本 tick 的质量获取 Gain（log10）超 1e50 时受软上限：
-// 实际获得 = 1e(10n+50) × (Gain/1e(10n+50))^( (15/lg(Gain))^(1/2) )，n 为超大质量（svpu5）等级
+// 实际获得 = 1e(10n+50) × (Gain/1e(10n+50))^( (15/lg(Gain))^(1/2) )，n 为潮汐撕裂（svpu5）等级
 // AU44 监察原理：SBU1 事件视界（×2^sbu1）的加成移动到软上限之后生效
 function bhAccretionRateLog() {
   const mLog = getLogBhMass();
@@ -2210,8 +2210,8 @@ function bhAccretionRateLog() {
   const accMultLog = (au44 ? 0 : state.sbu1) * Math.log10(2) + spAccretionMultLog();
   const massExp = bhAccretionMassExp();
   let gainLog = clampLog(massExp * mLog + 0.01 * (fLog - 200) + accMultLog);
-  // 软上限：Gain 超起始点（log50，超大质量每级 +10 个数量级）的部分缩放：
-  // 实际获得 = 1e(10n+50) × (Gain/1e(10n+50))^((15/lg(Gain))^(1/2))，n 为超大质量（svpu5）等级
+  // 软上限：Gain 超起始点（log50，潮汐撕裂每级 +10 个数量级）的部分缩放：
+  // 实际获得 = 1e(10n+50) × (Gain/1e(10n+50))^((15/lg(Gain))^(1/2))，n 为潮汐撕裂（svpu5）等级
   const SOFT = bhMassSoftcapLog();
   if (gainLog > SOFT) {
     gainLog = clampLog(SOFT + (gainLog - SOFT) * Math.sqrt(15 / gainLog));
@@ -2268,11 +2268,11 @@ const SVPU_DEFS = [
   { id: "svpu2", key: "svpu2", name: "虚幻湮灭", desc: "获得的湮灭次数×2", max: Infinity, costLog: (n) => Math.log10(3) + (n - 1) * Math.log10(5) },  // 3×5^(n-1) VP
   { id: "svpu3", key: "svpu3", name: "非欧几何", desc: "削弱升级3软上限（最高 3 级）", max: 3, costLog: (n) => 5 * n - 4 },                  // 10^(5n-4) VP，增速 ×1e5
   { id: "svpu4", key: "svpu4", name: "热能超载", desc: "削弱温度的软上限（超出普朗克温度部分的缩放指数更接近 1）", max: Infinity, costLog: (n) => 7 + (n - 1) * 3 },              // 1e7×1000^(n-1) VP
-  { id: "svpu5", key: "svpu5", name: "超大质量", desc: "黑洞质量的软上限起始点每级 +10 个数量级", max: Infinity, costLog: (n) => Math.log10(5e7) + (n - 1) * Math.log10(2000) }, // 5e7×2000^(n-1) VP
+  { id: "svpu5", key: "svpu5", name: "潮汐撕裂", desc: "黑洞质量的软上限起始点每级 +10 个数量级", max: Infinity, costLog: (n) => Math.log10(5e7) + (n - 1) * Math.log10(2000) }, // 5e7×2000^(n-1) VP
 ];
 // 全息原理的实际等级上限（对偶原理 VPU4：4 → 6）
 function svpu1Max() { return vpuOwned("vpu4") ? 6 : 4; }
-// 黑洞质量软上限起始点（log10）：1e50 起始，超大质量每级 +10 个数量级
+// 黑洞质量软上限起始点（log10）：1e50 起始，潮汐撕裂每级 +10 个数量级
 function bhMassSoftcapLog() { return 50 + 10 * state.svpu5; }
 function buySVPU(id) {
   if (!bhUnlocked()) return;
@@ -2438,6 +2438,10 @@ function buildBlackholeOnce() {
   }
   // 虚粒子升级（花 VP）
   list.appendChild(mkTitle("虚粒子升级"));
+  // 布局：SVPU4/5 居中首行，SVPU1/2/3 在下（两行按钮尺寸一致，各为行宽 1/3）
+  const svpuTopRow = mkRow();
+  svpuTopRow.classList.add("svpu-top-row");
+  list.appendChild(svpuTopRow);
   const svpuRow = mkRow();
   list.appendChild(svpuRow);
   for (const u of SVPU_DEFS) {
@@ -2448,7 +2452,8 @@ function buildBlackholeOnce() {
     const ct = document.createElement("div"); ct.className = "sau-cost";
     btn.append(nm, ds, ct);
     btn.addEventListener("click", () => buySVPU(u.id));
-    svpuRow.appendChild(btn);
+    const row = (u.id === "svpu4" || u.id === "svpu5") ? svpuTopRow : svpuRow;
+    row.appendChild(btn);
     bhRefs[u.id] = { u, btn, descEl: ds, costEl: ct, vp: true };
   }
   // 虚粒子单次升级（VPU1-9 九宫格，A45 星标奖励解锁；达成 A45 前整区不可见）

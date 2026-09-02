@@ -498,6 +498,8 @@ body[data-theme="white"] #bh-canvas { box-shadow: 0 0 0 2px #888, 0 2px 8px rgba
 .bh-upg-list { margin-top: 10px; }
 .bh-row-title { text-align: center; font-size: 17px; font-weight: 700; color: var(--text); margin: 14px 0 8px; }
 .bh-upg-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+/* SVPU4/5 居中首行：列宽与下行 3 列布局的 1fr 一致 */
+.bh-upg-row.svpu-top-row { grid-template-columns: repeat(2, calc((100% - 16px) / 3)); justify-content: center; margin-bottom: 8px; }
 /* 黑洞升级按钮：黑色边框 + --black 代表色底（黑主题深灰、白主题近黑） */
 .bh-upg-btn { background: var(--black) !important; border: 2px solid #000 !important; color: #fff !important; }
 .bh-upg-btn:hover { filter: brightness(1.2); }
