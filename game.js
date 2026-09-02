@@ -2300,7 +2300,7 @@ const VPU_DEFS = [
   { id: "vpu1", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu2", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu3", name: "???", desc: "（占位）", cost: Infinity },
-  { id: "vpu4", name: "对偶原理", desc: "全息原理的等级上限增加两级", cost: 2e8 },
+  { id: "vpu4", name: "对偶原理", desc: "全息原理的等级上限+2，并把吸积公式的质量指数+0.05", cost: 2e8 },
   { id: "vpu5", name: "临界湮灭", desc: "取消自动湮灭的 CD，并把共轭湮灭的效果变为原来的^2，增加两个虚粒子升级", cost: 1e7 },
   { id: "vpu6", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu7", name: "???", desc: "（占位）", cost: Infinity },
@@ -2360,7 +2360,8 @@ function buyVPU(id) {
   setAutosaveStatus("已购买黑洞升级：" + u.name);
 }
 // VPU5 临界湮灭效果：自动湮灭无 CD（由 autoAnnCD 调用）；共轭湮灭效果 ^2（由 phononSpMult 调用）
-function bhAccretionMassExp() { return 0.75 + 0.03 * state.svpu1; }
+// 吸积质量指数：基础 0.75 + 全息原理 0.03/级 + 对偶原理（VPU4）+0.05
+function bhAccretionMassExp() { return 0.75 + 0.03 * state.svpu1 + (vpuOwned("vpu4") ? 0.05 : 0); }
 // SVPU2 虚幻湮灭：每次获得的奇点 ×2^svpu2（乘在每次 gained 上，不加成次数本身）
 function annSpMult() { return Math.pow(2, state.svpu2); }
 // SVPU3 非欧几何：升级3软上限缩放指数的次幂 1/(n+1)（n=svpu3）
