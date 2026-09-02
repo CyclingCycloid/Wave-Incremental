@@ -160,7 +160,7 @@ const DISTORT_UNIVERSES = [
   },
   {
     id: "inflation", name: "滞涨",
-    desc: "前奇点资源不消耗被禁用，波动升级 1 价格变为 100^n、升级 2 从 1e6 起每级乘 max(n²,100)，声子升级与其余单次升级价格平方，波速获取变为原来的平方根，有效温度变为原来的平方根",
+    desc: "前奇点资源不消耗被禁用，价格折算即刻生效且变得更强，声子升级价格平方，波速获取和温度开平方根",
     tp: 1e110,
   },
   {
@@ -2281,23 +2281,23 @@ function buySVPU(id) {
   updateBlackholeUI();
   setAutosaveStatus("已购买黑洞升级：" + u.name);
 }
-// ---------- 虚粒子单次升级（VPU1-9，A45 星标奖励解锁；九宫格）----------
+// ---------- 虚粒子单次升级（VPU1-9，A45 星标奖励解锁；九宫格，花 VP）----------
 // 达成 A45 前整区不可见；解锁条件统一由 vpuUnlocked(id) 判定。
-// 目前所有 VPU 均不可购买（cost=Infinity）：VPU5 暂未开放购买，
-// 未达成解锁条件时卡片显示具体达成条件（vpuCondText），其余为占位
+// 目前仅 VPU5 实装（1e7 VP），其余为占位（cost=Infinity 永不可购）；
+// 未达成解锁条件时卡片显示具体达成条件（vpuCondText）
 const VPU_DEFS = [
   { id: "vpu1", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu2", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu3", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu4", name: "???", desc: "（占位）", cost: Infinity },
-  { id: "vpu5", name: "临界湮灭", desc: "取消自动湮灭的 CD，并把共轭湮灭的效果变为原来的^2", cost: Infinity },
+  { id: "vpu5", name: "临界湮灭", desc: "取消自动湮灭的 CD，并把共轭湮灭的效果变为原来的^2", cost: 1e7 },
   { id: "vpu6", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu7", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu8", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu9", name: "???", desc: "（占位）", cost: Infinity },
 ];
 // VPU 解锁条件：解锁 A45 星标奖励（购买所有奇点升级）后全部可见；
-// VPU5 额外要求总挑战时间 < 3s（满足后仍暂不可购买）
+// VPU5 额外要求总挑战时间 < 3s
 function vpuUnlocked(id) {
   if (!state.ach.normal.includes("A45")) return false;
   if (id === "vpu5") {
@@ -2310,20 +2310,21 @@ function vpuUnlocked(id) {
 function vpuCondText(id) {
   if (id === "vpu5") {
     const bestSum = DISTORT_UNIVERSES.reduce((s, u) => s + (state.distortBest[u.id] || 0), 0);
-    if (bestSum > 0 && bestSum < 3) return "解锁条件已达成（暂未开放购买）";
+    if (bestSum > 0 && bestSum < 3) return "解锁条件已达成";
     return "解锁条件：所有扭曲宇宙最佳完成时间之和 < 3 秒（当前 "
       + (bestSum > 0 ? bestSum.toFixed(2) + " 秒" : "尚无完成记录") + "）";
   }
   return "";
 }
 function vpuOwned(id) { return !!state.au["vpu_" + id]; }
+// VPU 花虚粒子 VP（与「虚粒子单次升级」定位一致；占位条目 cost=Infinity 恒不可负担）
 function buyVPU(id) {
   if (!bhUnlocked() || !vpuUnlocked(id)) return;
   const u = VPU_DEFS.find(x => x.id === id);
   if (!u || vpuOwned(id)) return;
-  const cLog = Math.log10(u.cost); // 占位条目 cost=Infinity → 恒不可负担
-  if (cmpLT(state.sp, u.cost, getLogSp(), cLog)) return;
-  subSpLog(cLog);
+  const cLog = Math.log10(u.cost);
+  if (cmpLT(state.virtualParticles, u.cost, getLogVP(), cLog)) return;
+  subVPLog(cLog);
   state.au["vpu_" + id] = 1;
   updateBlackholeUI();
   setAutosaveStatus("已购买黑洞升级：" + u.name);
@@ -2602,7 +2603,7 @@ function updateBlackholeUI() {
     r.btn.classList.toggle("bought", maxed);
     r.btn.classList.toggle("affordable", !maxed && affordable);
   }
-  // VPU 虚粒子单次升级（A45 奖励解锁，各自有解锁条件；达成条件前显示具体条件）
+  // VPU 虚粒子单次升级（花 VP；A45 奖励解锁，各自有解锁条件；达成条件前显示具体条件）
   for (const id in bhRefs) {
     const r = bhRefs[id];
     if (!r.vpu) continue;
@@ -2620,11 +2621,11 @@ function updateBlackholeUI() {
     }
     r.descEl.textContent = r.u.desc;
     if (r.nameEl) r.nameEl.textContent = r.u.name;
-    // 价格已删除（cost=Infinity）：显示「未开放」且不可购买
-    r.costEl.textContent = owned ? "已购买" : (isFinite(r.u.cost) ? fmt(r.u.cost) + " Sp" : "未开放");
-    r.btn.disabled = owned || !isFinite(r.u.cost) || !spAfford(r.u.cost);
+    r.costEl.textContent = owned ? "已购买" : (isFinite(r.u.cost) ? fmt(r.u.cost) + " VP" : "未开放");
+    const afford = isFinite(r.u.cost) && cmpGE(state.virtualParticles, r.u.cost, getLogVP(), Math.log10(r.u.cost));
+    r.btn.disabled = owned || !afford;
     r.btn.classList.toggle("bought", owned);
-    r.btn.classList.toggle("affordable", !owned && isFinite(r.u.cost) && spAfford(r.u.cost));
+    r.btn.classList.toggle("affordable", !owned && afford);
   }
 }
 
@@ -3802,7 +3803,7 @@ function offlineLogDiff(a, b) {
 function runOfflineSimulation(cappedSec) {
   const res = {
     uLog0: getLogU10(), ph0: getLogPhonons(), m0: getLogBhMass(), vp0: getLogVP(),
-    phAbs0: state.phonons, ann0: state.annihilations, simmed: false,
+    sp0: getLogSp(), phAbs0: state.phonons, ann0: state.annihilations, simmed: false,
   };
   simActive = true;
   try {
@@ -3825,6 +3826,7 @@ function runOfflineSimulation(cappedSec) {
   simActive = false;
   res.uLog1 = getLogU10(); res.ph1 = getLogPhonons();
   res.m1 = getLogBhMass(); res.vp1 = getLogVP();
+  res.sp1 = getLogSp();
   res.phAbs1 = state.phonons;
   res.ann1 = state.annihilations;
   return res;
@@ -3860,13 +3862,15 @@ function showOfflineModal(raw, capped, res) {
   if (bhUnlocked()) {
     const mD = offlineLogDiff(res.m0, res.m1);
     if (mD > 1e-4) lines.push("黑洞质量 +" + (mD < 308 ? fmt(Math.pow(10, mD)) : fmtLog(mD)) + " M☉");
-    else if (isFinite(mD) && mD < -1e-4) lines.push("黑洞质量 −" + fmt(Math.pow(10, -mD)) + " M☉");
+    else if (isFinite(mD) && mD < -1e-4) lines.push("黑洞质量 ÷" + fmt(Math.pow(10, -mD)) + "（脉冲衰减）");
     const vpD = offlineLogDiff(res.vp0, res.vp1);
     if (vpD > 1e-4) lines.push("虚粒子 +" + (vpD < 15 ? fmt(Math.floor(Math.pow(10, vpD))) : fmtLog(vpD)));
-    else if (isFinite(vpD) && vpD < -1e-4) lines.push("虚粒子 −" + fmt(Math.pow(10, -vpD)));
+    else if (isFinite(vpD) && vpD < -1e-4) lines.push("虚粒子 ÷" + fmt(Math.pow(10, -vpD)) + "（吸积衰减）");
   }
   const annD = res.ann1 - res.ann0;
-  if (annD >= 1) lines.push("湮灭 +" + fmt(annD) + " 次");
+  if (annD >= 1) lines.push("湮灭 +" + fmt(Math.floor(annD)) + " 次");
+  const spD = offlineLogDiff(res.sp0, res.sp1);
+  if (spD > 1e-4) lines.push("奇点 +" + (spD < 308 ? fmt(Math.pow(10, spD)) : fmtLog(spD)));
   if (lines.length <= 1) return; // 无实质收益（如生产为 0 挂机）不弹
   document.getElementById("offline-text").textContent = lines.join("\n");
   document.getElementById("offline-overlay").classList.remove("hidden");
