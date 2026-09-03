@@ -1452,8 +1452,8 @@ function updateUpgradesUI() {
     up3Card.update({
       level: `上次峰值: ${lastLog > NLOG + 1 ? fmtLog(lastLog) + " Hz" : "—"}`,
       effect: affordable3
-        ? `下次重置: ×${fmtLog(multLog)}`
-        : `当前波长: ${fmtLog(getLogL10())} m`,
+        ? `下次重置: ×${fmtNum(Math.pow(10, multLog), multLog)}`
+        : `当前波长: ${fmtNum(Math.pow(10, getLogL10()), getLogL10())} m`,
       cost: lastLog > NLOG + 1 ? `需 F > ${fmtLog(lastLog)}` : "首次",
       affordable: affordable3,
     });
