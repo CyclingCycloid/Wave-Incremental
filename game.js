@@ -2288,8 +2288,8 @@ function setVPLog(logV) {
 }
 // SBU2 引力潮汐的有效级别（软上限：7+(n-7)^(1/4)）
 function sbu2Eff() { return effLevel(state.sbu2, 7, 0.25); }
-// SBU3 霍金辐射的有效级别（软上限：n+(n-10)^(1/2)，按字面）
-function sbu3Eff() { return state.sbu3 <= 10 ? state.sbu3 : state.sbu3 + Math.sqrt(state.sbu3 - 10); }
+// SBU3 霍金辐射的有效级别（软上限：10+(n-10)^(1/2)，从原上限 10 起算）
+function sbu3Eff() { return effLevel(state.sbu3, 10, 0.5); }
 // 黑洞基础效果：M^（0.2 + sbu2 有效级别·0.05）（引力潮汐：效果指数 +0.05/级）；返回 double（扭曲状态给时间倍率）
 function bhEffect() {
   const mLog = getLogBhMass();
