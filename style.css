@@ -195,6 +195,7 @@ body {
 .sau-btn .sau-name { font-size: 14px; font-weight: 600; color: var(--purple); }
 .sau-btn .sau-desc { font-size: 11px; color: var(--text-dim); line-height: 1.4; min-height: 30px; }
 .sau-btn .sau-cost { font-family: var(--font-num); font-size: 12px; color: var(--purple); }
+.sau-btn .sau-total { font-size: 11px; color: var(--text); margin-top: 3px; }
 .sau-btn.affordable { border-color: var(--purple); box-shadow: 0 0 6px rgba(139,92,246,0.3); }
 .sau-btn.bought { border-color: #d4a017; }
 .sau-btn.bought .sau-name, .sau-btn.bought .sau-cost { color: #d4a017; }

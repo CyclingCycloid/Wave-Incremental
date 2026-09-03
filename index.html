@@ -11,7 +11,7 @@
   <div id="app">
     <header id="topbar">
       <div class="title">Wave Incremental</div>
-      <div class="version">v0.5.0.2 The Distort Update</div>
+      <div class="version">v0.5.0.3 The Softcap Update</div>
       <button id="annihilate-btn" class="annihilate-btn hidden">湮灭</button>
     </header>
 
@@ -464,11 +464,11 @@
             <p>3DA 里程碑解锁（<span class="purple-text">紫色</span>主题，位于湮灭页「奇点」子页）。消耗奇点 Sp 购买，永久保留。</p>
             <p><strong>基础</strong>（spu1，1 Sp）：除升级 3 外奇点之前的升级不再消耗资源。</p>
             <p><strong>真空衰变</strong>（sau4，可重复，3DA 解锁）：每级使获得的奇点 ×2，价 10^(3+n)。</p>
-            <p><strong>SAU 可重复升级</strong>（3DA 解锁，一行三个）：</p>
+            <p><strong>SAU 可重复升级</strong>（3DA 解锁，一行三个；超过软上限等级后有效级别放缓、价格增速加快，卡片下方显示总效果与有效级别）：</p>
             <ul>
-              <li><strong>象限拓张</strong>（sau1）：声子升级 3 上限 +2/级（最高 10 级，单圈重整后取消上限且每级 +3），价 10^(2+2n)（超 10 级后增速 ×当前等级）。</li>
-              <li><strong>奇点凝聚</strong>（sau2）：奇点效果指数额外 ×(1+n/10)，价 10^(5n)。</li>
-              <li><strong>紫外灾难</strong>（sau3，原「霍金辐射」，最高 10 级，单圈重整后取消上限且每级 +0.018）：热涨落效果指数 +0.015/级，价 10^(3+2n)（超 10 级后增速 ×当前等级）。</li>
+              <li><strong>象限拓张</strong>（sau1）：声子升级 3 上限 +2/级（最高 10 级，单圈重整后取消上限且每级 +3）。软上限 10 级：有效级别 = 10+(n-10)^(1/2)，价格每级 ×100×n²。</li>
+              <li><strong>奇点凝聚</strong>（sau2）：奇点效果指数额外 ×(1+n/10)，价 10^(5n)。软上限 10 级：有效级别 = 10+(n-10)^(1/3)，价格每级额外 ×n⁴。</li>
+              <li><strong>紫外灾难</strong>（sau3，原「霍金辐射」，最高 10 级，单圈重整后取消上限且每级 +0.018）：热涨落效果指数 +0.015/级，价 10^(3+2n)。软上限 10 级：有效级别 = 10+(n-10)^(1/3)，价格每级 ×100×n²。</li>
             </ul>
             <p><strong>AU 单次升级</strong>（3DA 解锁，四组×4；第 4 组各升级有额外解锁条件）：</p>
             <ul>
@@ -492,7 +492,7 @@
               <li><strong>扭曲</strong>：给予时间倍率 ×(1 + M^效果指数)，无质量变化，无虚粒子。</li>
               <li><strong>脉冲</strong>：质量衰减——M 超过 1e30 时每秒指数 -(1+lg(M)×0.1)（越大衰减越快），1e30 以下每秒 ÷10，到 1 为止；获取 floor(倍率×(M^0.1−1)) 虚粒子/秒（M=1 时无获取）。</li>
             </ul>
-            <p><strong>三个黑洞升级</strong>（黑色按钮，花 Sp）：</p>
+            <p><strong>三个黑洞升级</strong>（黑色按钮，花 Sp；卡片下方显示总效果，引力潮汐 7 级后、事件视界 12 级后价格与效果受软上限影响）：</p>
             <ul>
               <li><strong>事件视界</strong>（SBU1）：吸积效率 ×2/级，价 1e9·100^(n-1)。</li>
               <li><strong>引力潮汐</strong>（SBU2）：黑洞效果指数 +0.05/级，价 1e10·1000^(n-1)。</li>

@@ -1,9 +1,9 @@
-/* ===== Wave Incremental v0.5.0.2 — game logic ===== */
+/* ===== Wave Incremental v0.5.0.3 — game logic ===== */
 
 // ---------- Save schema ----------
 function defaultState() {
   return {
-    version: "0.5.0.2",
+    version: "0.5.0.3",
     // 物理资源
     U: 10,                 // 波速 m/s (默认国际单位制，double 缓存；极端值看 logU10)
     logU10: 1,             // log10(U) 权威表示（防溢出/下溢；U=0 时为 NLOG 哨兵）
@@ -2070,7 +2070,7 @@ const SAU_DEFS = [
   { id: "sau1", key: "sau1", name: "象限拓张", desc: "声子升级3的硬上限 +2/级", vpu1Desc: "声子升级3的硬上限 +3/级", max: 10,
     cost: (n) => Math.pow(10, sauCostLog(2, n)) }, // 第n次（1起）10^(2+2n)；超10级后增速×当前等级
   { id: "sau2", key: "sau2", name: "奇点凝聚", desc: "第 n 级使奇点效果指数额外乘以 (1+n/10)", max: Infinity,
-    cost: (n) => Math.pow(10, 5 * n) },
+    cost: (n) => Math.pow(10, 5 * n + (n > 10 ? sau2ExtraCostLog(n) : 0)) },
   { id: "sau3", key: "sau3", name: "紫外灾难", desc: "热涨落效果指数 +0.015/级", vpu1Desc: "热涨落效果指数 +0.018/级", max: 10,
     cost: (n) => Math.pow(10, sauCostLog(3, n)) },
 ];
@@ -2078,17 +2078,76 @@ const SAU_DEFS = [
 function sauDesc(u) {
   return (u.vpu1Desc && vpuOwned("vpu1")) ? u.vpu1Desc : u.desc;
 }
+// 可重复升级的「总效果」文本（含软上限后缀；软上限 = 有效级别起点与公式）
+// 返回 { text, capped } 或 null（该升级无总效果行）
+function totalEffectText(id) {
+  const n = (k) => state[k];
+  const suffix = (eff) => `（受软上限影响，有效级别为 ${eff >= 100 ? fmt(eff) : eff.toFixed(1)}）`;
+  const cappedSau = (key) => n(key) > 10;
+  switch (id) {
+    case "sau1": {
+      const eff = Math.floor(effLevel(n("sau1"), 10, 0.5));
+      return { text: `总效果：声子升级3上限 +${pg3Cap() - 20}`, capped: cappedSau("sau1"), eff };
+    }
+    case "sau2": {
+      const eff = effLevel(n("sau2"), 10, 1 / 3);
+      return { text: `总效果：奇点效果 ×${fmt(sauMult())}`, capped: cappedSau("sau2"), eff };
+    }
+    case "sau3": {
+      const eff = effLevel(n("sau3"), 10, 1 / 3);
+      return { text: `总效果：热涨落效果指数 +${thermalExp().toFixed(3)}`, capped: cappedSau("sau3"), eff };
+    }
+    case "sau4":
+      return { text: `总效果：奇点获取 ×${fmt(Math.pow(2, n("sau4")))}`, capped: false };
+    case "sbu1":
+      return { text: `总效果：吸积效率 ×${fmt(Math.pow(2, n("sbu1")))}`, capped: false };
+    case "sbu2": {
+      const eff = sbu2Eff();
+      return { text: `总效果：黑洞效果指数 +${(0.2 + 0.05 * eff).toFixed(2)}`, capped: n("sbu2") > 7, eff };
+    }
+    case "sbu3": {
+      const eff = sbu3Eff();
+      const multLog = eff * Math.log10(2);
+      const mult = multLog > 308 ? Infinity : Math.pow(10, multLog);
+      return { text: `总效果：虚粒子获取 ×${fmtNum(mult, multLog)}`, capped: n("sbu3") > 10, eff };
+    }
+    case "svpu1":
+      return { text: `总效果：吸积质量指数 +${(0.03 * n("svpu1")).toFixed(2)}`, capped: false };
+    case "svpu2":
+      return { text: `总效果：湮灭次数 ×${fmt(Math.pow(2, n("svpu2")))}`, capped: false };
+    case "svpu3":
+      return { text: `总效果：升级3软上限削弱 ÷${n("svpu3") + 1}`, capped: false };
+    case "svpu4":
+      return { text: `总效果：温度软上限缩放指数 1/${n("svpu4") + 2}`, capped: false };
+    case "svpu5":
+      return { text: `总效果：黑洞质量软上限起始 1e${bhMassSoftcapLog()}`, capped: false };
+    default:
+      return null;
+  }
+}
+// 刷新一张可重复升级卡的总效果行（totalEl 存在时）
+function renderTotalEffect(el, id) {
+  if (!el) return;
+  const t = totalEffectText(id);
+  if (!t) { el.textContent = ""; return; }
+  el.textContent = t.text + (t.capped ? `（受软上限影响，有效级别为 ${t.eff >= 100 ? fmt(t.eff) : t.eff.toFixed(1)}）` : "");
+}
 // SAU1/SAU3 的实际等级上限：单圈重整（VPU1）后取消
 function effSauMax(key) {
   return (key === "sau1" || key === "sau3") && vpuOwned("vpu1") ? Infinity : 10;
 }
-// SAU1/SAU3 价格的 log10：n≤10 为 base+2n（增速 ×100）；单圈重整后可超 10 级，
-// 超出部分每级增速 = 原增速 × 当前等级（买第 k 次前已有 k-1 级 → ×100×(k-1)，
-// 如紫外灾难 23 级时增速为 2300）
+// 奇点凝聚 n>10 后的价格延伸（log10）：每级在原 10^(5n) 基础上额外 ×n⁴
+function sau2ExtraCostLog(n) {
+  let log = 0;
+  for (let k = 11; k <= n; k++) log += 4 * Math.log10(k);
+  return log;
+}
+// SAU1/SAU3 价格的 log10：n≤10 为 base+2n（增速 ×100）；超过 10 级后每级增速 =
+// 原增速 ×100 × n²（n 为当前等级），log 域累积
 function sauCostLog(base, n) {
   if (n <= 10) return base + 2 * n;
   let log = base + 20; // 第 10 次购买的价格
-  for (let k = 11; k <= n; k++) log += 2 + Math.log10(k - 1);
+  for (let k = 11; k <= n; k++) log += 2 + 2 * Math.log10(k);
   return log;
 }
 // 真空衰变（独立行，位于 spu1 下方、SAU 行上方）：每级奇点获取 ×2，价 10^(3+n)
@@ -2149,12 +2208,25 @@ function buyAU(id) {
 }
 
 // ---- 效果挂钩 ----
-// SAU1：声子升级3上限（单圈重整后每级 +3）
-function pg3Cap() { return 20 + (vpuOwned("vpu1") ? 3 : 2) * state.sau1; }
-// SAU2：奇点效果指数倍率
-function sauMult() { return 1 + state.sau2 / 10; } // 第 n 级总效果 ×(1+n/10)：1级1.1、2级1.2、…
-// SAU3：热涨落指数（单圈重整后每级 +0.018）
-function thermalExp() { return 0.2 + (vpuOwned("vpu1") ? 0.018 : 0.015) * state.sau3; }
+// 可重复升级软上限：有效级别 = 软上限起点 + (n-起点)^power（起点处无缝衔接原线性公式）
+function effLevel(n, softcap, power) {
+  return n <= softcap ? n : softcap + Math.pow(n - softcap, power);
+}
+// SAU1：声子升级3上限（有效级别 = floor(10+(n-10)^(1/2))；每级 +2，单圈重整后 +3）
+function pg3Cap() {
+  const eff = Math.floor(effLevel(state.sau1, 10, 0.5));
+  return 20 + (vpuOwned("vpu1") ? 3 : 2) * eff;
+}
+// SAU2：奇点效果指数倍率（有效级别 = 10+(n-10)^(1/3)）
+function sauMult() {
+  const eff = effLevel(state.sau2, 10, 1 / 3);
+  return 1 + eff / 10;
+}
+// SAU3：热涨落指数（有效级别 = 10+(n-10)^(1/3)；每级 +0.015，单圈重整后 +0.018）
+function thermalExp() {
+  const eff = effLevel(state.sau3, 10, 1 / 3);
+  return 0.2 + (vpuOwned("vpu1") ? 0.018 : 0.015) * eff;
+}
 // AU11：up1 指数加成
 function up1Exp() { return auOwned("au11") ? Math.max(1, Math.sqrt(state.up1) / 5) : 1; }
 // AU12：pg2 免费等级
@@ -2214,11 +2286,15 @@ function setVPLog(logV) {
   state.logVP = clampLog(logV);
   state.virtualParticles = (logV <= NLOG + 1) ? 0 : (logV > 308 ? Infinity : Math.pow(10, logV));
 }
-// 黑洞基础效果：M^（0.2 + sbu2·0.05）（引力潮汐：效果指数 +0.05/级）；返回 double（扭曲状态给时间倍率）
+// SBU2 引力潮汐的有效级别（软上限：7+(n-7)^(1/4)）
+function sbu2Eff() { return effLevel(state.sbu2, 7, 0.25); }
+// SBU3 霍金辐射的有效级别（软上限：n+(n-10)^(1/2)，按字面）
+function sbu3Eff() { return state.sbu3 <= 10 ? state.sbu3 : state.sbu3 + Math.sqrt(state.sbu3 - 10); }
+// 黑洞基础效果：M^（0.2 + sbu2 有效级别·0.05）（引力潮汐：效果指数 +0.05/级）；返回 double（扭曲状态给时间倍率）
 function bhEffect() {
   const mLog = getLogBhMass();
   if (mLog <= 0) return 1;
-  const exp = 0.2 + state.sbu2 * 0.05;
+  const exp = 0.2 + sbu2Eff() * 0.05;
   const effLog = exp * mLog;
   return effLog > 308 ? Infinity : Math.pow(10, effLog);
 }
@@ -2226,7 +2302,7 @@ function bhEffect() {
 function bhEffectLog() {
   const mLog = getLogBhMass();
   if (mLog <= 0) return 0;
-  const exp = 0.2 + state.sbu2 * 0.05;
+  const exp = 0.2 + sbu2Eff() * 0.05;
   return clampLog(exp * mLog);
 }
 // 黑洞对时间速率的加成（仅扭曲状态）：×(1 + bhEffect)；AU34 引力扭曲：扭曲状态效果额外 ^2
@@ -2254,8 +2330,8 @@ function spAccretionMultLog() {
   // lg( lg(Sp+1) + (Sp+1)^0.01 ) × 3
   return 3 * logAddLogs(Math.log10(Math.max(l1, 1e-300)), 0.01 * l1);
 }
-// 虚粒子获取倍率（SBU3 霍金辐射 ×2/级）
-function bhVPMult() { return Math.pow(2, state.sbu3); }
+// 虚粒子获取倍率（SBU3 霍金辐射 ×2/有效级别；软上限 n+(n-10)^(1/2)）
+function bhVPMult() { return Math.pow(2, sbu3Eff()); }
 // 吸积状态：质量获取速率 log10(dM/dt)。M^0.75 × (F/1e200)^0.01 × accretionMult
 // → log = massExp*logM + 0.01*(FLog-200) + accretionMult；massExp 受 SVPU1 加成，
 // accretionMult = SBU1 ×2^sbu1 × AU43 奇点塌缩倍率（spAccretionMult）
@@ -2270,7 +2346,10 @@ function bhAccretionRateLog() {
   // 倍率以 log 相加（= 数值相乘），totalSp 超 double 时也不产生 Infinity
   const accMultLog = (au44 ? 0 : state.sbu1) * Math.log10(2) + spAccretionMultLog();
   const massExp = bhAccretionMassExp();
-  let gainLog = clampLog(massExp * mLog + 0.01 * (fLog - 200) + accMultLog);
+  // 频率部分硬上限：FLog > 2000 时按 F=1e2000 计算（0.01×1800 = 18），
+  // 位于软上限之前——防止极端频率下质量获取无限膨胀
+  const fLogClamped = Math.min(fLog, 2000);
+  let gainLog = clampLog(massExp * mLog + 0.01 * (fLogClamped - 200) + accMultLog);
   // 软上限：Gain 超起始点（log50，潮汐撕裂每级 +10 个数量级）的部分缩放：
   // 实际获得 = 1e(10n+50) × (Gain/1e(10n+50))^((15/lg(Gain))^e)——e=1/2；
   // 对偶原理（VPU4）削弱软上限：e=1/3（超出部分保留更多）
@@ -2298,7 +2377,7 @@ function bhVPGainLog() {
   const x = 0.1 * mLog;
   // 大质量时 10^x−1 ≈ 10^x（log ≈ x）；小质量直接算，避免精度损失
   const inner = x > 15 ? x : Math.log10(Math.max(Math.pow(10, x) - 1, 1e-300));
-  return clampLog(inner + state.sbu3 * Math.log10(2));
+  return clampLog(inner + sbu3Eff() * Math.log10(2));
 }
 // 黑洞升级定义
 const SBU_DEFS = [
@@ -2307,8 +2386,18 @@ const SBU_DEFS = [
   { id: "sbu3", key: "sbu3", name: "霍金辐射", desc: "每级使虚粒子获取 ×2", max: Infinity, cost: (n) => Math.pow(1e11, 1) * Math.pow(100, n - 1) },
 ];
 function sbuCostLog(u, n) {
-  if (u.id === "sbu1") return 9 + (n - 1) * 2;       // 1e9 × 100^(n-1)
-  if (u.id === "sbu2") return 10 + (n - 1) * 3;      // 1e10 × 1000^(n-1)
+  if (u.id === "sbu1") {
+    // 1e9 × 100^(n-1)；超过 12 级后每级额外 ×(n-2)²
+    let log = 9 + (n - 1) * 2;
+    for (let k = 13; k <= n; k++) log += 2 * Math.log10(k - 2);
+    return log;
+  }
+  if (u.id === "sbu2") {
+    // 1e10 × 1000^(n-1)；超过 7 级后每级额外 ×n³
+    let log = 10 + (n - 1) * 3;
+    for (let k = 8; k <= n; k++) log += 3 * Math.log10(k);
+    return log;
+  }
   if (u.id === "sbu3") return 11 + (n - 1) * 2;      // 1e11 × 100^(n-1)
   return 0;
 }
@@ -2330,7 +2419,7 @@ const SVPU_DEFS = [
   { id: "svpu1", key: "svpu1", name: "全息原理", desc: "吸积公式中质量的指数 +0.03/级", max: 6, costLog: (n) => 1 + 2 * (n - 1) }, // 10×100^(n-1) VP，每级 ×100
   { id: "svpu2", key: "svpu2", name: "虚幻湮灭", desc: "获得的湮灭次数×2", max: Infinity, costLog: (n) => Math.log10(3) + (n - 1) * Math.log10(5) },  // 3×5^(n-1) VP
   { id: "svpu3", key: "svpu3", name: "非欧几何", desc: "削弱升级3软上限", max: 3, costLog: (n) => 5 * n - 4 },                  // 10^(5n-4) VP，增速 ×1e5
-  { id: "svpu4", key: "svpu4", name: "热能超载", desc: "削弱温度的软上限", max: Infinity, costLog: (n) => 7 + (n - 1) * 3 },              // 1e7×1000^(n-1) VP
+  { id: "svpu4", key: "svpu4", name: "热能超载", desc: "削弱温度的软上限", max: 3, costLog: (n) => 7 + (n - 1) * 3 },              // 1e7×1000^(n-1) VP
   { id: "svpu5", key: "svpu5", name: "潮汐撕裂", desc: "黑洞质量的软上限起始点每级 +10 个数量级", max: Infinity, costLog: (n) => Math.log10(5e7) + (n - 1) * Math.log10(2000) }, // 5e7×2000^(n-1) VP
 ];
 // 全息原理的实际等级上限（对偶原理 VPU4：4 → 无上限）
@@ -2514,11 +2603,12 @@ function buildBlackholeOnce() {
     btn.className = "sau-btn bh-upg-btn";
     const nm = document.createElement("div"); nm.className = "sau-name"; nm.textContent = u.name;
     const ds = document.createElement("div"); ds.className = "sau-desc";
+    const tt = document.createElement("div"); tt.className = "sau-total";
     const ct = document.createElement("div"); ct.className = "sau-cost";
-    btn.append(nm, ds, ct);
+    btn.append(nm, ds, tt, ct);
     btn.addEventListener("click", () => buySBU(u.id));
     sbuRow.appendChild(btn);
-    bhRefs[u.id] = { u, btn, descEl: ds, costEl: ct };
+    bhRefs[u.id] = { u, btn, descEl: ds, costEl: ct, totalEl: tt };
   }
   // 虚粒子升级（花 VP）
   list.appendChild(mkTitle("虚粒子升级"));
@@ -2535,12 +2625,13 @@ function buildBlackholeOnce() {
     btn.className = "sau-btn bh-upg-btn svpu-btn";
     const nm = document.createElement("div"); nm.className = "sau-name"; nm.textContent = u.name;
     const ds = document.createElement("div"); ds.className = "sau-desc";
+    const tt = document.createElement("div"); tt.className = "sau-total";
     const ct = document.createElement("div"); ct.className = "sau-cost";
-    btn.append(nm, ds, ct);
+    btn.append(nm, ds, tt, ct);
     btn.addEventListener("click", () => buySVPU(u.id));
     const row = (u.id === "svpu4" || u.id === "svpu5") ? svpuTopRow : svpuRow;
     row.appendChild(btn);
-    bhRefs[u.id] = { u, btn, descEl: ds, costEl: ct, vp: true };
+    bhRefs[u.id] = { u, btn, descEl: ds, costEl: ct, totalEl: tt, vp: true };
   }
   // 虚粒子单次升级（VPU1-9 九宫格，A45 星标奖励解锁；达成 A45 前整区不可见）
   bhVpuSection = document.createElement("div");
@@ -2709,6 +2800,7 @@ function updateBlackholeUI() {
       resUnit = "Sp";
     }
     r.descEl.textContent = r.u.desc + (effMax !== Infinity ? "（" + state[r.u.key] + "/" + effMax + "）" : "（等级 " + state[r.u.key] + "）");
+    if (r.totalEl) renderTotalEffect(r.totalEl, r.u.id);
     r.costEl.textContent = maxed ? "已满级" : costStr;
     r.btn.disabled = maxed || !affordable;
     r.btn.classList.toggle("bought", maxed);
@@ -2841,11 +2933,12 @@ function buildAnnihilationOnce() {
     btn.className = "sau-btn";
     const nm = document.createElement("div"); nm.className = "sau-name"; nm.textContent = VACUUM_DEF.name;
     const ds = document.createElement("div"); ds.className = "sau-desc";
+    const tt = document.createElement("div"); tt.className = "sau-total";
     const ct = document.createElement("div"); ct.className = "sau-cost";
-    btn.append(nm, ds, ct);
+    btn.append(nm, ds, tt, ct);
     btn.addEventListener("click", () => buySAU(VACUUM_DEF.id));
     vacRow.appendChild(btn);
-    vacRef = { u: VACUUM_DEF, btn, descEl: ds, costEl: ct };
+    vacRef = { u: VACUUM_DEF, btn, descEl: ds, costEl: ct, totalEl: tt };
   }
   uList.appendChild(vacRow);
   // SAU 可重复升级（一行三个扁长方按钮，3DA 解锁）
@@ -2857,11 +2950,12 @@ function buildAnnihilationOnce() {
     btn.className = "sau-btn";
     const nm = document.createElement("div"); nm.className = "sau-name"; nm.textContent = u.name;
     const ds = document.createElement("div"); ds.className = "sau-desc";
+    const tt = document.createElement("div"); tt.className = "sau-total";
     const ct = document.createElement("div"); ct.className = "sau-cost";
-    btn.append(nm, ds, ct);
+    btn.append(nm, ds, tt, ct);
     btn.addEventListener("click", () => buySAU(u.id));
     sauRow.appendChild(btn);
-    sauRefs.push({ u, btn, descEl: ds, costEl: ct });
+    sauRefs.push({ u, btn, descEl: ds, costEl: ct, totalEl: tt });
   }
   uList.appendChild(sauRow);
   // AU 单次升级（四组；两组并排，按钮按行交错——AU2n 与 AU1n 同行对齐）
@@ -2935,7 +3029,8 @@ function updateSpUI() {
       const n = state.sau4 + 1;
       const c = VACUUM_DEF.cost(n);
       vacRef.descEl.textContent = VACUUM_DEF.desc + "（等级 " + state.sau4 + "）";
-      vacRef.costEl.textContent = fmt(c) + " Sp";
+      if (vacRef.totalEl) renderTotalEffect(vacRef.totalEl, VACUUM_DEF.id);
+      vacRef.costEl.textContent = fmtNum(c, Math.log10(c)) + " Sp";
       vacRef.btn.disabled = !spAfford(c);
       vacRef.btn.classList.toggle("affordable", spAfford(c));
     }
@@ -2948,6 +3043,7 @@ function updateSpUI() {
     const maxed = state[r.u.key] >= effMax;
     const c = r.u.cost(n);
     r.descEl.textContent = sauDesc(r.u) + (effMax !== Infinity ? "（" + state[r.u.key] + "/" + effMax + "）" : "（等级 " + state[r.u.key] + "）");
+    if (r.totalEl) renderTotalEffect(r.totalEl, r.u.id);
     r.costEl.textContent = maxed ? "已满级" : fmtNum(c, Math.log10(c)) + " Sp";
     r.btn.disabled = maxed || !spAfford(c);
     r.btn.classList.toggle("bought", maxed);
@@ -3281,7 +3377,7 @@ function updateAutomationUI() {
       batchRefs.row.classList.toggle("affordable", !maxBuy && spAfford(BATCH_UPG.cost()));
       batchRefs.costEl.textContent = maxBuy
         ? "已达到最大购买（上限无限制）"
-        : fmt(BATCH_UPG.cost()) + " Sp（等级 " + state.batchLvl + "）";
+        : fmtNum(BATCH_UPG.cost(), Math.log10(BATCH_UPG.cost())) + " Sp（等级 " + state.batchLvl + "）";
       batchRefs.btn.textContent = maxBuy ? "最大购买中" : "购买";
       batchRefs.btn.disabled = maxBuy || !spAfford(BATCH_UPG.cost());
     }
@@ -3295,7 +3391,7 @@ function updateAutomationUI() {
       annCDRefs.row.classList.toggle("affordable", !maxed && spAfford(ANN_CD_UPG.cost()));
       annCDRefs.costEl.textContent = maxed
         ? "已满级（当前 CD " + autoAnnCD() + "ms）"
-        : fmt(ANN_CD_UPG.cost()) + " Sp（等级 " + state.autoAnnCDLvl + "，当前 CD " + autoAnnCD() + "ms）";
+        : fmtNum(ANN_CD_UPG.cost(), Math.log10(ANN_CD_UPG.cost())) + " Sp（等级 " + state.autoAnnCDLvl + "，当前 CD " + autoAnnCD() + "ms）";
       annCDRefs.btn.textContent = maxed ? "已满级" : "购买";
       annCDRefs.btn.disabled = maxed || !spAfford(ANN_CD_UPG.cost());
     }
@@ -3457,7 +3553,7 @@ function renderFast() {
   const trEl = document.getElementById("timerate-display");
   if (state.annihilations >= 1) {
     trEl.classList.remove("hidden");
-    trEl.textContent = "当前游戏速率：×" + fmt(timeRate());
+    trEl.textContent = "当前游戏速率：×" + fmtNum(timeRate(), timeRateLog());
   } else {
     trEl.classList.add("hidden");
   }
@@ -3502,7 +3598,7 @@ function renderStats() {
   document.getElementById("stat-minl").textContent = fmtNum(state.minL, getLogMinL()) + " m";
   document.getElementById("stat-ach-n").textContent = `${state.ach.normal.length} / ${NORMAL_ACH.length}`;
   document.getElementById("stat-ach-h").textContent = `${state.ach.hidden.length} / ${HIDDEN_ACH.length}`;
-  document.getElementById("stat-timerate").textContent = "×" + fmt(timeRate());
+  document.getElementById("stat-timerate").textContent = "×" + fmtNum(timeRate(), timeRateLog());
   // 湮灭统计
   const annReal = state.annihilations >= 1 ? (Date.now() - state.annStartReal) / 1000 : 0;
   const annGame = state.annihilations >= 1 ? (state.annGameElapsed || (state.playTime - state.annStartGame)) : 0;
