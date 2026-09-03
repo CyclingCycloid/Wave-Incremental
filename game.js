@@ -2813,9 +2813,10 @@ function updateBlackholeUI() {
     const owned = vpuOwned(r.u.id);
     const unlocked = vpuUnlocked(r.u.id);
     if (!unlocked) {
-      // 未解锁：有具体条件的显示条件（含当前进度），其余为占位
+      // 未解锁：已实装（有解锁条件）的显示「未解锁」+ 条件进度，占位的显示「未开放」
+      const isReal = isFinite(r.u.cost); // 实装升级有真实价格，占位为 Infinity
       r.descEl.textContent = vpuCondText(r.u.id) || "（占位）";
-      r.costEl.textContent = "未开放";
+      r.costEl.textContent = isReal ? "未解锁" : "未开放";
       if (r.nameEl) r.nameEl.textContent = r.u.name;
       r.btn.disabled = true;
       r.btn.classList.remove("bought");
