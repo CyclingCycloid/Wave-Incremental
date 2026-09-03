@@ -1438,9 +1438,11 @@ function updateUpgradesUI() {
     cost: fmtNum(up1Cost(), up1CostLog()) + " Hz",
     affordable: cmpGE(f, up1Cost(), FLog(), up1CostLog()),
   });
-  up2Card.update({
-    level: `等级 ${state.up2}`,
-    effect: `当前倍率: ×${fmt(Math.pow(up2Base(), state.up2))}`,
+    const up2MultLog = state.up2 * Math.log10(up2Base());
+    const up2Mult = up2MultLog > 308 ? Infinity : Math.pow(10, up2MultLog);
+    up2Card.update({
+      level: `等级 ${state.up2}`,
+      effect: `当前倍率: ×${fmtNum(up2Mult, up2MultLog)}`,
     cost: fmtNum(up2Cost(), up2CostLog()) + " Hz",
     affordable: cmpGE(f, up2Cost(), FLog(), up2CostLog()),
   });
@@ -4538,20 +4540,16 @@ function setupUI() {
   setInterval(refreshRuaUI, 1000);
   refreshRuaUI();
 
-  // 湮灭按钮（首次湮灭后显示；点击直接湮灭）
+  // 湮灭按钮（首次湮灭后显示；点击直接湮灭，不强制切换选项卡）
   document.getElementById("annihilate-btn").addEventListener("click", () => {
     if (state.annihilations === 0) return;
     // 扭曲宇宙中：达标 → 湮灭该宇宙；未达标 → 退出
     if (state.distortActive) {
       if (annihilationReady()) doAnnihilation();
       else exitDistort();
-      switchTab("wave");
-      switchSubtab("main");
       return;
     }
     doAnnihilation();
-    switchTab("wave");
-    switchSubtab("main");
   });
   // S20：version control —— 查看 changelog
   const clLink = document.querySelector(".changelog-link");
