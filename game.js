@@ -2093,7 +2093,8 @@ function totalEffectText(id) {
   const cappedSau = (key) => n(key) > 10;
   switch (id) {
     case "sau1": {
-      const eff = Math.floor(effLevel(n("sau1"), 10, 0.5));
+      // 有效等级 = floor(3*(10+(n-10)^0.7))/3，与 pg3Cap 的软上限公式同源
+      const eff = Math.floor(3 * (10 + Math.pow(Math.max(n("sau1") - 10, 0), 0.7))) / 3;
       return { text: `总效果：声子升级3上限 +${pg3Cap() - 20}`, capped: cappedSau("sau1"), eff };
     }
     case "sau2": {
