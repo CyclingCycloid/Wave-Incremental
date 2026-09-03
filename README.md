@@ -32,7 +32,7 @@
 
 - 纯 HTML/CSS/JS 单页，唯一的第三方库是 [break_infinity.js](https://github.com/Patashu/break_infinity.js)（超越大数上限）。
 - 核心数值采用「log10 权威 + double 缓存」双表示，全量支持 >1e308 / <1e-308。
-- 存档：localStorage 每 15 秒自动保存 + 3 个手动槽位 + base64 导出导入。
+- 存档：localStorage 每 15 秒自动保存 + 6 个手动槽位（可命名）+ base64 导出导入 / TXT 文件导出。
 - 黑洞动画为原生 canvas 渲染。
 
 ## 版本

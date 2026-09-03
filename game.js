@@ -102,7 +102,18 @@ function defaultState() {
 
 const SAVE_KEY = "waveIncremental_save";
 const SLOT_KEY_PREFIX = "waveIncremental_slot";
-const SLOT_COUNT = 3;
+const SLOT_COUNT = 6;
+const SLOT_NAME_PREFIX = "waveIncremental_slotName"; // 存档槽自定义名（localStorage 独立 key）
+function slotNameKey(i) { return SLOT_NAME_PREFIX + i; }
+function getSlotName(i) {
+  const n = localStorage.getItem(slotNameKey(i));
+  return (n && n.trim()) ? n.trim() : `存档槽 ${i + 1}`;
+}
+function setSlotName(i, name) {
+  const t = (name || "").trim().slice(0, 20); // 上限 20 字符防溢出布局
+  if (t) localStorage.setItem(slotNameKey(i), t);
+  else localStorage.removeItem(slotNameKey(i));
+}
 const AUTOSAVE_INTERVAL = 15000;
 // log10 域的「零/无值」哨兵：用有限负数而非 -Infinity（JSON 无法存储 Infinity）。
 // 比较时任何正的 log 都 > NLOG，故「从未购买升级3」时 FLog() > NLOG 恒成立。
@@ -1135,10 +1146,20 @@ function loadFromSlot(i) {
   } catch { setAutosaveStatus("读取槽失败！"); }
 }
 function deleteSlot(i) {
-  if (!confirm(`确定删除存档槽 ${i + 1}？`)) return;
+  if (!confirm(`确定删除「${getSlotName(i)}」的存档？`)) return;
   localStorage.removeItem(slotKey(i));
   renderSlots();
-  setAutosaveStatus(`已删除存档槽 ${i + 1}`);
+  setAutosaveStatus(`已删除「${getSlotName(i)}」的存档`);
+}
+// 重命名存档槽（点击槽名；留空恢复默认，最长 20 字）
+function renameSlot(i) {
+  const cur = getSlotName(i);
+  const def = cur.startsWith("存档槽 ") ? "" : cur;
+  const name = prompt(`给「存档槽 ${i + 1}」命名（留空恢复默认）：`, def);
+  if (name === null) return; // 取消
+  setSlotName(i, name);
+  renderSlots();
+  setAutosaveStatus(name.trim() ? `存档槽已命名为「${name.trim()}」` : "已恢复默认槽名");
 }
 function renderSlots() {
   const list = document.getElementById("slot-list");
@@ -1147,7 +1168,10 @@ function renderSlots() {
     const info = getSlotInfo(i);
     const row = document.createElement("div");
     row.className = "slot" + (i === currentSlot ? " current" : "");
-    const name = document.createElement("div"); name.className = "slot-name"; name.textContent = `存档槽 ${i + 1}`;
+    const name = document.createElement("div"); name.className = "slot-name"; name.textContent = getSlotName(i);
+    name.title = "点击重命名";
+    name.style.cursor = "pointer";
+    name.addEventListener("click", () => renameSlot(i));
     const meta = document.createElement("div"); meta.className = "slot-info";
     meta.textContent = (info && !info.empty) ? `${fmtLog(info.freqLog)} Hz · ${fmtTime(info.realTime)}` : "（空）";
     const actions = document.createElement("div"); actions.className = "slot-actions";
