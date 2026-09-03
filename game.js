@@ -1275,6 +1275,9 @@ function buyUp1() {
 function buyUp2() {
   if (inDistort("simple")) return; // 简洁宇宙：波动升级1/2无效（不可购买）
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
+  // 边界防卡死：up2 是「×倍率」型，up1=0 时获取速率为 0——没有 spu1（免费）或其失效
+  // （spu1 只在主宇宙生效，扭曲宇宙中失效）时要求至少买过一级升级1
+  if (state.up1 < 1 && !upgradesFree()) return;
   const c = up2Cost();
   if (cmpLT(F(), c, FLog(), up2CostLog())) return; // 资源必须达标（spu1 只免扣款，不免门槛）
   if (!upgradesFree()) subULog(up2CostLog());
@@ -1440,11 +1443,13 @@ function updateUpgradesUI() {
   });
     const up2MultLog = state.up2 * Math.log10(up2Base());
     const up2Mult = up2MultLog > 308 ? Infinity : Math.pow(10, up2MultLog);
+    // 与 buyUp2 同门槛：无 spu1（或失效）时至少需要一级升级1
+    const up2Allowed = state.up1 >= 1 || upgradesFree();
     up2Card.update({
       level: `等级 ${state.up2}`,
       effect: `当前倍率: ×${fmtNum(up2Mult, up2MultLog)}`,
-    cost: fmtNum(up2Cost(), up2CostLog()) + " Hz",
-    affordable: cmpGE(f, up2Cost(), FLog(), up2CostLog()),
+      cost: fmtNum(up2Cost(), up2CostLog()) + " Hz",
+      affordable: up2Allowed && cmpGE(f, up2Cost(), FLog(), up2CostLog()),
   });
   if (up3Card) {
     const lastLog = getLogUp3LastF();
