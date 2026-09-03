@@ -2220,9 +2220,14 @@ function effLevel(n, softcap, power) {
   return n <= softcap ? n : softcap + Math.pow(n - softcap, power);
 }
 // SAU1：声子升级3上限（有效级别 = floor(10+(n-10)^(1/2))；每级 +2，单圈重整后 +3）
+// SAU1：声子升级3上限（单圈重整后软上限：超出 20 基础的部分 = 30+floor(3*(n-10)^0.7)，
+// 即 n>10 时 pg3Cap = 50+floor(3*(n-10)^0.7)；未购 VPU1 时上限 10 级、每级 +2）
 function pg3Cap() {
-  const eff = Math.floor(effLevel(state.sau1, 10, 0.5));
-  return 20 + (vpuOwned("vpu1") ? 3 : 2) * eff;
+  if (vpuOwned("vpu1")) {
+    if (state.sau1 <= 10) return 20 + 3 * state.sau1;
+    return 50 + Math.floor(3 * Math.pow(state.sau1 - 10, 0.7));
+  }
+  return 20 + 2 * state.sau1;
 }
 // SAU2：奇点效果指数倍率（有效级别 = 10+(n-10)^(1/3)）
 function sauMult() {
