@@ -954,6 +954,19 @@ function migrateState() {
   if (state.ruaBoostCD === undefined) state.ruaBoostCD = 0;
   // v0.5.0.2：VPU 解锁条件达成记录回填（达成一次永久解锁）
   if (!Array.isArray(state.vpuCondMet)) state.vpuCondMet = [];
+  // 修复离线模拟虚拟时钟污染的存量坏档：时间戳落在未来会使 CD 计时（now - 时间戳）
+  // 为负、自动湮灭/自动升级3卡死直至现实时间追上（最长 8h）；归位为当前时刻立即恢复。
+  // annFastest 为负（realDur 为负时被错误刷新）同样归零
+  {
+    const nowMs = Date.now();
+    const futureKeys = ["lastAutoAnnAt", "lastAutoUp3At", "annStartReal", "capReachedAt", "zeroGainSince", "bhPulseSince", "bhDistorlSince", "lastPurchaseAt"];
+    for (const k of futureKeys) {
+      if (typeof state[k] === "number" && isFinite(state[k]) && state[k] > nowMs + 5000) state[k] = nowMs;
+    }
+    if (typeof state.ruaBoostUntil === "number" && state.ruaBoostUntil > nowMs + 11 * 60 * 1000) state.ruaBoostUntil = 0; // 合法窗口仅 10 分钟
+    if (typeof state.ruaBoostCD === "number" && state.ruaBoostCD > nowMs + 61 * 60 * 1000) state.ruaBoostCD = 0;        // 合法 CD 1 小时
+    if (typeof state.annFastest === "number" && (!isFinite(state.annFastest) || state.annFastest < 0)) state.annFastest = 0;
+  }
   // v0.4.3.2：自动湮灭 CD 升级字段回填
   if (state.autoAnnCDLvl === undefined) state.autoAnnCDLvl = 0;
   // v0.5.0：本次湮灭游戏时长独立累计字段回填
@@ -3888,6 +3901,11 @@ function runOfflineSimulation(cappedSec) {
     uLog0: getLogU10(), ph0: getLogPhonons(), m0: getLogBhMass(), vp0: getLogVP(),
     sp0: getLogSp(), phAbs0: state.phonons, ann0: state.annihilations, simmed: false,
   };
+  // 模拟期间 gameNow() = Date.now() + offset，自动化写入的时间戳（lastAutoAnnAt 等）
+  // 会带上虚拟偏移；模拟结束后须把这些字段平移回现实时间线，否则 CD 计时
+  // （gameNow() - lastAutoAnnAt）为负、自动湮灭卡死直至现实时间追上（最长 8h）
+  const simStartReal = Date.now();
+  const tsBefore = snapshotSimTimestamps();
   simActive = true;
   try {
     // 目标约 800 步：8h → 步长 36s；短离线步长收敛到 1s。步长内自动化至多触发一次（保守方向）
@@ -3905,7 +3923,10 @@ function runOfflineSimulation(cappedSec) {
     // 模拟异常即中止：保留已结算部分，时间线归位，绝不让异常拖垮加载
     console.error("离线模拟异常（已中止，保留当前进度）:", e);
   }
+  // 平移量 = 虚拟推进总量 − 模拟本身耗掉的现实时间（写入越晚超前越少，线性近似足够精确）
+  const shift = simTimeOffset - (Date.now() - simStartReal);
   simTimeOffset = 0;
+  restoreSimTimestamps(tsBefore, simStartReal, shift);
   simActive = false;
   res.uLog1 = getLogU10(); res.ph1 = getLogPhonons();
   res.m1 = getLogBhMass(); res.vp1 = getLogVP();
@@ -3913,6 +3934,32 @@ function runOfflineSimulation(cappedSec) {
   res.phAbs1 = state.phonons;
   res.ann1 = state.annihilations;
   return res;
+}
+// 模拟期间可能被虚拟时钟写入的时间戳字段
+const SIM_TS_KEYS = [
+  "lastAutoAnnAt", "lastAutoUp3At", "annStartReal", "lastPurchaseAt",
+  "zeroGainSince", "capReachedAt", "bhPulseSince", "bhDistorlSince",
+  "ruaBoostUntil", "ruaBoostCD", "ruaDayStart",
+];
+function snapshotSimTimestamps() {
+  const snap = {};
+  for (const k of SIM_TS_KEYS) snap[k] = state[k];
+  snap.__distortEnterAt = distortEnterAt;
+  return snap;
+}
+// 模拟结束后：对「模拟期间被写入且落在虚拟未来」的字段平移回现实时间线
+function restoreSimTimestamps(before, simStartReal, shift) {
+  if (!(shift > 0)) return;
+  for (const k of SIM_TS_KEYS) {
+    const v = state[k];
+    // 仅平移模拟期间变化的字段（值 !== 模拟前）且确为虚拟时间戳（> 模拟开始的真实时刻）
+    if (typeof v === "number" && isFinite(v) && v !== before[k] && v > simStartReal) {
+      state[k] = Math.max(v - shift, simStartReal);
+    }
+  }
+  if (distortEnterAt !== before.__distortEnterAt && distortEnterAt > simStartReal) {
+    distortEnterAt = Math.max(distortEnterAt - shift, simStartReal);
+  }
 }
 // 设置页开关高亮随当前档同步（init、导入、槽位加载后各调一次）
 function syncOfflineToggleUI() {
@@ -4222,6 +4269,24 @@ function setupUI() {
     state.lastTick = Date.now();
     document.getElementById("save-io").value = encodeSave(state);
     setAutosaveStatus("已导出存档");
+  });
+  // 导出存档为 TXT 文件下载（内容与文本框导出一致）
+  document.getElementById("save-download").addEventListener("click", () => {
+    state.lastTick = Date.now();
+    const code = encodeSave(state);
+    document.getElementById("save-io").value = code;
+    const blob = new Blob([code], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    a.download = `WaveIncremental-save-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.txt`;
+    a.href = url;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    setAutosaveStatus("已导出存档文件");
   });
   document.getElementById("save-load-from-io").addEventListener("click", () => {
     const str = document.getElementById("save-io").value;
