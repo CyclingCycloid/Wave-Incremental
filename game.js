@@ -2359,13 +2359,13 @@ function bhAccretionRateLog() {
   // 倍率以 log 相加（= 数值相乘），totalSp 超 double 时也不产生 Infinity
   const accMultLog = (au44 ? 0 : state.sbu1) * Math.log10(2) + spAccretionMultLog();
   const massExp = bhAccretionMassExp();
-  // 频率部分（1e2000 处非常硬的软上限，取代原硬上限）：
-  // F<1e2000：(F/1e100)^0.01 → log = 0.01×(FLog−100)
-  // F>1e2000：1e19×(F/1e2000)^((0.1/lgF)^0.6) → log = 19+(FLog−2000)×(0.1/FLog)^0.6
-  // （F=1e2000 处两式均为 1e19，无缝衔接；举例 F=1e5000 时频率部分 ≈ 1e23.547）
+  // 频率部分（1e2000 处非常硬的软上限）：
+  // F<1e2000：(F/1e200)^0.01 → log = 0.01×(FLog−200)
+  // F>1e2000：1e18×(F/1e2000)^((0.1/lgF)^0.6) → log = 18+(FLog−2000)×(0.1/FLog)^0.6
+  // （F=1e2000 处两式均为 1e18，无缝衔接）
   const freqPartLog = fLog < 2000
-    ? 0.01 * (fLog - 100)
-    : 19 + (fLog - 2000) * Math.pow(0.1 / fLog, 0.6);
+    ? 0.01 * (fLog - 200)
+    : 18 + (fLog - 2000) * Math.pow(0.1 / fLog, 0.6);
   let gainLog = clampLog(massExp * mLog + freqPartLog + accMultLog);
   // 软上限：Gain 超起始点（log50，潮汐撕裂每级 +10 个数量级）的部分缩放：
   // 实际获得 = 1e(10n+50) × (Gain/1e(10n+50))^((15/lg(Gain))^e)——e=1/2；
@@ -2386,8 +2386,8 @@ function bhMassSoftcapped() {
   const accMultLog = (au44 ? 0 : state.sbu1) * Math.log10(2) + spAccretionMultLog();
   const fLog = FLog();
   const freqPartLog = fLog < 2000
-    ? 0.01 * (fLog - 100)
-    : 19 + (fLog - 2000) * Math.pow(0.1 / fLog, 0.6);
+    ? 0.01 * (fLog - 200)
+    : 18 + (fLog - 2000) * Math.pow(0.1 / fLog, 0.6);
   const gainLog = clampLog(bhAccretionMassExp() * getLogBhMass() + freqPartLog + accMultLog);
   return gainLog > bhMassSoftcapLog();
 }
