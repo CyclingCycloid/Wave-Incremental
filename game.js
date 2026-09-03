@@ -1,9 +1,9 @@
-/* ===== Wave Incremental v0.5.0.3 — game logic ===== */
+/* ===== Wave Incremental v0.5.1 — game logic ===== */
 
 // ---------- Save schema ----------
 function defaultState() {
   return {
-    version: "0.5.0.3",
+    version: "0.5.1",
     // 物理资源
     U: 10,                 // 波速 m/s (默认国际单位制，double 缓存；极端值看 logU10)
     logU10: 1,             // log10(U) 权威表示（防溢出/下溢；U=0 时为 NLOG 哨兵）
@@ -56,7 +56,10 @@ function defaultState() {
     lastAutoAnnAt: 0,      // 上次自动湮灭时刻
     autoAnnCDLvl: 0,       // A42 奖励解锁：自动湮灭 CD 缩减升级等级（每级 ÷2，最低 25ms）
     sau1: 0, sau2: 0, sau3: 0, sau4: 0,
-    vpuCondMet: [],        // VPU 解锁条件已达成记录（达成一次永久解锁；A45 后生效）  // 奇点可重复升级等级（3DA 解锁）
+    vpuCondMet: [],        // VPU 解锁条件已达成记录（达成一次永久解锁；A45 后生效）
+    voidActive: false,     // 虚空挑战进行中
+    voidRules: [],         // 虚空中生效的扭曲宇宙削弱（id 数组，D1-D8）
+    voidVF: 0,             // 虚空泡沫（里程碑式：退出结算更高才更新）
     au: {},                                 // 奇点单次升级已购标记（id→1）
     testBreakRules: false, // 测试按钮：临时打破规则（不获 Sp，v0.4.3 移除）
 
@@ -194,7 +197,10 @@ const DISTORT_UNIVERSES = [
 // 膨胀宇宙的进入时刻（真实 ms），用于计算波长倍率
 let distortEnterAt = 0;
 
-function inDistort(id) { return state.distortActive === id; }
+function inDistort(id) {
+  // 虚空挑战：选中的扭曲宇宙削弱同时生效（多削弱叠加）
+  return state.distortActive === id || (state.voidActive && state.voidRules.includes(id));
+}
 
 // ---------- 资源 Decimal 双表示（3DA 起）----------
 // 权威 log10 表示，永不溢出；state.X 为 double 缓存（超 ±1.8e308 时失真但不崩）
@@ -402,6 +408,7 @@ function temperatureLog() {
 // 扭曲宇宙用自己的普朗克温度（用于「达到即完成」）；tp 为 Infinity 的测试宇宙
 // 回退到主宇宙上限——否则无上限会让「声子↔温度↔热涨落↔波速」正反馈循环失控爆炸。
 function effectiveCapLog() {
+  if (state.voidActive) return temperatureCapLog(); // 虚空：使用主宇宙 T_p
   if (state.distortActive) {
     const u = DISTORT_UNIVERSES.find(x => x.id === state.distortActive);
     if (u && isFinite(u.tp)) return Math.log10(Math.max(u.tp, 1e-300));
@@ -413,9 +420,21 @@ function effectiveCapLog() {
 // 8DA 打破规则（仅主宇宙）：普朗克温度从硬上限变为软上限——
 // 超过 Tp 的部分（log 域超出量）按 (lg(Tp)/lg(T))^(1/2)/2 次方缩放。
 // 扭曲宇宙中仍为硬上限（该硬上限还是硬上限）。
+// 虚空挑战：使用主宇宙 T_p，且与打破规则相同——T 可超过 T_p，超出部分受同一软上限；
+// 滞涨削弱（若选）的有效温度开方在软上限之前生效。
 function temperatureCappedLog() {
   const raw = temperatureLog();
   if (state.testBreakRules) return raw; // 测试按钮：无上限
+  if (state.voidActive) {
+    let t = raw;
+    if (state.voidRules.includes("inflation")) t /= 2; // 滞涨：有效温度开方（先于软上限）
+    const capLog = temperatureCapLog(); // 主宇宙 T_p
+    if (t > capLog) {
+      const p = Math.pow(capLog / t, 1 / (state.svpu4 + 2)) / 2;
+      return clampLog(capLog + (t - capLog) * p);
+    }
+    return clampLog(t);
+  }
   const capLog = effectiveCapLog();
   if (state.rulesBroken && !state.distortActive && raw > capLog) {
     // 软上限：超出部分 × (lg(Tp)/lg(T))^(1/(n+2))/2，n 为热能超载（svpu4）等级（n=0 时为 1/2）
@@ -1243,7 +1262,7 @@ function switchTab(name) {
   if (sub) switchSubtab(sub);
   if (name === "settings") renderSlots();
   if (name === "achievements") updateAchievementsUI();
-  if (name === "annihilation") { updateSpUI(); updateDistortUI(); updateBlackholeUI(); }
+  if (name === "annihilation") { updateSpUI(); updateDistortUI(); updateBlackholeUI(); updateVoidUI(); }
   if (name === "automation") updateAutomationUI();
 }
 function switchSubtab(name) {
@@ -1257,6 +1276,7 @@ function switchSubtab(name) {
   if (name === "ann-sp") updateSpUI();
   if (name === "ann-distort") updateDistortUI();
   if (name === "ann-blackhole") updateBlackholeUI();
+  if (name === "ann-void") updateVoidUI();
 }
 
 // ---------- Purchase ----------
@@ -2016,6 +2036,7 @@ function applyAnnihilationVisibility() {
   document.getElementById("tab-automation").classList.toggle("hidden", !done);
   document.getElementById("subtab-distort").classList.toggle("hidden", state.annihilations < 20);
   document.getElementById("subtab-blackhole").classList.toggle("hidden", !bhUnlocked());
+  document.getElementById("subtab-void").classList.toggle("hidden", !state.ach.normal.includes("A52"));
   const ready = annihilationReady();
   if (!done) {
     // 首次湮灭：全屏遮罩接管（类似第一次大塌缩）；序列进行中不重复拉起
@@ -2025,9 +2046,10 @@ function applyAnnihilationVisibility() {
   }
   const overlay = document.getElementById("first-annihilation-overlay");
   if (!overlay.classList.contains("hidden")) overlay.classList.add("hidden");
-  // 湮灭按钮：湮灭后一直可见
+  // 湮灭按钮：湮灭后一直可见；虚空挑战期间禁用
   const btn = document.getElementById("annihilate-btn");
   btn.classList.remove("hidden");
+  btn.disabled = state.voidActive;
   if (state.distortActive) {
     // 扭曲宇宙：达标显示湮灭该宇宙，否则显示逃离（未知宇宙 id 已被 annihilationReady 清空，不进入此分支）
     const u = DISTORT_UNIVERSES.find(x => x.id === state.distortActive);
@@ -2038,16 +2060,17 @@ function applyAnnihilationVisibility() {
       } else {
         btn.textContent = `逃离扭曲宇宙「${u.name}」`;
       }
-      btn.disabled = false;
+      btn.disabled = state.voidActive; // 虚空挑战：禁用湮灭
       return;
     }
   }
   btn.classList.remove("distort-mode");
-  if (ready) {
+  if (state.voidActive) btn.textContent = "虚空挑战中…";
+  if (ready && !state.voidActive) {
     btn.textContent = `湮灭（+${fmtNum(spGain(), spGainLog())} Sp）`;
     btn.disabled = false;
   } else {
-    btn.textContent = `湮灭（须达到 1.42e32 K）`;
+    btn.textContent = state.voidActive ? "虚空挑战中…" : `湮灭（须达到 1.42e32 K）`;
     btn.disabled = true;
   }
 }
@@ -2059,8 +2082,7 @@ function applyHelpVisibility() {
   document.getElementById("help-annihilation").classList.toggle("hidden", state.annihilations < 1);
   document.getElementById("help-distort").classList.toggle("hidden", state.annihilations < 20);
   document.getElementById("help-sp-upgrades").classList.toggle("hidden", !hasDistortMilestone(3));
-  document.getElementById("help-blackhole").classList.toggle("hidden", !bhUnlocked());
-  // 黑洞章节内防剧透：虚幻升级（VPU）区相关内容按进度显隐
+  document.getElementById("help-blackhole").classList.toggle("hidden", !bhUnlocked());  // 黑洞章节内防剧透：虚幻升级（VPU）区相关内容按进度显隐
   document.getElementById("help-vpu-extra").classList.toggle("hidden", !state.ach.normal.includes("A45"));
   document.getElementById("help-svpu-extra").classList.toggle("hidden", !vpuOwned("vpu5"));
   document.getElementById("stat-ann-group").classList.toggle("hidden", state.annihilations < 1);
@@ -2139,6 +2161,76 @@ function renderTotalEffect(el, id) {
   const t = totalEffectText(id);
   if (!t) { el.textContent = ""; return; }
   el.textContent = t.text + (t.capped ? `（受软上限影响，有效级别为 ${t.eff >= 100 ? fmt(t.eff) : t.eff.toFixed(1)}）` : "");
+}
+
+// ---------- 虚空页 UI ----------
+let voidBuilt = false, voidRuleBtns = {};
+function buildVoidOnce() {
+  if (voidBuilt) return;
+  const grid = document.getElementById("void-rules");
+  grid.innerHTML = "";
+  voidRuleBtns = {};
+  for (const u of DISTORT_UNIVERSES) {
+    const btn = document.createElement("button");
+    btn.className = "void-rule";
+    const nm = document.createElement("div"); nm.textContent = u.name;
+    const ml = document.createElement("div"); ml.className = "void-rule-mult"; ml.textContent = "乘数 ×" + VOID_MULTIPLIERS[u.id];
+    btn.append(nm, ml);
+    btn.addEventListener("click", () => {
+      if (state.voidActive) return;
+      const i = voidSelection.indexOf(u.id);
+      if (i >= 0) voidSelection.splice(i, 1); else voidSelection.push(u.id);
+      btn.classList.toggle("selected", i < 0);
+      document.getElementById("void-enter-btn").disabled = voidSelection.length === 0;
+    });
+    grid.appendChild(btn);
+    voidRuleBtns[u.id] = btn;
+  }
+  document.getElementById("void-enter-btn").addEventListener("click", () => {
+    enterVoid(voidSelection.slice());
+  });
+  document.getElementById("void-exit-btn").addEventListener("click", exitVoid);
+  // 虚空升级占位（3 个，尚未实装）
+  const upg = document.getElementById("void-upg-list");
+  upg.innerHTML = "";
+  for (let i = 0; i < 3; i++) {
+    const btn = document.createElement("button");
+    btn.className = "sau-btn bh-upg-btn void-upg-card";
+    const nm = document.createElement("div"); nm.className = "sau-name"; nm.textContent = "???";
+    const ds = document.createElement("div"); ds.className = "sau-desc"; ds.textContent = "（占位）";
+    const ct = document.createElement("div"); ct.className = "sau-cost"; ct.textContent = "未开放";
+    btn.append(nm, ds, ct);
+    btn.disabled = true;
+    upg.appendChild(btn);
+  }
+  voidBuilt = true;
+}
+let voidSelection = []; // 进入前勾选的削弱
+function updateVoidUI() {
+  if (simActive) return;
+  if (!state.ach.normal.includes("A52")) return;
+  buildVoidOnce();
+  document.getElementById("subtab-void").classList.toggle("hidden", !state.ach.normal.includes("A52"));
+  document.getElementById("void-enter-row").classList.toggle("hidden", state.voidActive);
+  document.getElementById("void-active-panel").classList.toggle("hidden", !state.voidActive);
+  const stats = document.getElementById("void-stats");
+  const vfLine = state.voidVF > 0
+    ? `虚空泡沫（VF）：${fmtNum(state.voidVF, Math.log10(state.voidVF))}\nVP 获取 ×${fmtNum(vfVPMultLog() > 308 ? Infinity : Math.pow(10, vfVPMultLog()), vfVPMultLog())}`
+    : "虚空泡沫（VF）：尚无";
+  if (state.voidActive) {
+    const fLog = FLog();
+    const vfLog = voidVFLog(fLog);
+    const reached = vfLog > NLOG + 1;
+    const preview = reached ? `预计 VF：${fmtLog(vfLog)}` : `频率尚未达到 1e1000 Hz`;
+    document.getElementById("void-progress").textContent =
+      `当前频率：${fmtNum(Math.pow(10, Math.min(fLog, 308)), fLog)} Hz\n目标：1e1000 Hz\n${preview}`;
+    stats.textContent = vfLine;
+  } else {
+    stats.textContent = vfLine;
+    for (const id in voidRuleBtns) voidRuleBtns[id].classList.toggle("selected", voidSelection.includes(id));
+    // 进入按钮按已选削弱数量启用（选择状态由按钮 click 维护）
+    document.getElementById("void-enter-btn").disabled = voidSelection.length === 0;
+  }
 }
 // SAU1/SAU3 的实际等级上限：单圈重整（VPU1）后取消
 function effSauMax(key) {
@@ -2380,6 +2472,65 @@ function bhAccretionRateLog() {
   return gainLog;
 }
 // 黑洞质量获取是否正受软上限影响（显示提示用）：用与 bhAccretionRateLog 相同的软上限前 Gain
+// ---------- 虚空（A52 解锁：多扭曲削弱同时生效的挑战，结算虚空泡沫 VF）----------
+// D1-D8 顺序对应扭曲宇宙显示顺序；乘数（热寂100 狭窄200 为最高档）
+const VOID_MULTIPLIERS = { rigid: 20, expand: 20, directed: 10, cooldown: 16, inflation: 40, adiabatic: 100, narrow: 200, simple: 100 };
+const VOID_TARGET_FLOG = 1000; // 挑战目标：频率 ≥ 1e1000 Hz
+// 当前虚空配置下的预计 VF（log10；FLog 未达标时返回 NLOG）
+function voidVFLog(fLog) {
+  if (fLog < VOID_TARGET_FLOG) return NLOG;
+  const N = state.voidRules.length;
+  let multLog = N * Math.log10(8);
+  for (const id of state.voidRules) multLog += Math.log10(VOID_MULTIPLIERS[id] || 1);
+  return clampLog(multLog + 0.0003 * (fLog - VOID_TARGET_FLOG));
+}
+// VF 对虚粒子获取的加成（log10）：×VF^(min(1/2, 3/lg(VF+1)))；无 VF 时 0
+function vfVPMultLog() {
+  if (!(state.voidVF > 0)) return 0;
+  const e = Math.min(0.5, 3 / Math.log10(state.voidVF + 1));
+  return e * Math.log10(state.voidVF);
+}
+// 进入虚空：湮灭重置后应用选中的削弱集合
+function enterVoid(ids) {
+  if (!state.ach.normal.includes("A52")) return;
+  if (state.voidActive || state.distortActive) return;
+  const list = (ids || []).filter(id => DISTORT_UNIVERSES.some(u => u.id === id));
+  if (!list.length) return;
+  forceAnnihilationReset(0); // 进入即重置（同扭曲进入）
+  setPhonons(0);
+  state.voidActive = true;
+  state.voidRules = list;
+  state.narrowPurchases = 0; // 狭窄削弱：进入时购买次数清零
+  distortEnterAt = gameNow(); // 膨胀削弱的时间基
+  state.annStartReal = gameNow();
+  state.annStartGame = state.playTime; state.annGameElapsed = 0;
+  updateDispAnchor();
+  applyAnnihilationVisibility();
+  renderAll();
+  updateVoidUI();
+  setAutosaveStatus("已进入虚空（" + list.length + " 个削弱生效）");
+}
+// 退出虚空：达到 1e1000 Hz 时结算 VF（里程碑式：更高才更新），随后湮灭重置回主宇宙
+function exitVoid() {
+  if (!state.voidActive) return;
+  const fLog = FLog();
+  const vfLog = voidVFLog(fLog);
+  const achieved = vfLog > NLOG + 1;
+  const vfNew = achieved ? Math.pow(10, vfLog) : 0;
+  const prevVF = state.voidVF;
+  state.voidActive = false;
+  state.voidRules = [];
+  if (achieved && vfNew > state.voidVF) state.voidVF = vfNew;
+  forceAnnihilationReset(0);
+  updateDispAnchor();
+  applyAnnihilationVisibility();
+  renderAll();
+  saveGame();
+  updateVoidUI();
+  setAutosaveStatus(achieved
+    ? `已退出虚空：${vfNew > prevVF ? "获得虚空泡沫 ×" + fmtNum(vfNew, vfLog) : "未超过历史最高（" + fmtNum(state.voidVF, Math.log10(state.voidVF)) + "）"}`
+    : "已退出虚空：未达到 1e1000 Hz，无虚空泡沫");
+}
 function bhMassSoftcapped() {
   if (!bhUnlocked()) return false;
   const au44 = auOwned("au44");
@@ -3434,6 +3585,7 @@ function autoBuyTimes(key) {
 }
 // 自动湮灭统一入口：所有模式判断与时间戳更新集中在此（tick 与 rAF 共用，防双执行）
 function autoAnnTick() {
+  if (state.voidActive) return; // 虚空挑战：禁用自动湮灭
   if (state.annihilations < 1 || !state.autoOn.ann || !state.autoAnn) return;
   if (inDistort("narrow")) return;
   if (state.distortActive) {
@@ -3740,6 +3892,7 @@ const NORMAL_ACH = [
   { id: "A45", name: "万物", desc: "购买所有奇点升级", star: true, reward: "解锁虚幻升级", check: () => ALL_SP_UPGRADES_OWNED() },
   // 第 5 行 (A51-…) 虚粒子
   { id: "A51", name: "虚幻", desc: "购买第一个虚幻升级", check: () => VPU_DEFS.some(u => vpuOwned(u.id)) },
+  { id: "A52", name: "超载", desc: "达到 1e50Sp", star: true, reward: "解锁“虚空”选项卡", check: () => getLogTotalSp() >= 50 },
 ];
 const ACH_PER_ROW = 5;
 // 已定义行数；之后整行为未解锁 ???
@@ -4211,8 +4364,8 @@ function applyProduction(realDt) {
     // 定向宇宙：波速硬下限 0
     if (inDistort("directed") && state.U < 0) setU(0);
 
-    // 累计频率 F 增量 = (g/L)·dt；扭曲宇宙中的产生不计入通用统计
-    if (!state.distortActive) {
+    // 累计频率 F 增量 = (g/L)·dt；扭曲宇宙与虚空中的产生不计入通用统计
+    if (!state.distortActive && !state.voidActive) {
       const gOverLLog = (gFinite ? Math.log10(Math.max(Math.abs(g), 1e-300)) : gainRateLog().log) + gameDtLog - getLogL10();
       if (gFinite && uFinite && isFinite(state.totalFGained) && state.totalFGained < LOG_FALLBACK && Math.abs(state.totalFGained + gd / Math.max(state.L, 1e-300)) < LOG_FALLBACK) {
         state.totalFGained += (g / state.L) * dt;
@@ -4348,6 +4501,7 @@ function tick() {
     updateAutomationUI();
     if (state.annihilations >= 20) updateDistortUI();
     if (bhUnlocked()) updateBlackholeUI();
+    if (state.ach.normal.includes("A52")) updateVoidUI();
   }
   if (!document.getElementById("page-stats").classList.contains("hidden")) renderStats();
   if (!document.getElementById("page-achievements").classList.contains("hidden")) updateAchievementsUI();
@@ -4562,6 +4716,7 @@ function setupUI() {
   // 湮灭按钮（首次湮灭后显示；点击直接湮灭，不强制切换选项卡）
   document.getElementById("annihilate-btn").addEventListener("click", () => {
     if (state.annihilations === 0) return;
+    if (state.voidActive) return; // 虚空挑战：禁用湮灭，只能从虚空页退出结算
     // 扭曲宇宙中：达标 → 湮灭该宇宙；未达标 → 退出
     if (state.distortActive) {
       if (annihilationReady()) doAnnihilation();

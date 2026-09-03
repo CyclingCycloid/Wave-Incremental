@@ -196,6 +196,62 @@ body {
 .sau-btn .sau-desc { font-size: 11px; color: var(--text-dim); line-height: 1.4; min-height: 30px; }
 .sau-btn .sau-cost { font-family: var(--font-num); font-size: 12px; color: var(--purple); }
 .sau-btn .sau-total { font-size: 11px; color: var(--text); margin-top: 3px; }
+
+/* ===== 虚空（白色/透明主题 + 星尘氛围）===== */
+#sub-ann-void { position: relative; overflow: hidden; color: #f2f2f7; }
+#void-particles { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+#void-particles::before, #void-particles::after {
+  content: ""; position: absolute; inset: -50%;
+  background-image:
+    radial-gradient(1.5px 1.5px at 12% 22%, rgba(255,255,255,0.8), transparent 60%),
+    radial-gradient(1px 1px at 34% 68%, rgba(200,220,255,0.7), transparent 60%),
+    radial-gradient(2px 2px at 58% 14%, rgba(255,255,255,0.55), transparent 60%),
+    radial-gradient(1px 1px at 76% 42%, rgba(210,190,255,0.75), transparent 60%),
+    radial-gradient(1.5px 1.5px at 88% 80%, rgba(255,255,255,0.6), transparent 60%),
+    radial-gradient(1px 1px at 22% 88%, rgba(180,210,255,0.65), transparent 60%);
+  animation: void-drift 46s linear infinite;
+}
+#void-particles::after { animation-duration: 74s; animation-direction: reverse; opacity: 0.6; }
+@keyframes void-drift {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-140px, 260px, 0); }
+}
+#sub-ann-void > *:not(#void-particles) { position: relative; z-index: 1; }
+.void-title {
+  text-align: center; font-size: 26px; letter-spacing: 14px; margin: 4px 0 10px;
+  color: #ffffff; text-shadow: 0 0 14px rgba(190,200,255,0.9), 0 0 34px rgba(140,120,255,0.5);
+  animation: void-glow 4.5s ease-in-out infinite alternate;
+}
+@keyframes void-glow {
+  from { text-shadow: 0 0 10px rgba(190,200,255,0.7), 0 0 26px rgba(140,120,255,0.35); }
+  to { text-shadow: 0 0 20px rgba(210,220,255,1), 0 0 46px rgba(150,130,255,0.7); }
+}
+.void-desc { text-align: center; font-size: 13px; line-height: 1.8; color: rgba(242,242,247,0.92);
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; padding: 10px 16px; }
+.void-stats { text-align: center; font-size: 14px; line-height: 1.9; margin: 10px 0;
+  font-family: var(--font-num); color: #eef; white-space: pre-line; }
+.void-rule-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0; }
+.void-rule {
+  border: 1px solid rgba(255,255,255,0.22); background: rgba(255,255,255,0.04); color: #eef;
+  border-radius: 8px; padding: 8px 4px; cursor: pointer; text-align: center; font-size: 12px; line-height: 1.5;
+}
+.void-rule .void-rule-mult { font-family: var(--font-num); font-size: 11px; color: rgba(210,220,255,0.85); }
+.void-rule.selected { border-color: #cfd6ff; background: rgba(160,150,255,0.22); box-shadow: 0 0 10px rgba(170,160,255,0.35); }
+.void-rule:disabled { opacity: 0.45; cursor: default; }
+.void-enter-row, #void-active-panel { text-align: center; margin: 14px 0 20px; }
+.void-enter-btn, .void-exit-btn {
+  padding: 10px 42px; font-size: 15px; letter-spacing: 6px; cursor: pointer;
+  color: #fff; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.45); border-radius: 8px;
+}
+.void-enter-btn:hover:not(:disabled), .void-exit-btn:hover { background: rgba(255,255,255,0.16); }
+.void-enter-btn:disabled { opacity: 0.4; cursor: default; }
+#void-progress { font-size: 14px; line-height: 1.9; margin-bottom: 12px; font-family: var(--font-num); white-space: pre-line; }
+.void-sub { margin: 20px 0 8px; color: #dcdcf0; }
+.void-upg-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.void-milestone {
+  border: 1px dashed rgba(255,255,255,0.3); border-radius: 8px; text-align: center;
+  padding: 12px; font-size: 13px; color: rgba(242,242,247,0.75); background: rgba(255,255,255,0.03);
+}
 .sau-btn.affordable { border-color: var(--purple); box-shadow: 0 0 6px rgba(139,92,246,0.3); }
 .sau-btn.bought { border-color: #d4a017; }
 .sau-btn.bought .sau-name, .sau-btn.bought .sau-cost { color: #d4a017; }

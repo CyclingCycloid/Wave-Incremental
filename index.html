@@ -11,7 +11,7 @@
   <div id="app">
     <header id="topbar">
       <div class="title">Wave Incremental</div>
-      <div class="version">v0.5.0.3 The Softcap Update</div>
+      <div class="version">v0.5.1 The Void Update</div>
       <button id="annihilate-btn" class="annihilate-btn hidden">湮灭</button>
     </header>
 
@@ -336,6 +336,7 @@
           <button class="subtab" data-subtab="ann-sp">奇点</button>
           <button class="subtab hidden distort-subtab" data-subtab="ann-distort" id="subtab-distort">扭曲</button>
           <button class="subtab hidden blackhole-subtab" data-subtab="ann-blackhole" id="subtab-blackhole">黑洞</button>
+          <button class="subtab hidden void-subtab" data-subtab="ann-void" id="subtab-void">虚空</button>
         </nav>
 
         <!-- 里程碑 -->
@@ -373,6 +374,27 @@
             <button class="bh-state-btn" data-bh-state="pulse">脉冲</button>
           </div>
           <div class="bh-upg-list" id="bh-upg-list"></div>
+        </div>
+
+        <!-- 虚空（A52 解锁）-->
+        <div class="subpage hidden" id="sub-ann-void">
+          <div id="void-particles" aria-hidden="true"></div>
+          <h3 class="void-title">虚 空</h3>
+          <p class="void-desc">选择扭曲宇宙的削弱，让它们同时生效。在频率达到 <strong>1e1000 Hz</strong> 后退出虚空，
+            即可根据已生效的削弱与最终频率获得<strong>虚空泡沫（VF）</strong>——VF 可增强虚粒子的获取，更多的用途尚待发现。</p>
+          <div id="void-stats" class="void-stats"></div>
+          <div id="void-rules" class="void-rule-grid"></div>
+          <div id="void-enter-row" class="void-enter-row">
+            <button id="void-enter-btn" class="void-enter-btn">进入虚空</button>
+          </div>
+          <div id="void-active-panel" class="hidden">
+            <div id="void-progress"></div>
+            <button id="void-exit-btn" class="void-exit-btn">退出虚空</button>
+          </div>
+          <h3 class="void-sub">虚空升级</h3>
+          <div id="void-upg-list" class="bh-upg-row void-upg-grid"></div>
+          <h3 class="void-sub">虚空里程碑</h3>
+          <div id="void-milestone" class="void-milestone">??? —— 尚未发现任何虚空里程碑</div>
         </div>
       </section>
 
