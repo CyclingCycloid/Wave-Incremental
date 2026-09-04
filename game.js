@@ -2172,11 +2172,11 @@ const SPU1_DEF = { id: "spu1", name: "奇点之前的升级不再消耗资源", 
 // 第一类：可重复（SAU1-3，一行三个）
 const SAU_DEFS = [
   { id: "sau1", key: "sau1", name: "象限拓张", desc: "声子升级3的硬上限 +2/级", vpu1Desc: "声子升级3的硬上限 +3/级", max: 10,
-    cost: (n) => Math.pow(10, sauCostLog(2, n)) }, // 第n次（1起）10^(2+2n)；超10级后增速×当前等级
+    costLog: (n) => sauCostLog(2, n) }, // 第n次（1起）10^(2+2n)；超10级后增速×当前等级（log 域，价格可超 double）
   { id: "sau2", key: "sau2", name: "奇点凝聚", desc: "第 n 级使奇点效果指数额外乘以 (1+n/10)", max: Infinity,
-    cost: (n) => Math.pow(10, 5 * n + (n > 10 ? sau2ExtraCostLog(n) : 0)) },
+    costLog: (n) => 5 * n + (n > 10 ? sau2ExtraCostLog(n) : 0) },
   { id: "sau3", key: "sau3", name: "紫外灾难", desc: "热涨落效果指数 +0.015/级", vpu1Desc: "热涨落效果指数 +0.018/级", max: 10,
-    cost: (n) => Math.pow(10, sauCostLog(3, n)) },
+    costLog: (n) => sauCostLog(3, n) },
 ];
 // SAU1/SAU3 的显示描述：单圈重整（VPU1）后使用加强版描述
 function sauDesc(u) {
@@ -2402,7 +2402,7 @@ function sauCostLog(base, n) {
 }
 // 真空衰变（独立行，位于 spu1 下方、SAU 行上方）：每级奇点获取 ×2，价 10^(3+n)
 const VACUUM_DEF = { id: "sau4", key: "sau4", name: "真空衰变", desc: "每级使获得的奇点 ×2", max: Infinity,
-  cost: (n) => Math.pow(10, 3 + n) };
+  costLog: (n) => 3 + n };
 // 第二类：单次（四组×4，两组共一行）
 const AU_DEFS = [
   [ // 第1组
@@ -2437,9 +2437,8 @@ function buySAU(id) {
   const n = state[u.key] + 1; // 第 n 次购买（1 起）
   const effMax = u.max !== Infinity ? effSauMax(u.key) : Infinity; // 单圈重整取消 sau1/sau3 上限
   if (state[u.key] >= effMax) return;
-  const c = u.cost(n);
-  const cLog = Math.log10(c); // c 超 double（Infinity）时为 Infinity，恒不可负担
-  if (cmpLT(state.sp, c, getLogSp(), cLog)) return;
+  const cLog = u.costLog(n); // 价格权威（log 域，超 double 的价格也可正确判定与扣款）
+  if (cmpLT(state.sp, Math.pow(10, cLog), getLogSp(), cLog)) return;
   subSpLog(cLog);
   state[u.key]++;
   checkAchievements(); // A35
@@ -3529,12 +3528,13 @@ function updateSpUI() {
     vacRef.btn.classList.toggle("hidden", !sauUnlocked);
     if (sauUnlocked) {
       const n = state.sau4 + 1;
-      const c = VACUUM_DEF.cost(n);
+      const cLog = VACUUM_DEF.costLog(n);
+      const c = Math.pow(10, cLog);
       vacRef.descEl.textContent = VACUUM_DEF.desc + "（等级 " + state.sau4 + "）";
       if (vacRef.totalEl) renderTotalEffect(vacRef.totalEl, VACUUM_DEF.id);
-      vacRef.costEl.textContent = fmtNum(c, Math.log10(c)) + " Sp";
-      vacRef.btn.disabled = !spAfford(c);
-      vacRef.btn.classList.toggle("affordable", spAfford(c));
+      vacRef.costEl.textContent = fmtNum(c, cLog) + " Sp";
+      vacRef.btn.disabled = !cmpGE(state.sp, c, getLogSp(), cLog);
+      vacRef.btn.classList.toggle("affordable", cmpGE(state.sp, c, getLogSp(), cLog));
     }
   }
   for (const r of sauRefs) {
@@ -3543,7 +3543,9 @@ function updateSpUI() {
     const n = state[r.u.key] + 1;
     const effMax = r.u.max !== Infinity ? effSauMax(r.u.key) : Infinity; // 单圈重整取消 sau1/sau3 上限
     const maxed = state[r.u.key] >= effMax;
-    const c = r.u.cost(n);
+    const cLog = r.u.costLog(n); // 价格权威（log 域），c 仅作显示缓存（可超 double → Infinity）
+    const c = Math.pow(10, cLog);
+    const afford = !maxed && cmpGE(state.sp, c, getLogSp(), cLog);
     {
       // 象限拓张/紫外灾难：量子狂潮免费等级以「+N 免费」并入显示（不影响价格与购买上限）
       const isSau13 = r.u.key === "sau1" || r.u.key === "sau3";
@@ -3551,10 +3553,10 @@ function updateSpUI() {
       r.descEl.textContent = sauDesc(r.u) + (effMax !== Infinity ? "（" + state[r.u.key] + free + "/" + effMax + "）" : "（等级 " + state[r.u.key] + free + "）");
     }
     if (r.totalEl) renderTotalEffect(r.totalEl, r.u.id);
-    r.costEl.textContent = maxed ? "已满级" : fmtNum(c, Math.log10(c)) + " Sp";
-    r.btn.disabled = maxed || !spAfford(c);
+    r.costEl.textContent = maxed ? "已满级" : fmtNum(c, cLog) + " Sp";
+    r.btn.disabled = maxed || !afford;
     r.btn.classList.toggle("bought", maxed);
-    r.btn.classList.toggle("affordable", !maxed && spAfford(c));
+    r.btn.classList.toggle("affordable", afford);
   }
   // AU 单次升级（第 4 组 4DA 前显示 ???，解锁后显示真实内容）
   // AU42 需 6DA、AU43 需 7DA、AU44 需打破多元宇宙规则；其余 au4* 需 4DA
