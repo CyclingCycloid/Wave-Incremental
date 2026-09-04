@@ -706,9 +706,10 @@ function gainRate() {
   if (inDistort("inflation")) g = Math.sqrt(Math.max(0, g));
   // 膨胀宇宙：波速获取指数随时间下降（每秒 -0.1，到 0 为止）
   if (inDistort("expand")) g = Math.pow(Math.max(0, g), distortGainExp());
-  // 虚空共振（SVU1）：虚空内波速获取速率整体幂次（符号保持——定向宇宙中可为负）
-  if (state.voidActive) {
-    const e = svu1GainExp();
+  // 虚空共振（SVU1）：虚空内波速获取速率整体幂次（符号保持——定向宇宙中可为负）；
+  // 虚空泡沫第三效果（里程碑 2）：波速获取速率整体幂次（全局，^1+min(0.2, lg(VF+1)/30)）
+  {
+    const e = svu1GainExp() * vfGainExp();
     if (e !== 1) {
       const s = g < 0 ? -1 : 1;
       g = s * Math.pow(Math.abs(g), e);
@@ -766,8 +767,9 @@ function gainRateLog() {
     if (ge <= 0) return { log: NLOG, sign: 1 };
     log *= ge;
   }
-  // 虚空共振（SVU1）：虚空内波速获取速率整体幂次（幂在 log 域 = 乘指数）
-  if (state.voidActive) log *= svu1GainExp();
+  // 虚空共振（SVU1）：虚空内波速获取速率整体幂次（幂在 log 域 = 乘指数）；
+  // 虚空泡沫第三效果（里程碑 2）：全局整体幂次
+  log *= svu1GainExp() * vfGainExp();
   return { log: clampLog(log), sign };
 }
 // 获取速率的显示口径 log：gain 为 0（gainRateLog 返回 NLOG 哨兵）时保持 NLOG（语义零）。
@@ -2302,17 +2304,25 @@ function updateVoidUI() {
   const stats = document.getElementById("void-stats");
   const vfMultLog = vfVPMultLog();
   const m1 = voidMilestone1();
-  // VF 效果行：第一效果（VP 获取）恒有；第二效果（吸积 ×VF^(2/3)）里程碑 1 解锁
+  const m2 = voidMilestone2();
+  // VF 效果行：第一效果（VP 获取）恒有；第二效果（吸积 ×VF^(2/3)）里程碑 1 解锁；
+  // 第三效果（波速获取幂次）里程碑 2 解锁
   const vfLine = state.logVoidVF10 > NLOG + 1
     ? `虚空泡沫（VF）：${fmtLog(state.logVoidVF10)}\nVP 获取 ×${fmtLog(vfMultLog)}`
       + (m1 ? `\n黑洞吸积 ×${fmtLog(clampLog((2 / 3) * state.logVoidVF10))}` : "")
+      + (m2 ? `\n波速获取 ^${fmt(vfGainExp())}` : "")
     : "虚空泡沫（VF）：尚无";
   // 虚空里程碑显示
   const msEl = document.getElementById("void-milestone");
   if (msEl) {
-    msEl.textContent = m1
-      ? "里程碑 1「聚合浪潮」已完成（完成至少同时 4 种扭曲生效的虚空）——解锁虚空泡沫第二效果（黑洞吸积 ×VF^(2/3)）与虚空升级"
-      : `??? —— 虚空里程碑 1：完成至少同时 4 种扭曲生效的虚空（当前最高 ${state.voidBestRules} 种）`;
+    msEl.textContent = [
+      m1
+        ? "里程碑 1「聚合浪潮」已完成（≥4 种扭曲生效）：解锁黑洞吸积 ×VF^(2/3) 与虚空升级"
+        : `里程碑 1：完成至少同时 4 种扭曲生效的虚空（当前最高 ${state.voidBestRules} 种）`,
+      m2
+        ? "里程碑 2 已完成（≥7 种扭曲生效）：解锁波速获取 ^(1+min(0.2, lg(VF+1)/30))"
+        : `里程碑 2：完成至少同时 7 种扭曲生效的虚空（当前最高 ${state.voidBestRules} 种）`,
+    ].join("\n");
   }
   // SVU 卡片状态
   for (const def of SVU_DEFS) {
@@ -2564,6 +2574,14 @@ function spAccretionMultLog() {
 // 虚空里程碑 1「聚合浪潮」：完成至少同时 4 种扭曲生效的虚空。
 // 效果：解锁虚空泡沫第二效果（黑洞吸积速率 ×VF^(2/3)，软上限前）并解锁虚空升级（SVU）
 function voidMilestone1() { return state.voidBestRules >= 4; }
+// 虚空里程碑 2：完成至少同时 7 种扭曲生效的虚空。
+// 效果：解锁虚空泡沫第三效果——波速获取速率 ^(1+min(0.2, lg(VF+1)/30))
+function voidMilestone2() { return state.voidBestRules >= 7; }
+// 虚空泡沫第三效果的幂次（未解锁里程碑 2 或无 VF 时为 1，即无影响）
+function vfGainExp() {
+  if (!voidMilestone2() || !(state.logVoidVF10 > NLOG + 1)) return 1;
+  return 1 + Math.min(0.2, lg1FromLog(state.logVoidVF10) / 30);
+}
 // 吸积的软上限前 Gain（log10）——bhAccretionRateLog 与 bhMassSoftcapped 共用的唯一实现。
 // AU44 已购买时不含 SBU1 倍率（SBU1 移到软上限之后乘；软上限未触发时正常生效）。
 // 倍率以 log 相加（= 数值相乘），totalSp 超 double 时也不产生 Infinity
