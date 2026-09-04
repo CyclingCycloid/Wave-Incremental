@@ -2172,24 +2172,24 @@ function totalEffectText(id) {
   const cappedSau = (key) => n(key) > 10;
   switch (id) {
     case "sau1": {
-      // 有效等级 = floor(3*(10+(n-10)^0.7))/3，与 pg3Cap 的软上限公式同源
-      const eff = Math.floor(3 * (10 + Math.pow(Math.max(n("sau1") - 10, 0), 0.7))) / 3;
-      return { text: `总效果：声子升级3上限 +${pg3Cap() - 20}`, capped: cappedSau("sau1"), eff };
+      // 有效级别 = floor(3*(10+(n-10)^0.7))/3，与 pg3Cap 的软上限公式同源（含量子狂潮免费等级）
+      const eff = Math.floor(3 * (10 + Math.pow(Math.max(n("sau1") + vpu2FreeLevel() - 10, 0), 0.7))) / 3;
+      return { text: `总效果：声子升级3上限 +${pg3Cap() - 20}` + (vpu2FreeLevel() > 0 ? `（含免费 +${fmt(vpu2FreeLevel())}）` : ""), capped: cappedSau("sau1"), eff };
     }
     case "sau2": {
       const eff = effLevel(n("sau2"), 10, 1 / 3);
       return { text: `总效果：奇点效果 ×${fmt(sauMult())}`, capped: cappedSau("sau2"), eff };
     }
     case "sau3": {
-      const eff = effLevel(n("sau3"), 10, 1 / 3);
-      return { text: `总效果：热涨落效果指数 +${thermalExp().toFixed(3)}`, capped: cappedSau("sau3"), eff };
+      const eff = effLevel(n("sau3") + vpu2FreeLevel(), 10, 1 / 3);
+      return { text: `总效果：热涨落效果指数 +${thermalExp().toFixed(3)}` + (vpu2FreeLevel() > 0 ? `（含免费 +${fmt(vpu2FreeLevel())}）` : ""), capped: cappedSau("sau3"), eff };
     }
     case "sau4":
       return { text: `总效果：奇点获取 ×${fmt(Math.pow(2, n("sau4")))}`, capped: false };
     case "sbu1": {
       // 事件视界总等级含量子狂潮免费等级（与 bhAccretionGainLog 的扣费口径一致）
-      const total = n("sbu1") + sbuFree();
-      return { text: `总效果：吸积效率 ×${fmt(Math.pow(2, total))}` + (sbuFree() > 0 ? `（含免费 +${fmt(sbuFree())}）` : ""), capped: false };
+      const total = n("sbu1") + vpu2FreeLevel();
+      return { text: `总效果：吸积效率 ×${fmt(Math.pow(2, total))}` + (vpu2FreeLevel() > 0 ? `（含免费 +${fmt(vpu2FreeLevel())}）` : ""), capped: false };
     }
     case "sbu2": {
       const eff = sbu2Eff();
@@ -2423,20 +2423,22 @@ function effLevel(n, softcap, power) {
 // SAU1：声子升级3上限（单圈重整后软上限：超出 20 基础的部分 = 30+floor(3*(n-10)^0.7)，
 // 即 n>10 时 pg3Cap = 50+floor(3*(n-10)^0.7)；未购 VPU1 时上限 10 级、每级 +2）
 function pg3Cap() {
+  // 量子狂潮免费等级计入（软上限前）
+  const n1 = state.sau1 + vpu2FreeLevel();
   if (vpuOwned("vpu1")) {
-    if (state.sau1 <= 10) return 20 + 3 * state.sau1;
-    return 50 + Math.floor(3 * Math.pow(state.sau1 - 10, 0.7));
+    if (n1 <= 10) return 20 + 3 * n1;
+    return 50 + Math.floor(3 * Math.pow(n1 - 10, 0.7));
   }
-  return 20 + 2 * state.sau1;
+  return 20 + 2 * n1;
 }
 // SAU2：奇点效果指数倍率（有效级别 = 10+(n-10)^(1/3)）
 function sauMult() {
   const eff = effLevel(state.sau2, 10, 1 / 3);
   return 1 + eff / 10;
 }
-// SAU3：热涨落指数（有效级别 = 10+(n-10)^(1/3)；每级 +0.015，单圈重整后 +0.018）
+// SAU3：热涨落指数（有效级别 = 10+(n-10)^(1/3)；每级 +0.015，单圈重整后 +0.018；量子狂潮免费等级计入）
 function thermalExp() {
-  const eff = effLevel(state.sau3, 10, 1 / 3);
+  const eff = effLevel(state.sau3 + vpu2FreeLevel(), 10, 1 / 3);
   return 0.2 + (vpuOwned("vpu1") ? 0.018 : 0.015) * eff;
 }
 // AU11：up1 指数加成
@@ -2502,9 +2504,9 @@ function setVPLog(logV) {
   state.virtualParticles = (logV <= NLOG + 1) ? 0 : (logV > 308 ? Infinity : Math.pow(10, logV));
 }
 // SBU2 引力潮汐的有效级别（软上限：7+(n-7)^(1/4)；量子狂潮免费等级加在真实等级上、软上限前）
-function sbu2Eff() { return effLevel(state.sbu2 + sbuFree(), 7, 0.25); }
+function sbu2Eff() { return effLevel(state.sbu2 + vpu2FreeLevel(), 7, 0.25); }
 // SBU3 霍金辐射的有效级别（软上限：10+(n-10)^(1/2)，从原上限 10 起算；免费等级同上）
-function sbu3Eff() { return effLevel(state.sbu3 + sbuFree(), 10, 0.5); }
+function sbu3Eff() { return effLevel(state.sbu3 + vpu2FreeLevel(), 10, 0.5); }
 // 黑洞基础效果：M^（0.2 + sbu2 有效级别·0.05）（引力潮汐：效果指数 +0.05/级）；返回 double（扭曲状态给时间倍率）
 function bhEffect() {
   const mLog = getLogBhMass();
@@ -2560,7 +2562,7 @@ function voidMilestone1() { return state.voidBestRules >= 4; }
 function bhAccretionGainLog() {
   const mLog = getLogBhMass();
   const fLog = FLog();
-  const sbu1Total = state.sbu1 + sbuFree(); // 量子狂潮免费等级与 SBU1 同进退（AU44 时一并移到软上限后）
+  const sbu1Total = state.sbu1 + vpu2FreeLevel(); // 量子狂潮免费等级与 SBU1 同进退（AU44 时一并移到软上限后）
   const accMultLog = (auOwned("au44") ? 0 : sbu1Total) * Math.log10(2) + spAccretionMultLog();
   // 频率部分（1e2000 处非常硬的软上限）：
   // F<1e2000：(F/1e200)^0.01 → log = 0.01×(FLog−200)
@@ -2575,7 +2577,7 @@ function bhAccretionGainLog() {
 }
 function bhAccretionRateLog() {
   const au44 = auOwned("au44");
-  const sbu1Total = state.sbu1 + sbuFree(); // 事件视界总等级（含量子狂潮免费等级）
+  const sbu1Total = state.sbu1 + vpu2FreeLevel(); // 事件视界总等级（含量子狂潮免费等级）
   let gainLog = bhAccretionGainLog();
   // 软上限：Gain 超起始点（log50，潮汐撕裂每级 +10 个数量级）的部分缩放：
   // 实际获得 = 1e(10n+50) × (Gain/1e(10n+50))^((15/lg(Gain))^e)——e=1/2；
@@ -2828,7 +2830,7 @@ function buySVPU(id) {
 // 未达成解锁条件时卡片显示具体达成条件（vpuCondText）
 const VPU_DEFS = [
   { id: "vpu1", name: "单圈重整", desc: "加强象限拓张和紫外灾难，并取消等级上限，削弱普朗克温度软上限", cost: 5e10 },
-  { id: "vpu2", name: "量子狂潮", desc: "虚粒子给三个黑洞升级提供免费等级，并且加成奇点的效果", cost: 1e6, currency: "vf" },
+  { id: "vpu2", name: "量子狂潮", desc: "虚粒子给三个黑洞升级和奇点升级象限拓张/紫外灾难提供免费等级，并且加成奇点的效果", cost: 1e6, currency: "vf" },
   { id: "vpu3", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu4", name: "对偶原理", desc: "取消全息原理的等级限制，吸积公式的质量指数+0.05，并削弱黑洞质量的软上限", cost: 2e8 },
   { id: "vpu5", name: "临界湮灭", desc: "取消自动湮灭的 CD，并把共轭湮灭的效果变为原来的^2，增加两个虚粒子升级", cost: 1e7 },
@@ -2926,10 +2928,11 @@ function logVp1() {
   if (v <= NLOG + 1) return 0;
   return v <= 15 ? Math.log10((state.virtualParticles || 0) + 1) : v;
 }
-// VPU2：三个黑洞升级（SBU1/2/3）各获得的免费等级（软上限前）：sqrt(max(0, lg(VP+1)−10))
-function sbuFree() {
+// VPU2 量子狂潮：免费等级（软上限前）=(max(0, lg(VP+1)−10))^0.75。
+// 作用于三个黑洞升级（SBU1/2/3）与奇点升级象限拓张/紫外灾难（SAU1/SAU3）
+function vpu2FreeLevel() {
   if (!vpuOwned("vpu2")) return 0;
-  return Math.sqrt(Math.max(0, logVp1() - 10));
+  return Math.pow(Math.max(0, logVp1() - 10), 0.75);
 }
 // VPU2：奇点效果额外乘数：1 + min(2, lg(max(1, lg(VP+1)))/2)/4
 //（乘在所有 (1+总Sp)^指数 类效果上：波速获取、温度上限、普朗克常数倍率）
@@ -3225,7 +3228,7 @@ function updateBlackholeUI() {
     }
     {
       // 等级显示：量子狂潮免费等级以「+N 免费」并入（仅展示，不影响价格）
-      const free = (!r.vp && sbuFree() > 0) ? " + " + fmt(sbuFree()) + " 免费" : "";
+      const free = (!r.vp && vpu2FreeLevel() > 0) ? " + " + fmt(vpu2FreeLevel()) + " 免费" : "";
       r.descEl.textContent = r.u.desc + (effMax !== Infinity
         ? "（" + state[r.u.key] + free + "/" + effMax + "）"
         : "（等级 " + state[r.u.key] + free + "）");
@@ -3258,7 +3261,7 @@ function updateBlackholeUI() {
     if (r.u.currency === "vf") {
       // VPU2：VF 购买；描述附当前免费等级与奇点乘数
       r.descEl.textContent = r.u.desc
-        + "\n当前免费等级 +" + fmt(sbuFree()) + "/个 · 奇点效果 ×" + fmt(vpu2SingMult());
+        + "\n当前免费等级 +" + fmt(vpu2FreeLevel()) + "/个 · 奇点效果 ×" + fmt(vpu2SingMult());
       const afford = state.logVoidVF10 >= Math.log10(r.u.cost);
       r.costEl.textContent = owned ? "已购买" : fmt(r.u.cost) + " VF";
       r.btn.disabled = owned || !afford;
@@ -3484,7 +3487,12 @@ function updateSpUI() {
     const effMax = r.u.max !== Infinity ? effSauMax(r.u.key) : Infinity; // 单圈重整取消 sau1/sau3 上限
     const maxed = state[r.u.key] >= effMax;
     const c = r.u.cost(n);
-    r.descEl.textContent = sauDesc(r.u) + (effMax !== Infinity ? "（" + state[r.u.key] + "/" + effMax + "）" : "（等级 " + state[r.u.key] + "）");
+    {
+      // 象限拓张/紫外灾难：量子狂潮免费等级以「+N 免费」并入显示（不影响价格与购买上限）
+      const isSau13 = r.u.key === "sau1" || r.u.key === "sau3";
+      const free = (isSau13 && vpu2FreeLevel() > 0) ? " + " + fmt(vpu2FreeLevel()) + " 免费" : "";
+      r.descEl.textContent = sauDesc(r.u) + (effMax !== Infinity ? "（" + state[r.u.key] + free + "/" + effMax + "）" : "（等级 " + state[r.u.key] + free + "）");
+    }
     if (r.totalEl) renderTotalEffect(r.totalEl, r.u.id);
     r.costEl.textContent = maxed ? "已满级" : fmtNum(c, Math.log10(c)) + " Sp";
     r.btn.disabled = maxed || !spAfford(c);
