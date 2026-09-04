@@ -2482,7 +2482,7 @@ function bhAccretionRateLog() {
 // 黑洞质量获取是否正受软上限影响（显示提示用）：用与 bhAccretionRateLog 相同的软上限前 Gain
 // ---------- 虚空（A52 解锁：多扭曲削弱同时生效的挑战，结算虚空泡沫 VF）----------
 // D1-D8 顺序对应扭曲宇宙显示顺序；乘数（热寂100 狭窄200 为最高档）
-const VOID_MULTIPLIERS = { rigid: 20, expand: 20, directed: 10, cooldown: 16, inflation: 40, adiabatic: 100, narrow: 100, simple: 100 };
+const VOID_MULTIPLIERS = { rigid: 20, expand: 20, directed: 10, cooldown: 16, inflation: 40, adiabatic: 100, narrow: 10, simple: 100 };
 const VOID_TARGET_FLOG = 2000; // 挑战目标：频率 ≥ 1e2000 Hz（测试模式）
 // 当前虚空配置下的预计 VF（log10；FLog 未达标时返回 NLOG）。
 // VF = 8^(N-1)×Π乘数×(F/1e2000)^min(0.0003, √(0.0009/lg(F+1)))
@@ -4153,6 +4153,10 @@ function updateAchievementsUI() {
       continue;
     }
     const done = state.ach.normal.includes(a.id);
+    // A52 为测试模式限定成就：非测试模式下整个单元格隐藏
+    const hiddenByTest = a.id === "A52" && !state.testMode;
+    root.style.display = hiddenByTest ? "none" : "";
+    if (hiddenByTest) continue;
     root.classList.toggle("completed", done);
     lockEl.style.display = "none";
     starEl.style.display = a.star ? "" : "none";
