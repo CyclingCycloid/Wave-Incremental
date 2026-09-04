@@ -666,13 +666,13 @@ function spGainLog() {
   return clampLog(spSoftcapLog(spRawGainLog()));
 }
 // ---------- Sp 获取软上限 ----------
-// 奇点获取超过 1.79e308 的部分被压缩：capped = 1.79e308 × (Sp/1.79e308)^(1/lg(Sp)^0.3)
-// log10 域：cappedLog = 308.2529 + (spLog − 308.2529)/spLog^0.3（拐点处连续；
-// spLog=1000 → ≈395；spLog=5000 → ≈702，获取量越大压缩越强）
+// 奇点获取超过 1.79e308 的部分被压缩：capped = 1.79e308 × (Sp/1.79e308)^(1/lg(Sp)^0.15)
+// log10 域：cappedLog = 308.2529 + (spLog − 308.2529)/spLog^0.15（拐点处连续；
+// spLog=1000 → ≈554；spLog=5000 → ≈1615，获取量越大压缩越强）
 const SP_SOFTCAP_PIVOT_LOG = Math.log10(1.79e308); // ≈308.2529（A55 卷缩的判定阈值同源）
 function spSoftcapLog(spLog) {
   if (spLog <= SP_SOFTCAP_PIVOT_LOG) return spLog;
-  return SP_SOFTCAP_PIVOT_LOG + (spLog - SP_SOFTCAP_PIVOT_LOG) / Math.pow(spLog, 0.3);
+  return SP_SOFTCAP_PIVOT_LOG + (spLog - SP_SOFTCAP_PIVOT_LOG) / Math.pow(spLog, 0.15);
 }
 // gainRate 的 log10 版本（完整乘法链在 log 域，永不溢出）
 function gainRate() {
