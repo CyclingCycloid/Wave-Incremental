@@ -707,7 +707,7 @@ function gainRate() {
   // 膨胀宇宙：波速获取指数随时间下降（每秒 -0.1，到 0 为止）
   if (inDistort("expand")) g = Math.pow(Math.max(0, g), distortGainExp());
   // 虚空共振（SVU1）：虚空内波速获取速率整体幂次（符号保持——定向宇宙中可为负）；
-  // 虚空泡沫第三效果（里程碑 2）：波速获取速率整体幂次（全局，^1+min(0.2, lg(VF+1)/30)）
+  // 虚空泡沫第三效果（里程碑 2）：波速获取速率整体幂次（全局，^1+min(0.2, lg(VF+1)/300)）
   {
     const e = svu1GainExp() * vfGainExp();
     if (e !== 1) {
@@ -2287,10 +2287,29 @@ function buildVoidOnce() {
     upg.appendChild(card);
     voidSvuEls[def.id] = { card, nm, ds, ct };
   }
+  // 虚空里程碑格子（每个里程碑一个独立格子）
+  const msGrid = document.getElementById("void-milestone-list");
+  msGrid.innerHTML = "";
+  voidMsEls = [];
+  for (const def of VOID_MILESTONES) {
+    const cell = document.createElement("div");
+    cell.className = "void-ms-cell";
+    const head = document.createElement("div"); head.className = "void-ms-head";
+    const title = document.createElement("span"); title.textContent = `里程碑 ${def.n} · ${def.title}`;
+    const status = document.createElement("span"); status.className = "void-ms-status";
+    head.append(title, status);
+    const desc = document.createElement("div"); desc.className = "sau-desc"; desc.textContent = def.desc;
+    const prog = document.createElement("div"); prog.className = "void-ms-prog";
+    const reward = document.createElement("div"); reward.className = "sau-desc"; reward.textContent = "奖励：" + def.reward;
+    cell.append(head, desc, prog, reward);
+    msGrid.appendChild(cell);
+    voidMsEls.push({ cell, statusEl: status, progEl: prog });
+  }
   voidBuilt = true;
 }
 let voidSelection = []; // 进入前勾选的削弱
 let voidSvuEls = {};    // SVU 卡片元素引用
+let voidMsEls = [];     // 虚空里程碑格子元素引用
 function updateVoidUI() {
   if (simActive) return;
   // 虚空仅测试模式可访问：非测试模式下子页隐藏、UI 不更新
@@ -2312,17 +2331,17 @@ function updateVoidUI() {
       + (m1 ? `\n黑洞吸积 ×${fmtLog(clampLog((2 / 3) * state.logVoidVF10))}` : "")
       + (m2 ? `\n波速获取 ^${fmt(vfGainExp())}` : "")
     : "虚空泡沫（VF）：尚无";
-  // 虚空里程碑显示
-  const msEl = document.getElementById("void-milestone");
-  if (msEl) {
-    msEl.textContent = [
-      m1
-        ? "里程碑 1「聚合浪潮」已完成（≥4 种扭曲生效）：解锁黑洞吸积 ×VF^(2/3) 与虚空升级"
-        : `里程碑 1：完成至少同时 4 种扭曲生效的虚空（当前最高 ${state.voidBestRules} 种）`,
-      m2
-        ? "里程碑 2 已完成（≥7 种扭曲生效）：解锁波速获取 ^(1+min(0.2, lg(VF+1)/30))"
-        : `里程碑 2：完成至少同时 7 种扭曲生效的虚空（当前最高 ${state.voidBestRules} 种）`,
-    ].join("\n");
+  // 虚空里程碑显示（每个里程碑一个独立格子）
+  for (let i = 0; i < VOID_MILESTONES.length; i++) {
+    const def = VOID_MILESTONES[i];
+    const el = voidMsEls[i];
+    if (!el) continue;
+    const done = def.n === 1 ? voidMilestone1() : voidMilestone2();
+    el.cell.classList.toggle("done", done);
+    el.statusEl.textContent = done ? "✓ 已完成" : "进行中";
+    el.progEl.textContent = done
+      ? def.doneReward
+      : `进度：历史最高 ${state.voidBestRules} / ${def.need} 种`;
   }
   // SVU 卡片状态
   for (const def of SVU_DEFS) {
@@ -2575,12 +2594,23 @@ function spAccretionMultLog() {
 // 效果：解锁虚空泡沫第二效果（黑洞吸积速率 ×VF^(2/3)，软上限前）并解锁虚空升级（SVU）
 function voidMilestone1() { return state.voidBestRules >= 4; }
 // 虚空里程碑 2：完成至少同时 7 种扭曲生效的虚空。
-// 效果：解锁虚空泡沫第三效果——波速获取速率 ^(1+min(0.2, lg(VF+1)/30))
+// 效果：解锁虚空泡沫第三效果——波速获取速率 ^(1+min(0.2, lg(VF+1)/300))
 function voidMilestone2() { return state.voidBestRules >= 7; }
+// 虚空里程碑列表（虚空页每个里程碑一个独立格子）
+const VOID_MILESTONES = [
+  { n: 1, title: "聚合浪潮", need: 4,
+    desc: "完成至少同时 4 种扭曲生效的虚空",
+    reward: "黑洞吸积速率 ×VF^(2/3)（软上限前）＋解锁虚空升级（SVU）",
+    doneReward: "黑洞吸积 ×VF^(2/3) 与虚空升级（SVU）已解锁" },
+  { n: 2, title: "七重湮灭", need: 7,
+    desc: "完成至少同时 7 种扭曲生效的虚空",
+    reward: "波速获取速率 ^(1+min(0.2, lg(VF+1)/300))",
+    doneReward: "波速获取 ^(1+min(0.2, lg(VF+1)/300)) 已生效" },
+];
 // 虚空泡沫第三效果的幂次（未解锁里程碑 2 或无 VF 时为 1，即无影响）
 function vfGainExp() {
   if (!voidMilestone2() || !(state.logVoidVF10 > NLOG + 1)) return 1;
-  return 1 + Math.min(0.2, lg1FromLog(state.logVoidVF10) / 30);
+  return 1 + Math.min(0.2, lg1FromLog(state.logVoidVF10) / 300);
 }
 // 吸积的软上限前 Gain（log10）——bhAccretionRateLog 与 bhMassSoftcapped 共用的唯一实现。
 // AU44 已购买时不含 SBU1 倍率（SBU1 移到软上限之后乘；软上限未触发时正常生效）。
