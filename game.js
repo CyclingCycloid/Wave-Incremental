@@ -2877,20 +2877,15 @@ function buySVPU(id) {
   updateBlackholeUI();
   setAutosaveStatus("已购买黑洞升级：" + u.name);
 }
-// ---------- 虚粒子单次升级（VPU1-9，A45 星标奖励解锁；九宫格，花 VP）----------
+// ---------- 虚粒子单次升级（VPU，A45 星标奖励解锁；2×2 方格，花 VP / VPU2 花 VF）----------
 // 达成 A45 前整区不可见；解锁条件统一由 vpuUnlocked(id) 判定。
-// 目前仅 VPU5 实装（1e7 VP），其余为占位（cost=Infinity 永不可购）；
+// 已实装 VPU1/2/4/5 四个升级；
 // 未达成解锁条件时卡片显示具体达成条件（vpuCondText）
 const VPU_DEFS = [
   { id: "vpu1", name: "单圈重整", desc: "加强象限拓张和紫外灾难，并取消等级上限，削弱普朗克温度软上限", cost: 5e10 },
   { id: "vpu2", name: "量子狂潮", desc: "虚粒子给三个黑洞升级和奇点升级象限拓张/紫外灾难提供免费等级，并且加成奇点的效果", cost: 1e6, currency: "vf" },
-  { id: "vpu3", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu4", name: "对偶原理", desc: "取消全息原理的等级限制，吸积公式的质量指数+0.05，并削弱黑洞质量的软上限", cost: 2e8 },
   { id: "vpu5", name: "临界湮灭", desc: "取消自动湮灭的 CD，并把共轭湮灭的效果变为原来的^2，增加两个虚粒子升级", cost: 1e7 },
-  { id: "vpu6", name: "???", desc: "（占位）", cost: Infinity },
-  { id: "vpu7", name: "???", desc: "（占位）", cost: Infinity },
-  { id: "vpu8", name: "???", desc: "（占位）", cost: Infinity },
-  { id: "vpu9", name: "???", desc: "（占位）", cost: Infinity },
 ];
 // VPU 解锁条件：解锁 A45 星标奖励（购买所有奇点升级）后全部可见；
 // VPU5 额外要求总挑战时间 < 3s；VPU4 要求黑洞质量达到 1e70 太阳质量。
@@ -3113,7 +3108,7 @@ function buildBlackholeOnce() {
     row.appendChild(btn);
     bhRefs[u.id] = { u, btn, descEl: ds, costEl: ct, totalEl: tt, vp: true };
   }
-  // 虚粒子单次升级（VPU1-9 九宫格，A45 星标奖励解锁；达成 A45 前整区不可见）
+  // 虚粒子单次升级（2×2 方格，A45 星标奖励解锁；达成 A45 前整区不可见）
   bhVpuSection = document.createElement("div");
   bhVpuSection.appendChild(mkTitle("虚幻升级"));
   const vpuRow = document.createElement("div");
