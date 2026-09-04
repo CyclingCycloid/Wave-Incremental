@@ -4530,7 +4530,8 @@ function tick() {
 // ---------- 快捷键（v0.5.0.3 QoL，所有玩家可用）----------
 // ←/→ 大标签、↑/↓ 子标签、U 湮灭前升级全买、R 湮灭后升级全买、A 湮灭、L 升级3、
 // 按住 B+1/2/3 黑洞状态、Shift+1~8 进扭曲、Shift+A/R/L/M 自动化开关
-let bhHotkeyArmedUntil = 0; // 按住 B 的武装窗口（0.5s）
+let bhHotkeyArmed = false; // 按住 B 的武装状态（松开 B、0.5s 超时或触发切换后保持，可连续切换）
+let bhHotkeyTimeout = 0;
 function buyAllPreAnnihilation() {
   // 湮灭前升级：多轮尽力购买（升级间有依赖/价格联动）
   for (let round = 0; round < 5; round++) {
@@ -4573,8 +4574,7 @@ function handleGameHotkey(e) {
   const tag = (e.target.tagName || "").toLowerCase();
   if (tag === "input" || tag === "textarea" || e.target.isContentEditable) return;
   if (e.repeat) return;
-  const now = Date.now();
-  const bhArmed = now < bhHotkeyArmedUntil;
+  const bhArmed = bhHotkeyArmed;
   const k = e.key;
   // 方向键：大标签/子标签
   if (k === "ArrowLeft") { switchTabByOffset(-1); return; }
@@ -4584,7 +4584,6 @@ function handleGameHotkey(e) {
   // 黑洞：按住 B + 1/2/3
   if (bhArmed && (k === "1" || k === "2" || k === "3")) {
     setBhState(k === "1" ? "accrete" : k === "2" ? "distorl" : "pulse");
-    bhHotkeyArmedUntil = 0;
     return;
   }
   if (e.shiftKey) {
@@ -4636,7 +4635,9 @@ function handleGameHotkey(e) {
       buyUp3();
       break;
     case "b": case "B":
-      bhHotkeyArmedUntil = now + 500; // 按住 B 后 0.5s 内按 1/2/3
+      bhHotkeyArmed = true; // 按住期间保持武装
+      clearTimeout(bhHotkeyTimeout);
+      bhHotkeyTimeout = setTimeout(() => { bhHotkeyArmed = false; }, 500);
       break;
   }
 }
@@ -4929,6 +4930,9 @@ function init() {
 
   // 快捷键（v0.5.0.3 QoL）：全局监听，输入框聚焦时忽略
   document.addEventListener("keydown", handleGameHotkey);
+  document.addEventListener("keyup", (e) => {
+    if (e.key === "b" || e.key === "B") { bhHotkeyArmed = false; clearTimeout(bhHotkeyTimeout); }
+  });
   setInterval(tick, 100); // 逻辑 tick 恒定 100ms（数值节奏不变）
   // 显示循环：按所选频率刷新快变数字（全局资源栏 + 声子资源行）
   const uiLoop = (t) => {
