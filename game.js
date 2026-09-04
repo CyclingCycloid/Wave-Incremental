@@ -2165,7 +2165,7 @@ function renderTotalEffect(el, id) {
   if (!el) return;
   const t = totalEffectText(id);
   if (!t) { el.textContent = ""; return; }
-  el.textContent = t.text + (t.capped && state.testMode ? `（受软上限影响，有效级别为 ${t.eff >= 100 ? fmt(t.eff) : t.eff.toFixed(1)}）` : "");
+  el.textContent = t.text + (t.capped ? `（受软上限影响，有效级别为 ${t.eff >= 100 ? fmt(t.eff) : t.eff.toFixed(1)}）` : "");
 }
 
 // ---------- 虚空页 UI ----------
@@ -2246,7 +2246,6 @@ function effSauMax(key) {
 }
 // 奇点凝聚 n>10 后的价格延伸（log10）：每级在原 10^(5n) 基础上额外 ×n⁴
 function sau2ExtraCostLog(n) {
-  if (!state.testMode) return 0; // 非测试模式无价格延伸
   let log = 0;
   for (let k = 11; k <= n; k++) log += 4 * Math.log10(k);
   return log;
@@ -2254,7 +2253,7 @@ function sau2ExtraCostLog(n) {
 // SAU1/SAU3 价格的 log10：n≤10 为 base+2n（增速 ×100）；超过 10 级后每级增速 =
 // 原增速 ×100 × n²（n 为当前等级），log 域累积
 function sauCostLog(base, n) {
-  if (!state.testMode || n <= 10) return base + 2 * n; // 非测试模式无价格延伸
+  if (n <= 10) return base + 2 * n;
   let log = base + 20; // 第 10 次购买的价格
   for (let k = 11; k <= n; k++) log += 2 + 2 * Math.log10(k);
   return log;
@@ -2319,8 +2318,6 @@ function buyAU(id) {
 // ---- 效果挂钩 ----
 // 可重复升级软上限：有效级别 = 软上限起点 + (n-起点)^power（起点处无缝衔接原线性公式）
 function effLevel(n, softcap, power) {
-  // 非测试模式（v0.5.0.3 前内容）：无软上限，有效级别 = 真实等级（线性）
-  if (!state.testMode) return n;
   return n <= softcap ? n : softcap + Math.pow(n - softcap, power);
 }
 // SAU1：声子升级3上限（有效级别 = floor(10+(n-10)^(1/2))；每级 +2，单圈重整后 +3）
@@ -2578,13 +2575,13 @@ function sbuCostLog(u, n) {
   if (u.id === "sbu1") {
     // 1e9 × 100^(n-1)；超过 12 级后每级额外 ×(n-2)²
     let log = 9 + (n - 1) * 2;
-    if (state.testMode) for (let k = 13; k <= n; k++) log += 2 * Math.log10(k - 2);
+    for (let k = 13; k <= n; k++) log += 2 * Math.log10(k - 2);
     return log;
   }
   if (u.id === "sbu2") {
     // 1e10 × 1000^(n-1)；超过 7 级后每级额外 ×n³
     let log = 10 + (n - 1) * 3;
-    if (state.testMode) for (let k = 8; k <= n; k++) log += 3 * Math.log10(k);
+    for (let k = 8; k <= n; k++) log += 3 * Math.log10(k);
     return log;
   }
   if (u.id === "sbu3") return 11 + (n - 1) * 2;      // 1e11 × 100^(n-1)
