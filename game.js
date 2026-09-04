@@ -640,16 +640,20 @@ function spGainBaseLog() {
   if (tLog < 100) return Math.log10(tLog / 5); // lg(T)/5 的 log
   return Math.log10(2) + 0.01 * tLog;          // 2·T^0.01 的 log
 }
-function spGainExact() {
-  if (state.testBreakRules) return 0;
+// 未封顶的最终获取 log10（base + 全部乘数 + 首次保底），spGain*/spSoftcapped 共用
+function spRawGainLog() {
   const mLog = Math.log10(state.distortMult) + state.sau4 * Math.log10(2)
     + Math.log10(Math.max(1, phononSpMult())) + vpSpMultLog();
   const bLog = spGainBaseLog() + mLog;
   const first = state.annihilations === 0 ? 1 : 0;
   // 首次保底 max(1, b)：log 域即 max(0, bLog)。
   // 注意不可写成 log10(1+10^bLog)（那是 1+b 的和）：普朗克温度处 b=1，首湮灭会变成 2 Sp
-  const log = first > 0 ? Math.max(0, bLog) : bLog;
-  return log > 308 ? Infinity : Math.pow(10, log);
+  return first > 0 ? Math.max(0, bLog) : bLog;
+}
+function spGainExact() {
+  if (state.testBreakRules) return 0;
+  const capped = spSoftcapLog(spRawGainLog());
+  return capped > 308 ? Infinity : Math.pow(10, capped);
 }
 function spGain() {
   if (state.testBreakRules) return 0;
@@ -659,12 +663,19 @@ function spGain() {
 // spGain 的 log10（用于 fmtNum 显示，超 double 时显示 1eN）。与 spGain() 同一 log 域链路。
 function spGainLog() {
   if (state.testBreakRules) return NLOG;
-  const mLog = Math.log10(state.distortMult) + state.sau4 * Math.log10(2)
-    + Math.log10(Math.max(1, phononSpMult())) + vpSpMultLog();
-  const bLog = spGainBaseLog() + mLog;
-  const first = state.annihilations === 0 ? 1 : 0;
-  // 首次保底 max(1, b)（log 域 max(0, bLog)），与 spGainExact 同口径
-  return clampLog(first > 0 ? Math.max(0, bLog) : bLog);
+  return clampLog(spSoftcapLog(spRawGainLog()));
+}
+// ---------- Sp 获取软上限 ----------
+// 奇点获取超过 1.79e308 的部分被压缩：capped = 1.79e308 × (Sp/1.79e308)^(1/lg(Sp)^0.3)
+// log10 域：cappedLog = 308.2529 + (spLog − 308.2529)/spLog^0.3（拐点处连续；
+// spLog=1000 → ≈395；spLog=5000 → ≈702，获取量越大压缩越强）
+const SP_SOFTCAP_PIVOT_LOG = Math.log10(1.79e308); // ≈308.2529
+function spSoftcapLog(spLog) {
+  if (spLog <= SP_SOFTCAP_PIVOT_LOG) return spLog;
+  return SP_SOFTCAP_PIVOT_LOG + (spLog - SP_SOFTCAP_PIVOT_LOG) / Math.pow(spLog, 0.3);
+}
+function spSoftcapped() {
+  return !state.testBreakRules && spRawGainLog() > SP_SOFTCAP_PIVOT_LOG;
 }
 // gainRate 的 log10 版本（完整乘法链在 log 域，永不溢出）
 function gainRate() {
@@ -2133,7 +2144,7 @@ function applyAnnihilationVisibility() {
   btn.classList.remove("distort-mode");
   if (state.voidActive) btn.textContent = "虚空挑战中…";
   if (ready && !state.voidActive) {
-    btn.textContent = `湮灭（+${fmtNum(spGain(), spGainLog())} Sp）`;
+    btn.textContent = `湮灭（+${fmtNum(spGain(), spGainLog())} Sp）` + (spSoftcapped() ? "（软上限）" : "");
     btn.disabled = false;
   } else {
     btn.textContent = state.voidActive ? "虚空挑战中…" : `湮灭（须达到 1.42e32 K）`;
