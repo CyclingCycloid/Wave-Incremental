@@ -1321,9 +1321,11 @@ function switchTab(name) {
 }
 function switchSubtab(name) {
   if (simActive) return; // 离线模拟中不触碰 DOM/存档
+  const target = document.getElementById("sub-" + name);
+  if (!target) return; // 兜底：无效子页名不破坏当前渲染
   document.querySelectorAll(".subtab").forEach(t => t.classList.toggle("active", t.dataset.subtab === name));
   document.querySelectorAll(".subpage").forEach(p => p.classList.add("hidden"));
-  document.getElementById("sub-" + name).classList.remove("hidden");
+  target.classList.remove("hidden");
   // 记录当前主标签下最后停留的子标签页
   const activeTab = document.querySelector(".tab.active");
   if (activeTab) lastSubtab[activeTab.dataset.tab] = name;
@@ -2733,8 +2735,9 @@ function svu1FillTick(realDt) {
     subVPLog(vpLog + takeLog);
   }
   if (state.logVoidVF10 > NLOG + 1) {
-    state.svu1VfLog = clampLog(logAddLogs(state.svu1VfLog, state.logVoidVF10 + takeLog));
-    setVoidVFLog(state.logVoidVF10 + takeLog);
+    state.svu1VfLog = clampLog(logAddLogs(state.svu1VfLog, state.logVoidVF10 + takeLog)); // 累计投入 += VF×frac
+    // Sp/VP 走 sub*Log（语义为「扣减量」）；VF 直接写 log 权威，此处须保留 1−frac 而非扣减 frac
+    setVoidVFLog(state.logVoidVF10 + Math.log10(Math.max(1 - frac, 1e-300)));
   }
 }
 // 虚空升级定义（虚空里程碑 1 解锁）
@@ -5249,11 +5252,11 @@ function init() {
     state.annStartReal = gameNow();
     state.annStartGame = state.playTime; state.annGameElapsed = 0;
   }
-  // 恢复上次所在的大标签（无记录默认波动页）
+  // 恢复上次所在的大标签（无记录默认波动页）；子标签由 switchTab 内部恢复默认
+  //（不得再无条件 switchSubtab("main")——非波动页上它会把子页全部隐藏，内容不渲染）
   let lastTab = "wave";
   try { lastTab = localStorage.getItem("waveIncremental_lastTab") || "wave"; } catch {}
   switchTab(lastTab);
-  switchSubtab("main");
   renderAll();
 
   // 离线结算：DOM 就绪后执行（模拟期间 UI 函数早退，此时已可安全刷新）
