@@ -60,8 +60,8 @@ body {
 }
 
 #topbar { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 2px; margin-bottom: 14px; }
-#topbar .title { font-size: 20px; font-weight: 700; }
-#topbar .version { font-size: 12px; color: var(--text-dim); }
+#topbar .title { font-size: 20px; font-weight: 700; letter-spacing: 0.5px; }
+#topbar .version { font-family: var(--font-num); font-size: 12px; color: var(--text-dim); }
 .annihilate-btn {
   font-family: var(--font-main); font-size: 16px; font-weight: 700;
   color: var(--purple); background: transparent; border: 2px solid var(--purple);
@@ -72,8 +72,6 @@ body {
 .annihilate-btn:disabled { opacity: 0.45; cursor: default; background: transparent; }
 .annihilate-btn.distort-mode { color: var(--darkred); border-color: var(--darkred); }
 .annihilate-btn.distort-mode:hover:not(:disabled) { background: rgba(176,48,48,0.12); }
-.title { font-size: 22px; font-weight: 600; letter-spacing: 0.5px; }
-.version { font-family: var(--font-num); font-size: 13px; color: var(--text-dim); }
 
 #tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; flex-wrap: wrap; }
 .tab {
@@ -258,7 +256,6 @@ body {
 .sau-btn:disabled { opacity: 0.55; cursor: default; }
 /* AU：四组，两组共行 */
 .au-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 30px; margin: 10px 0; }
-.au-col { display: flex; flex-direction: column; gap: 14px; }
 .au-btn {
   background: var(--bg-panel); border: 2px solid var(--purple-dim); border-radius: 8px;
   padding: 8px 10px; text-align: left; cursor: pointer;
@@ -382,13 +379,8 @@ body {
 .auto-row .batch-btn.max { color: #d4a017; border: 1px solid #d4a017; background: transparent; }
 .auto-row .batch-btn:disabled { opacity: 0.4; cursor: default; }
 
-/* resource block（遗留：主要页已移至全局栏） */
-.resource-block { text-align: center; padding: 28px 0 20px; }
-.resource-value { font-family: var(--font-num); font-size: 52px; font-weight: 700; color: var(--accent); line-height: 1.1; }
-.resource-unit { font-family: var(--font-num); font-size: 18px; color: var(--text-dim); margin-top: 4px; }
+/* resource block（遗留清理：主要页已移至全局栏，仅保留 .abbrev 供全局栏使用） */
 .abbrev { font-size: 14px; opacity: 0.7; }
-.resource-gain { font-family: var(--font-num); font-size: 16px; color: var(--text-dim); margin-top: 6px; }
-.resource-name { font-size: 13px; color: var(--text-dim); margin-top: 10px; letter-spacing: 1px; }
 
 /* tri stats */
 .stat-tri { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 22px; }
@@ -408,7 +400,6 @@ body {
 .upgrade-card.locked { opacity: 0.5; }
 .up-card-left { flex: 1; min-width: 0; }
 .up-name { font-weight: 600; font-size: 15px; }
-.up-name .up-id { font-family: var(--font-num); font-size: 12px; color: var(--text-dim); margin-left: 6px; }
 .up-desc { font-size: 12px; color: var(--text-dim); margin-top: 3px; }
 .up-effect { font-family: var(--font-num); font-size: 12px; color: var(--accent); margin-top: 4px; }
 .up-card-right { text-align: right; flex-shrink: 0; }
@@ -423,7 +414,6 @@ body {
 .up-buy:disabled { border-color: var(--border); color: var(--text-dim); cursor: not-allowed; opacity: 0.6; }
 .up-level { font-family: var(--font-num); font-size: 11px; color: var(--text-dim); }
 
-.placeholder-text { text-align: center; color: var(--text-dim); margin-top: 24px; }
 .muted { color: var(--text-dim); opacity: 0.7; font-size: 13px; }
 .small { font-size: 12px; }
 
@@ -571,7 +561,6 @@ body[data-theme="white"] #bh-canvas { box-shadow: 0 0 0 2px #888, 0 2px 8px rgba
 .help-ver.black-text { color: var(--black); }
 
 /* 黑洞虚粒子升级（v0.4.3）*/
-.bh-vp-title { font-size: 14px; font-weight: 600; color: var(--text-dim); margin: 10px 0 4px; }
 .svpu-btn { border-style: dashed !important; }
 
 /* ===== 成就弹窗（左上角，堆叠+补位动画）===== */
