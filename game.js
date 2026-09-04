@@ -2857,7 +2857,8 @@ function vpuUnlocked(id) {
   } else if (id === "vpu1") {
     met = state.sau1 >= 10 && state.sau3 >= 10; // 象限拓张与紫外灾难均满级
   } else if (id === "vpu2") {
-    met = true; // 量子狂潮：无额外解锁条件（1e6 VF 的价格本身即门槛）
+    // 量子狂潮：在虚空中（削弱组合任意）达到 1e7000 Hz；达成一次永久解锁
+    met = state.voidActive && FLog() >= 7000;
   }
   if (met) {
     if (!state.vpuCondMet) state.vpuCondMet = [];
@@ -2880,6 +2881,11 @@ function vpuCondText(id) {
     if (mLog >= 70) return "解锁条件已达成";
     return "解锁条件：黑洞质量达到 1e70 太阳质量（当前 "
       + (mLog > NLOG + 1 ? fmtLog(mLog) : "1.00") + " M☉）";
+  }
+  if (id === "vpu2") {
+    if (state.voidActive && FLog() >= 7000) return "解锁条件已达成";
+    return "解锁条件：在虚空中达到 1e7000 Hz（削弱组合任意，当前 "
+      + (state.voidActive ? fmtLog(FLog()) + " Hz" : "不在虚空中") + "）";
   }
   if (id === "vpu1") {
     if (state.sau1 >= 10 && state.sau3 >= 10) return "解锁条件已达成";
@@ -4712,6 +4718,13 @@ function tick() {
     if (!state.voidActive) {
       const rate = svu2GainRate();
       if (rate > 0) state.svu2Level += rate * realDt;
+    }
+    // 量子狂潮解锁 latch：虚空中（削弱组合任意）达到 1e7000 Hz（达成一次永久记录）
+    if (state.voidActive && state.ach.normal.includes("A45")
+      && !(state.vpuCondMet && state.vpuCondMet.includes("vpu2")) && FLog() >= 7000) {
+      if (!state.vpuCondMet) state.vpuCondMet = [];
+      state.vpuCondMet.push("vpu2");
+      setAutosaveStatus("虚幻升级解锁：量子狂潮（虚空中达到 1e7000 Hz）");
     }
   }
 
