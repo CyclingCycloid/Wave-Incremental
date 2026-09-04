@@ -640,7 +640,7 @@ function spGainBaseLog() {
   if (tLog < 100) return Math.log10(tLog / 5); // lg(T)/5 的 log
   return Math.log10(2) + 0.01 * tLog;          // 2·T^0.01 的 log
 }
-// 未封顶的最终获取 log10（base + 全部乘数 + 首次保底），spGain*/spSoftcapped 共用
+// 未封顶的最终获取 log10（base + 全部乘数 + 首次保底），spGain* 系列共用
 function spRawGainLog() {
   const mLog = Math.log10(state.distortMult) + state.sau4 * Math.log10(2)
     + Math.log10(Math.max(1, phononSpMult())) + vpSpMultLog();
