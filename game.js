@@ -69,7 +69,7 @@ function defaultState() {
     svu2Level: 0,          // SVU2 能标偏移等级（虚空外增长，不清零不重置）
     au: {},                                 // 奇点单次升级已购标记（id→1）
     testBreakRules: false, // 测试按钮：临时打破规则（不获 Sp，v0.4.3 移除）
-    testMode: false,       // （已退役）v0.5.1 曾用测试模式开关，字段保留兼容旧存档
+    testMode: false,       // 测试模式：开发者预览开关（隔离未发布的开发内容，如未来的新重置层）
 
     // 黑洞系统（v0.4.3 实装，5DA 解锁）
     bhMass: 1,             // 黑洞质量（太阳质量，double 缓存）
@@ -5006,13 +5006,23 @@ function handleGameHotkey(e) {
 
 // 测试模式 UI 同步（全局：危险操作区按钮显隐 + 顶栏版本显示）
 // v0.5.1 内容已对全员开放：危险操作区保留「清零VF」「无Sp湮灭」工具，顶栏版本恒为 v0.5.1
+// 测试模式：开发者预览开关——用于隔离尚未正式发布的开发中内容（如未来的新重置层）。
+// 约定：开发中的内容用 if (state.testMode) 门控逻辑 + UI 显隐，正式发布时删除门控即可；
+// 测试模式本身不给予任何已正式发布的内容
 function applyTestModeUIGlobal() {
+  const enterBtn = document.getElementById("enter-test-btn");
   const clearBtn = document.getElementById("clear-vf-btn");
   const forceAnnBtn = document.getElementById("force-ann-btn");
   const verEl = document.getElementById("version-label");
-  if (clearBtn) clearBtn.classList.remove("hidden");
-  if (forceAnnBtn) forceAnnBtn.classList.remove("hidden");
-  if (verEl) verEl.textContent = "v0.5.1 The Void Update";
+  if (enterBtn) {
+    enterBtn.classList.remove("hidden");
+    enterBtn.textContent = state.testMode ? "退出测试" : "进入测试";
+  }
+  if (clearBtn) clearBtn.classList.toggle("hidden", !state.testMode);
+  if (forceAnnBtn) forceAnnBtn.classList.toggle("hidden", !state.testMode);
+  if (verEl) verEl.textContent = state.testMode
+    ? "v0.5.1 The Void Update（测试）"
+    : "v0.5.1 The Void Update";
 }
 
 // ---------- Wire up UI ----------
@@ -5227,7 +5237,31 @@ function setupUI() {
   refreshRuaUI();
 
 
-  // 危险操作区工具（v0.5.1 内容全员开放后保留：清零VF / 无Sp湮灭）
+  // 测试模式（危险操作区）：开发者预览开关——密码进入后可预览尚未正式发布的开发内容
+  //（未来如新重置层）。退出时只清标志：已正式发布的内容（A52/虚空等）不受影响
+  const TEST_PASSWORD = "ilvcycloiduwu";
+  const applyTestModeUI = applyTestModeUIGlobal;
+  document.getElementById("enter-test-btn").addEventListener("click", () => {
+    if (state.testMode) {
+      if (state.voidActive) exitVoid(); // 正在虚空中先结算退出，防孤儿状态
+      state.testMode = false;
+      state.svu1Filling = false; // 停止 SVU1 填充
+      applyTestModeUI();
+      saveGame();
+      renderAll();
+      setAutosaveStatus("已退出测试模式");
+      return;
+    }
+    const pw = prompt("输入测试密码：");
+    if (pw === null) return;
+    if (pw !== TEST_PASSWORD) { setAutosaveStatus("密码错误"); return; }
+    state.testMode = true;
+    applyTestModeUI();
+    saveGame();
+    renderAll();
+    setAutosaveStatus("已进入测试模式：开发者预览");
+  });
+  // 危险操作区工具：清零VF / 无Sp湮灭（测试模式下可见）
   document.getElementById("clear-vf-btn").addEventListener("click", () => {
     setVoidVFLog(NLOG);
     saveGame();
@@ -5242,7 +5276,6 @@ function setupUI() {
     updateVoidUI();
     setAutosaveStatus("已执行无 Sp 湮灭重置");
   });
-  applyTestModeUIGlobal();
   // 湮灭按钮（首次湮灭后显示；点击直接湮灭，不强制切换选项卡）
   document.getElementById("annihilate-btn").addEventListener("click", () => {
     if (state.annihilations === 0) return;
