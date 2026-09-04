@@ -4874,7 +4874,7 @@ function handleGameHotkey(e) {
       if (state.autoPhononUpg) { state.autoOn.phonon = !state.autoOn.phonon; updateAutomationUI(); setAutosaveStatus("声子页自动化：" + (state.autoOn.phonon ? "开" : "关")); saveGame(); }
       return;
     }
-    if (k === "R" || k === "r") {
+    if (k === "T" || k === "t") {
       e.preventDefault();
       if (state.autoAnn) { state.autoOn.ann = !state.autoOn.ann; updateAutomationUI(); setAutosaveStatus("自动湮灭：" + (state.autoOn.ann ? "开" : "关")); saveGame(); }
       return;
