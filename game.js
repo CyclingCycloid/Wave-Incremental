@@ -2339,9 +2339,7 @@ function updateVoidUI() {
     const done = def.n === 1 ? voidMilestone1() : voidMilestone2();
     el.cell.classList.toggle("done", done);
     el.statusEl.textContent = done ? "✓ 已完成" : "进行中";
-    el.progEl.textContent = done
-      ? def.doneReward
-      : `进度：历史最高 ${state.voidBestRules} / ${def.need} 种`;
+    el.progEl.textContent = `进度：历史最高 ${state.voidBestRules} / ${def.need} 种`;
   }
   // SVU 卡片状态
   for (const def of SVU_DEFS) {
@@ -2600,12 +2598,10 @@ function voidMilestone2() { return state.voidBestRules >= 7; }
 const VOID_MILESTONES = [
   { n: 1, title: "聚合浪潮", need: 4,
     desc: "完成至少同时 4 种扭曲生效的虚空",
-    reward: "黑洞吸积速率 ×VF^(2/3)（软上限前）＋解锁虚空升级（SVU）",
-    doneReward: "黑洞吸积 ×VF^(2/3) 与虚空升级（SVU）已解锁" },
+    reward: "解锁虚空泡沫第二效果，解锁虚空升级" },
   { n: 2, title: "七重湮灭", need: 7,
     desc: "完成至少同时 7 种扭曲生效的虚空",
-    reward: "波速获取速率 ^(1+min(0.2, lg(VF+1)/300))",
-    doneReward: "波速获取 ^(1+min(0.2, lg(VF+1)/300)) 已生效" },
+    reward: "解锁虚空泡沫第三效果" },
 ];
 // 虚空泡沫第三效果的幂次（未解锁里程碑 2 或无 VF 时为 1，即无影响）
 function vfGainExp() {
