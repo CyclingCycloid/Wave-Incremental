@@ -62,6 +62,7 @@ function defaultState() {
     voidVF: 0,             // 虚空泡沫（里程碑式：退出结算更高才更新）
     au: {},                                 // 奇点单次升级已购标记（id→1）
     testBreakRules: false, // 测试按钮：临时打破规则（不获 Sp，v0.4.3 移除）
+    testMode: false,       // 测试模式：解锁 v0.5.1 最新内容（A52/虚空/清零VF）
 
     // 黑洞系统（v0.4.3 实装，5DA 解锁）
     bhMass: 1,             // 黑洞质量（太阳质量，double 缓存）
@@ -984,6 +985,8 @@ function migrateState() {
   if (state.ruaBoostCD === undefined) state.ruaBoostCD = 0;
   // v0.5.0.2：VPU 解锁条件达成记录回填（达成一次永久解锁）
   if (!Array.isArray(state.vpuCondMet)) state.vpuCondMet = [];
+  // v0.5.1：测试模式回填
+  if (state.testMode === undefined) state.testMode = false;
   // 修复离线模拟虚拟时钟污染的存量坏档：时间戳落在未来会使 CD 计时（now - 时间戳）
   // 为负、自动湮灭/自动升级3卡死直至现实时间追上（最长 8h）；归位为当前时刻立即恢复。
   // annFastest 为负（realDur 为负时被错误刷新）同样归零
@@ -2160,7 +2163,7 @@ function renderTotalEffect(el, id) {
   if (!el) return;
   const t = totalEffectText(id);
   if (!t) { el.textContent = ""; return; }
-  el.textContent = t.text + (t.capped ? `（受软上限影响，有效级别为 ${t.eff >= 100 ? fmt(t.eff) : t.eff.toFixed(1)}）` : "");
+  el.textContent = t.text + (t.capped && state.testMode ? `（受软上限影响，有效级别为 ${t.eff >= 100 ? fmt(t.eff) : t.eff.toFixed(1)}）` : "");
 }
 
 // ---------- 虚空页 UI ----------
@@ -2221,9 +2224,9 @@ function updateVoidUI() {
     const fLog = FLog();
     const vfLog = voidVFLog(fLog);
     const reached = vfLog > NLOG + 1;
-    const preview = reached ? `预计 VF：${fmtLog(vfLog)}` : `频率尚未达到 1e1000 Hz`;
+    const preview = reached ? `预计 VF：${fmtLog(vfLog)}` : `频率尚未达到 1e2000 Hz`;
     document.getElementById("void-progress").textContent =
-      `当前频率：${fmtNum(Math.pow(10, Math.min(fLog, 308)), fLog)} Hz\n目标：1e1000 Hz\n${preview}`;
+      `当前频率：${fmtNum(Math.pow(10, Math.min(fLog, 308)), fLog)} Hz\n目标：1e2000 Hz\n${preview}`;
     stats.textContent = vfLine;
   } else {
     stats.textContent = vfLine;
@@ -2238,6 +2241,7 @@ function effSauMax(key) {
 }
 // 奇点凝聚 n>10 后的价格延伸（log10）：每级在原 10^(5n) 基础上额外 ×n⁴
 function sau2ExtraCostLog(n) {
+  if (!state.testMode) return 0; // 非测试模式无价格延伸
   let log = 0;
   for (let k = 11; k <= n; k++) log += 4 * Math.log10(k);
   return log;
@@ -2245,7 +2249,7 @@ function sau2ExtraCostLog(n) {
 // SAU1/SAU3 价格的 log10：n≤10 为 base+2n（增速 ×100）；超过 10 级后每级增速 =
 // 原增速 ×100 × n²（n 为当前等级），log 域累积
 function sauCostLog(base, n) {
-  if (n <= 10) return base + 2 * n;
+  if (!state.testMode || n <= 10) return base + 2 * n; // 非测试模式无价格延伸
   let log = base + 20; // 第 10 次购买的价格
   for (let k = 11; k <= n; k++) log += 2 + 2 * Math.log10(k);
   return log;
@@ -2310,6 +2314,8 @@ function buyAU(id) {
 // ---- 效果挂钩 ----
 // 可重复升级软上限：有效级别 = 软上限起点 + (n-起点)^power（起点处无缝衔接原线性公式）
 function effLevel(n, softcap, power) {
+  // 非测试模式（v0.5.0.3 前内容）：无软上限，有效级别 = 真实等级（线性）
+  if (!state.testMode) return n;
   return n <= softcap ? n : softcap + Math.pow(n - softcap, power);
 }
 // SAU1：声子升级3上限（有效级别 = floor(10+(n-10)^(1/2))；每级 +2，单圈重整后 +3）
@@ -2475,20 +2481,34 @@ function bhAccretionRateLog() {
 // ---------- 虚空（A52 解锁：多扭曲削弱同时生效的挑战，结算虚空泡沫 VF）----------
 // D1-D8 顺序对应扭曲宇宙显示顺序；乘数（热寂100 狭窄200 为最高档）
 const VOID_MULTIPLIERS = { rigid: 20, expand: 20, directed: 10, cooldown: 16, inflation: 40, adiabatic: 100, narrow: 200, simple: 100 };
-const VOID_TARGET_FLOG = 1000; // 挑战目标：频率 ≥ 1e1000 Hz
-// 当前虚空配置下的预计 VF（log10；FLog 未达标时返回 NLOG）
+const VOID_TARGET_FLOG = 2000; // 挑战目标：频率 ≥ 1e2000 Hz（测试模式）
+// 当前虚空配置下的预计 VF（log10；FLog 未达标时返回 NLOG）。
+// 测试模式（v0.5.1）：VF = 8^(N-1)×Π乘数×(F/1e2000)^min(0.0003, √(0.0009/lg(F+1)))
 function voidVFLog(fLog) {
-  if (fLog < VOID_TARGET_FLOG) return NLOG;
+  // 普通模式（v0.5.0.3）：目标 1e1000、VF = 8^N×Π乘数×(F/1e1000)^0.0003
+  // 测试模式（v0.5.1）：目标 1e2000、VF = 8^(N-1)×Π乘数×(F/1e2000)^min(0.0003, √(0.0009/lg(F+1)))
+  const target = state.testMode ? 2000 : 1000;
+  if (fLog < target) return NLOG;
   const N = state.voidRules.length;
-  let multLog = N * Math.log10(8);
+  if (N < 1) return NLOG;
+  const baseExp = state.testMode ? N - 1 : N;
+  let multLog = baseExp * Math.log10(8);
   for (const id of state.voidRules) multLog += Math.log10(VOID_MULTIPLIERS[id] || 1);
-  return clampLog(multLog + 0.0003 * (fLog - VOID_TARGET_FLOG));
+  const expo = state.testMode ? Math.min(0.0003, Math.sqrt(0.0009 / (fLog + 1))) : 0.0003;
+  return clampLog(multLog + expo * (fLog - target));
 }
-// VF 对虚粒子获取的加成（log10）：×VF^(min(1/2, 3/lg(VF+1)))；无 VF 时 0
+// VF 对虚粒子获取的加成（log10）。测试模式：×(1+VF^((lg(VF+1)+3)/(4lg(VF+1)+6)))；
+// 非测试（基础版）：×VF^(min(1/2, 3/lg(VF+1)))。无 VF 时 0
 function vfVPMultLog() {
   if (!(state.voidVF > 0)) return 0;
-  const e = Math.min(0.5, 3 / Math.log10(state.voidVF + 1));
-  return e * Math.log10(state.voidVF);
+  const lgVF1 = Math.log10(state.voidVF + 1);
+  if (state.testMode) {
+    const e = (lgVF1 + 3) / (4 * lgVF1 + 6);
+    const inner = Math.min(Math.log10(state.voidVF) * e, 300);
+    return clampLog(Math.log10(1 + Math.pow(10, inner)));
+  }
+  const e = Math.min(0.5, 3 / lgVF1);
+  return clampLog(e * Math.log10(state.voidVF));
 }
 // 进入虚空：湮灭重置后应用选中的削弱集合
 function enterVoid(ids) {
@@ -2510,7 +2530,7 @@ function enterVoid(ids) {
   updateVoidUI();
   setAutosaveStatus("已进入虚空（" + list.length + " 个削弱生效）");
 }
-// 退出虚空：达到 1e1000 Hz 时结算 VF（里程碑式：更高才更新），随后湮灭重置回主宇宙
+// 退出虚空：达到 1e2000 Hz 时结算 VF（里程碑式：更高才更新），随后湮灭重置回主宇宙
 function exitVoid() {
   if (!state.voidActive) return;
   const fLog = FLog();
@@ -2529,7 +2549,7 @@ function exitVoid() {
   updateVoidUI();
   setAutosaveStatus(achieved
     ? `已退出虚空：${vfNew > prevVF ? "获得虚空泡沫 ×" + fmtNum(vfNew, vfLog) : "未超过历史最高（" + fmtNum(state.voidVF, Math.log10(state.voidVF)) + "）"}`
-    : "已退出虚空：未达到 1e1000 Hz，无虚空泡沫");
+    : "已退出虚空：未达到 1e2000 Hz，无虚空泡沫");
 }
 function bhMassSoftcapped() {
   if (!bhUnlocked()) return false;
@@ -2561,13 +2581,13 @@ function sbuCostLog(u, n) {
   if (u.id === "sbu1") {
     // 1e9 × 100^(n-1)；超过 12 级后每级额外 ×(n-2)²
     let log = 9 + (n - 1) * 2;
-    for (let k = 13; k <= n; k++) log += 2 * Math.log10(k - 2);
+    if (state.testMode) for (let k = 13; k <= n; k++) log += 2 * Math.log10(k - 2);
     return log;
   }
   if (u.id === "sbu2") {
     // 1e10 × 1000^(n-1)；超过 7 级后每级额外 ×n³
     let log = 10 + (n - 1) * 3;
-    for (let k = 8; k <= n; k++) log += 3 * Math.log10(k);
+    if (state.testMode) for (let k = 8; k <= n; k++) log += 3 * Math.log10(k);
     return log;
   }
   if (u.id === "sbu3") return 11 + (n - 1) * 2;      // 1e11 × 100^(n-1)
@@ -4507,6 +4527,120 @@ function tick() {
   if (!document.getElementById("page-achievements").classList.contains("hidden")) updateAchievementsUI();
 }
 
+// ---------- 快捷键（v0.5.0.3 QoL，所有玩家可用）----------
+// ←/→ 大标签、↑/↓ 子标签、U 湮灭前升级全买、R 湮灭后升级全买、A 湮灭、L 升级3、
+// 按住 B+1/2/3 黑洞状态、Shift+1~8 进扭曲、Shift+A/R/L/M 自动化开关
+let bhHotkeyArmedUntil = 0; // 按住 B 的武装窗口（0.5s）
+function buyAllPreAnnihilation() {
+  // 湮灭前升级：多轮尽力购买（升级间有依赖/价格联动）
+  for (let round = 0; round < 5; round++) {
+    buyUp1(); buyUp2(); buyUp3();
+    buyPhUnlock(); buyPG1(); buyPG2(); buyPG3(); buyFluct(); buyCoupling();
+  }
+}
+function buyAllPostAnnihilation() {
+  // 湮灭后升级：多轮尽力购买
+  for (let round = 0; round < 5; round++) {
+    buySAU("sau1"); buySAU("sau2"); buySAU("sau3"); buySAU("sau4");
+    buySAU("spu1");
+    for (const grp of AU_DEFS) for (const u of grp) buyAU(u.id);
+    if (bhUnlocked()) { buySBU("sbu1"); buySBU("sbu2"); buySBU("sbu3"); }
+    for (const u of SVPU_DEFS) buySVPU(u.id);
+    for (const u of VPU_DEFS) buyVPU(u.id);
+  }
+}
+function visibleTabs() {
+  return [...document.querySelectorAll("#tabs .tab")].filter(t => !t.classList.contains("hidden"));
+}
+function switchTabByOffset(offset) {
+  const tabs = visibleTabs();
+  const cur = tabs.findIndex(t => t.classList.contains("active"));
+  const next = tabs[(cur + offset + tabs.length) % tabs.length];
+  if (next) next.click();
+}
+function visibleSubtabs() {
+  const page = [...document.querySelectorAll(".page")].find(p => !p.classList.contains("hidden"));
+  if (!page) return [];
+  return [...page.querySelectorAll(".subtab")].filter(t => !t.classList.contains("hidden"));
+}
+function switchSubtabByOffset(offset) {
+  const subs = visibleSubtabs();
+  const cur = subs.findIndex(t => t.classList.contains("active"));
+  const next = subs[(cur + offset + subs.length) % subs.length];
+  if (next) next.click();
+}
+function handleGameHotkey(e) {
+  const tag = (e.target.tagName || "").toLowerCase();
+  if (tag === "input" || tag === "textarea" || e.target.isContentEditable) return;
+  if (e.repeat) return;
+  const now = Date.now();
+  const bhArmed = now < bhHotkeyArmedUntil;
+  const k = e.key;
+  // 方向键：大标签/子标签
+  if (k === "ArrowLeft") { switchTabByOffset(-1); return; }
+  if (k === "ArrowRight") { switchTabByOffset(1); return; }
+  if (k === "ArrowUp") { switchSubtabByOffset(-1); return; }
+  if (k === "ArrowDown") { switchSubtabByOffset(1); return; }
+  // 黑洞：按住 B + 1/2/3
+  if (bhArmed && (k === "1" || k === "2" || k === "3")) {
+    setBhState(k === "1" ? "accrete" : k === "2" ? "distorl" : "pulse");
+    bhHotkeyArmedUntil = 0;
+    return;
+  }
+  if (e.shiftKey) {
+    // Shift 系：自动化开关（须已解锁对应自动化）
+    if (k === "A" || k === "a") {
+      if (state.autoWaveUpg) { state.autoOn.wave = !state.autoOn.wave; updateAutomationUI(); setAutosaveStatus("主要页自动化：" + (state.autoOn.wave ? "开" : "关")); saveGame(); }
+      if (state.autoPhononUpg) { state.autoOn.phonon = !state.autoOn.phonon; updateAutomationUI(); setAutosaveStatus("声子页自动化：" + (state.autoOn.phonon ? "开" : "关")); saveGame(); }
+      return;
+    }
+    if (k === "R" || k === "r") {
+      if (state.autoAnn) { state.autoOn.ann = !state.autoOn.ann; updateAutomationUI(); setAutosaveStatus("自动湮灭：" + (state.autoOn.ann ? "开" : "关")); saveGame(); }
+      return;
+    }
+    if (k === "L" || k === "l") {
+      if (state.autoUp3) { state.autoOn.up3 = !state.autoOn.up3; updateAutomationUI(); setAutosaveStatus("自动升级3：" + (state.autoOn.up3 ? "开" : "关")); saveGame(); }
+      return;
+    }
+    if (k === "M" || k === "m") {
+      if (state.ach.normal.includes("A34")) {
+        state.batchMode.wave = !state.batchMode.wave;
+        state.batchMode.phonon = !state.batchMode.phonon;
+        updateAutomationUI(); saveGame();
+        setAutosaveStatus("批量购买模式：" + (state.batchMode.wave ? "开" : "单次"));
+      }
+      return;
+    }
+    // Shift+1~8：进入对应扭曲宇宙
+    const digit = parseInt(k, 10);
+    if (digit >= 1 && digit <= 8) {
+      const u = DISTORT_UNIVERSES[digit - 1];
+      if (u) enterDistort(u.id);
+      return;
+    }
+    return;
+  }
+  switch (k) {
+    case "u": case "U":
+      buyAllPreAnnihilation();
+      renderWave(); updatePhononUI(); updateSpUI();
+      break;
+    case "r": case "R":
+      buyAllPostAnnihilation();
+      updateSpUI(); updateBlackholeUI();
+      break;
+    case "a": case "A":
+      if (!bhArmed) document.getElementById("annihilate-btn").click();
+      break;
+    case "l": case "L":
+      buyUp3();
+      break;
+    case "b": case "B":
+      bhHotkeyArmedUntil = now + 500; // 按住 B 后 0.5s 内按 1/2/3
+      break;
+  }
+}
+
 // ---------- Wire up UI ----------
 function setupUI() {
   document.querySelectorAll(".tab").forEach(t => {
@@ -4713,6 +4847,33 @@ function setupUI() {
   setInterval(refreshRuaUI, 1000);
   refreshRuaUI();
 
+
+  // 测试模式（危险操作区）：密码进入后解锁 v0.5.1 最新内容
+  const TEST_PASSWORD = "ilvcycloiduwu";
+  const applyTestModeUI = () => {
+    document.getElementById("enter-test-btn").classList.toggle("hidden", state.testMode);
+    document.getElementById("clear-vf-btn").classList.toggle("hidden", !state.testMode);
+    document.getElementById("version-label").textContent = state.testMode
+      ? "v0.5.1 The Void Update（测试）"
+      : "v0.5.0.3 The Black Hole Update";
+  };
+  document.getElementById("enter-test-btn").addEventListener("click", () => {
+    const pw = prompt("输入测试密码：");
+    if (pw === null) return;
+    if (pw !== TEST_PASSWORD) { setAutosaveStatus("密码错误"); return; }
+    state.testMode = true;
+    applyTestModeUI();
+    saveGame();
+    renderAll();
+    setAutosaveStatus("已进入测试模式：解锁最新内容");
+  });
+  document.getElementById("clear-vf-btn").addEventListener("click", () => {
+    state.voidVF = 0;
+    saveGame();
+    updateVoidUI();
+    setAutosaveStatus("虚空泡沫已清零");
+  });
+  applyTestModeUI();
   // 湮灭按钮（首次湮灭后显示；点击直接湮灭，不强制切换选项卡）
   document.getElementById("annihilate-btn").addEventListener("click", () => {
     if (state.annihilations === 0) return;
@@ -4765,6 +4926,9 @@ function init() {
   processPendingOffline();
 
   state.lastTick = Date.now();
+
+  // 快捷键（v0.5.0.3 QoL）：全局监听，输入框聚焦时忽略
+  document.addEventListener("keydown", handleGameHotkey);
   setInterval(tick, 100); // 逻辑 tick 恒定 100ms（数值节奏不变）
   // 显示循环：按所选频率刷新快变数字（全局资源栏 + 声子资源行）
   const uiLoop = (t) => {

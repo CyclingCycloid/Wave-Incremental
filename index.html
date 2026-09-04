@@ -11,7 +11,7 @@
   <div id="app">
     <header id="topbar">
       <div class="title">Wave Incremental</div>
-      <div class="version">v0.5.1 The Void Update</div>
+      <div class="version" id="version-label">v0.5.1 The Void Update</div>
       <button id="annihilate-btn" class="annihilate-btn hidden">湮灭</button>
     </header>
 
@@ -303,6 +303,10 @@
         <div class="setting-group danger">
           <h3>危险操作</h3>
           <button id="hard-reset" class="danger-btn">硬重置（清除一切）</button>
+          <div class="btn-row" id="test-mode-row">
+            <button id="enter-test-btn">进入测试</button>
+            <button id="clear-vf-btn" class="hidden">清零VF</button>
+          </div>
         </div>
       </section>
 
@@ -380,7 +384,7 @@
         <div class="subpage hidden" id="sub-ann-void">
           <div id="void-particles" aria-hidden="true"></div>
           <h3 class="void-title">虚 空</h3>
-          <p class="void-desc">选择扭曲宇宙的削弱，让它们同时生效。在频率达到 <strong>1e1000 Hz</strong> 后退出虚空，
+          <p class="void-desc">选择扭曲宇宙的削弱，让它们同时生效。在频率达到 <strong>1e2000 Hz</strong> 后退出虚空，
             即可根据已生效的削弱与最终频率获得<strong>虚空泡沫（VF）</strong>——VF 可增强虚粒子的获取，更多的用途尚待发现。</p>
           <div id="void-stats" class="void-stats"></div>
           <div id="void-rules" class="void-rule-grid"></div>
@@ -535,6 +539,7 @@
             <p><strong>统计</strong>：分「数据 / 重置」子页；数据页记录游戏/真实双时钟与各项极值，更多分区将随游戏进度开放。</p>
             <p><strong>数值显示</strong>：设置页可选科学 / 工程 / 对数记数法与小数位数（3–6 位）。</p>
             <p><strong>存档</strong>：每 15 秒自动保存，另有 6 个手动槽位（点击槽名可重命名）与 base64 导出导入、TXT 文件导出。</p>
+            <p><strong>快捷键</strong>：←/→ 切换大标签页、↑/↓ 切换子标签页；U 购买全部湮灭前升级、R 购买全部湮灭后升级、A 湮灭、L 购买升级 3；按住 B 后按 1/2/3 切换黑洞吸积/扭曲/脉冲；Shift+1~8 进入对应扭曲宇宙；Shift+A/R/L 分别开关主要页与声子页自动化/自动湮灭/自动升级3，Shift+M 切换前两个自动化的单次/批量购买。</p>
           </div>
         </details>
       </section>
