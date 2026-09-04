@@ -2186,8 +2186,11 @@ function totalEffectText(id) {
     }
     case "sau4":
       return { text: `总效果：奇点获取 ×${fmt(Math.pow(2, n("sau4")))}`, capped: false };
-    case "sbu1":
-      return { text: `总效果：吸积效率 ×${fmt(Math.pow(2, n("sbu1")))}`, capped: false };
+    case "sbu1": {
+      // 事件视界总等级含量子狂潮免费等级（与 bhAccretionGainLog 的扣费口径一致）
+      const total = n("sbu1") + sbuFree();
+      return { text: `总效果：吸积效率 ×${fmt(Math.pow(2, total))}` + (sbuFree() > 0 ? `（含免费 +${fmt(sbuFree())}）` : ""), capped: false };
+    }
     case "sbu2": {
       const eff = sbu2Eff();
       return { text: `总效果：黑洞效果指数 +${(0.2 + 0.05 * eff).toFixed(2)}`, capped: n("sbu2") > 7, eff };
