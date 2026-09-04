@@ -69,7 +69,7 @@ function defaultState() {
     svu2Level: 0,          // SVU2 能标偏移等级（虚空外增长，不清零不重置）
     au: {},                                 // 奇点单次升级已购标记（id→1）
     testBreakRules: false, // 测试按钮：临时打破规则（不获 Sp，v0.4.3 移除）
-    testMode: false,       // 测试模式：解锁 v0.5.1 最新内容（A52/虚空/清零VF）
+    testMode: false,       // （已退役）v0.5.1 曾用测试模式开关，字段保留兼容旧存档
 
     // 黑洞系统（v0.4.3 实装，5DA 解锁）
     bhMass: 1,             // 黑洞质量（太阳质量，double 缓存）
@@ -1028,12 +1028,12 @@ function migrateState() {
   if (state.ruaBoostCD === undefined) state.ruaBoostCD = 0;
   // v0.5.0.2：VPU 解锁条件达成记录回填（达成一次永久解锁）
   if (!Array.isArray(state.vpuCondMet)) state.vpuCondMet = [];
-  // v0.5.1：测试模式回填
+  // v0.5.1：测试模式字段保留兼容（内容已全员开放，逻辑不再读取）
   if (state.testMode === undefined) state.testMode = false;
-  // 孤儿虚空状态清理：虚空中丢失 A52/testMode 的存档会永久软锁
+  // 孤儿虚空状态清理：虚空中丢失 A52 的存档会永久软锁
   //（虚空页隐藏、湮灭/自动湮灭/扭曲入口全被阻）。进入虚空时资源已重置，
   // 此处直接清标志即可回到主宇宙（不走 exitVoid——迁移阶段 DOM 未就绪）
-  if (state.voidActive && !(state.testMode && state.ach.normal && state.ach.normal.includes("A52"))) {
+  if (state.voidActive && !(state.ach.normal && state.ach.normal.includes("A52"))) {
     state.voidActive = false;
     state.voidRules = [];
   }
@@ -2110,7 +2110,7 @@ function applyAnnihilationVisibility() {
   document.getElementById("tab-automation").classList.toggle("hidden", !done);
   document.getElementById("subtab-distort").classList.toggle("hidden", state.annihilations < 20);
   document.getElementById("subtab-blackhole").classList.toggle("hidden", !bhUnlocked());
-  document.getElementById("subtab-void").classList.toggle("hidden", !state.testMode || !state.ach.normal.includes("A52"));
+  document.getElementById("subtab-void").classList.toggle("hidden", !state.ach.normal.includes("A52"));
   const ready = annihilationReady();
   if (!done) {
     // 首次湮灭：全屏遮罩接管（类似第一次大塌缩）；序列进行中不重复拉起
@@ -2159,7 +2159,7 @@ function applyHelpVisibility() {
   document.getElementById("help-blackhole").classList.toggle("hidden", !bhUnlocked());  // 黑洞章节内防剧透：虚幻升级（VPU）区相关内容按进度显隐
   document.getElementById("help-vpu-extra").classList.toggle("hidden", !state.ach.normal.includes("A45"));
   document.getElementById("help-svpu-extra").classList.toggle("hidden", !vpuOwned("vpu5"));
-  document.getElementById("help-void").classList.toggle("hidden", !(state.testMode && state.ach.normal.includes("A52")));
+  document.getElementById("help-void").classList.toggle("hidden", !state.ach.normal.includes("A52"));
   document.getElementById("stat-ann-group").classList.toggle("hidden", state.annihilations < 1);
   document.getElementById("subtab-stats-challenge").classList.toggle("hidden", state.annihilations < 20);
 }
@@ -2321,7 +2321,7 @@ let voidMsEls = [];     // 虚空里程碑格子元素引用
 function updateVoidUI() {
   if (simActive) return;
   // 虚空仅测试模式可访问：非测试模式下子页隐藏、UI 不更新
-  const voidAccessible = state.testMode && state.ach.normal.includes("A52");
+  const voidAccessible = state.ach.normal.includes("A52");
   const subtab = document.getElementById("subtab-void");
   if (subtab) subtab.classList.toggle("hidden", !voidAccessible);
   if (!voidAccessible) return;
@@ -2687,7 +2687,7 @@ function vfVPMultLog() {
 }
 // 进入虚空：湮灭重置后应用选中的削弱集合
 function enterVoid(ids) {
-  if (!state.testMode || !state.ach.normal.includes("A52")) return;
+  if (!state.ach.normal.includes("A52")) return;
   if (state.voidActive || state.distortActive) return;
   const list = (ids || []).filter(id => DISTORT_UNIVERSES.some(u => u.id === id));
   if (!list.length) return;
@@ -4235,9 +4235,9 @@ const NORMAL_ACH = [
   { id: "A45", name: "万物", desc: "购买所有奇点升级", star: true, reward: "解锁虚幻升级", check: () => ALL_SP_UPGRADES_OWNED() },
   // 第 5 行 (A51-…) 虚粒子
   { id: "A51", name: "虚幻", desc: "购买第一个虚幻升级", check: () => VPU_DEFS.some(u => vpuOwned(u.id)) },
-  { id: "A52", name: "超载", desc: "达到 1e50 Sp", star: true, reward: "解锁“虚空”选项卡", check: () => state.testMode && getLogTotalSp() >= 50 },
-  { id: "A53", name: "融合", desc: "完成至少两种扭曲的虚空", star: true, reward: "up1 获得免费等级 1（重置不清零）", check: () => state.testMode && state.voidBestRules >= 2 },
-  { id: "A54", name: "混沌", desc: "完成所有扭曲生效的虚空", check: () => state.testMode && state.voidBestRules >= 8 },
+  { id: "A52", name: "超载", desc: "达到 1e50 Sp", star: true, reward: "解锁“虚空”选项卡", check: () => getLogTotalSp() >= 50 },
+  { id: "A53", name: "融合", desc: "完成至少两种扭曲的虚空", star: true, reward: "up1 获得免费等级 1（重置不清零）", check: () => state.voidBestRules >= 2 },
+  { id: "A54", name: "混沌", desc: "完成所有扭曲生效的虚空", check: () => state.voidBestRules >= 8 },
   { id: "A55", name: "卷缩", desc: "达到 1.79e308 奇点", check: () => getLogSp() >= SP_SOFTCAP_PIVOT_LOG },
 ];
 const ACH_PER_ROW = 5;
@@ -4486,18 +4486,6 @@ function updateAchievementsUI() {
       continue;
     }
     const done = state.ach.normal.includes(a.id);
-    // A52/A53/A54 为测试模式限定成就：非测试模式下显示为 ???（与其他占位一致，不可完成）
-    if ((a.id === "A52" || a.id === "A53" || a.id === "A54") && !state.testMode) {
-      root.classList.remove("completed");
-      idEl.style.display = "none";
-      nameEl.style.display = "none";
-      descEl.style.display = "none";
-      checkEl.style.display = "none";
-      starEl.style.display = "none";
-      lockEl.style.display = "";
-      lockEl.textContent = "???";
-      continue;
-    }
     root.classList.toggle("completed", done);
     lockEl.style.display = "none";
     starEl.style.display = a.star ? "" : "none";
@@ -5017,21 +5005,14 @@ function handleGameHotkey(e) {
 }
 
 // 测试模式 UI 同步（全局：危险操作区按钮显隐 + 顶栏版本显示）
+// v0.5.1 内容已对全员开放：危险操作区保留「清零VF」「无Sp湮灭」工具，顶栏版本恒为 v0.5.1
 function applyTestModeUIGlobal() {
-  const enterBtn = document.getElementById("enter-test-btn");
   const clearBtn = document.getElementById("clear-vf-btn");
   const forceAnnBtn = document.getElementById("force-ann-btn");
   const verEl = document.getElementById("version-label");
-  // 测试模式下按钮变为「退出测试模式」（一直可见，否则退出分支不可达）
-  if (enterBtn) {
-    enterBtn.classList.remove("hidden");
-    enterBtn.textContent = state.testMode ? "退出测试" : "进入测试";
-  }
-  if (clearBtn) clearBtn.classList.toggle("hidden", !state.testMode);
-  if (forceAnnBtn) forceAnnBtn.classList.toggle("hidden", !state.testMode);
-  if (verEl) verEl.textContent = state.testMode
-    ? "v0.5.1 The Void Update（测试）"
-    : "v0.5.0.3 The Black Hole Update";
+  if (clearBtn) clearBtn.classList.remove("hidden");
+  if (forceAnnBtn) forceAnnBtn.classList.remove("hidden");
+  if (verEl) verEl.textContent = "v0.5.1 The Void Update";
 }
 
 // ---------- Wire up UI ----------
@@ -5246,51 +5227,22 @@ function setupUI() {
   refreshRuaUI();
 
 
-  // 测试模式（危险操作区）：密码进入后解锁 v0.5.1 最新内容
-  const TEST_PASSWORD = "ilvcycloiduwu";
-  const applyTestModeUI = applyTestModeUIGlobal;
-  document.getElementById("enter-test-btn").addEventListener("click", () => {
-    if (state.testMode) {
-      // 退出测试模式：移除 A52（虚空/虚空泡沫为测试模式内容）。
-      // 若正在虚空中，先按当前进度结算退出——否则 voidActive 成为孤儿状态：
-      // 虚空页隐藏、湮灭/自动湮灭/扭曲入口全部被阻，玩家无任何 UI 出口（永久软锁）
-      if (state.voidActive) exitVoid();
-      state.testMode = false;
-      state.svu1Filling = false; // 停止 SVU1 填充（测试内容随测试模式关闭）
-      // 移除测试模式限定成就：A52（虚空入口）、A53/A54（虚空内容）
-      state.ach.normal = state.ach.normal.filter(a => a !== "A52" && a !== "A53" && a !== "A54");
-      state.ach.hidden = state.ach.hidden.filter(a => a !== "S26");
-      applyTestModeUI();
-      saveGame();
-      renderAll();
-      setAutosaveStatus("已退出测试模式");
-      return;
-    }
-    const pw = prompt("输入测试密码：");
-    if (pw === null) return;
-    if (pw !== TEST_PASSWORD) { setAutosaveStatus("密码错误"); return; }
-    state.testMode = true;
-    applyTestModeUI();
-    saveGame();
-    renderAll();
-    setAutosaveStatus("已进入测试模式：解锁最新内容");
-  });
+  // 危险操作区工具（v0.5.1 内容全员开放后保留：清零VF / 无Sp湮灭）
   document.getElementById("clear-vf-btn").addEventListener("click", () => {
     setVoidVFLog(NLOG);
     saveGame();
     updateVoidUI();
     setAutosaveStatus("虚空泡沫已清零");
   });
-  // 无 Sp 湮灭（测试功能）：执行一次不获取奇点的湮灭重置（扭曲/虚空中不可用——各有专属出口）
+  // 无 Sp 湮灭：执行一次不获取奇点的湮灭重置（扭曲/虚空中不可用——各有专属出口）
   document.getElementById("force-ann-btn").addEventListener("click", () => {
-    if (!state.testMode) return;
     if (state.distortActive || state.voidActive) { setAutosaveStatus("扭曲/虚空中不可用，请先退出"); return; }
     if (!confirm("确定进行不获取奇点的湮灭重置吗？（当前持有的奇点与进度按湮灭规则重置，但不获得 Sp）")) return;
     forceAnnihilationReset(0);
     updateVoidUI();
-    setAutosaveStatus("已执行无 Sp 湮灭重置（测试）");
+    setAutosaveStatus("已执行无 Sp 湮灭重置");
   });
-  applyTestModeUI();
+  applyTestModeUIGlobal();
   // 湮灭按钮（首次湮灭后显示；点击直接湮灭，不强制切换选项卡）
   document.getElementById("annihilate-btn").addEventListener("click", () => {
     if (state.annihilations === 0) return;
