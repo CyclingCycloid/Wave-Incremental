@@ -2218,11 +2218,6 @@ function updateVoidUI() {
   const subtab = document.getElementById("subtab-void");
   if (subtab) subtab.classList.toggle("hidden", !voidAccessible);
   if (!voidAccessible) return;
-  // 描述按模式显示目标与频率指数（普通 1e1000/0.0003，测试 1e2000/渐减指数）
-  const tEl = document.getElementById("void-target");
-  if (tEl) tEl.textContent = state.testMode ? "1e2000" : "1e1000";
-  const xEl = document.getElementById("void-expo");
-  if (xEl) xEl.textContent = state.testMode ? "min(0.0003, √(0.0009/lg(F+1)))" : "0.0003";
   buildVoidOnce();
   document.getElementById("void-enter-row").classList.toggle("hidden", state.voidActive);
   document.getElementById("void-active-panel").classList.toggle("hidden", !state.voidActive);
@@ -2493,32 +2488,24 @@ function bhAccretionRateLog() {
 const VOID_MULTIPLIERS = { rigid: 20, expand: 20, directed: 10, cooldown: 16, inflation: 40, adiabatic: 100, narrow: 200, simple: 100 };
 const VOID_TARGET_FLOG = 2000; // 挑战目标：频率 ≥ 1e2000 Hz（测试模式）
 // 当前虚空配置下的预计 VF（log10；FLog 未达标时返回 NLOG）。
-// 测试模式（v0.5.1）：VF = 8^(N-1)×Π乘数×(F/1e2000)^min(0.0003, √(0.0009/lg(F+1)))
+// VF = 8^(N-1)×Π乘数×(F/1e2000)^min(0.0003, √(0.0009/lg(F+1)))
 function voidVFLog(fLog) {
-  // 普通模式（v0.5.0.3）：目标 1e1000、VF = 8^N×Π乘数×(F/1e1000)^0.0003
-  // 测试模式（v0.5.1）：目标 1e2000、VF = 8^(N-1)×Π乘数×(F/1e2000)^min(0.0003, √(0.0009/lg(F+1)))
-  const target = state.testMode ? 2000 : 1000;
+  const target = 2000;
   if (fLog < target) return NLOG;
   const N = state.voidRules.length;
   if (N < 1) return NLOG;
-  const baseExp = state.testMode ? N - 1 : N;
-  let multLog = baseExp * Math.log10(8);
+  let multLog = (N - 1) * Math.log10(8);
   for (const id of state.voidRules) multLog += Math.log10(VOID_MULTIPLIERS[id] || 1);
-  const expo = state.testMode ? Math.min(0.0003, Math.sqrt(0.0009 / (fLog + 1))) : 0.0003;
+  const expo = Math.min(0.0003, Math.sqrt(0.0009 / (fLog + 1)));
   return clampLog(multLog + expo * (fLog - target));
 }
-// VF 对虚粒子获取的加成（log10）。测试模式：×(1+VF^((lg(VF+1)+3)/(4lg(VF+1)+6)))；
-// 非测试（基础版）：×VF^(min(1/2, 3/lg(VF+1)))。无 VF 时 0
+// VF 对虚粒子获取的加成（log10）：×(1+VF^((lg(VF+1)+3)/(4lg(VF+1)+6)))。无 VF 时 0
 function vfVPMultLog() {
   if (!(state.voidVF > 0)) return 0;
   const lgVF1 = Math.log10(state.voidVF + 1);
-  if (state.testMode) {
-    const e = (lgVF1 + 3) / (4 * lgVF1 + 6);
-    const inner = Math.min(Math.log10(state.voidVF) * e, 300);
-    return clampLog(Math.log10(1 + Math.pow(10, inner)));
-  }
-  const e = Math.min(0.5, 3 / lgVF1);
-  return clampLog(e * Math.log10(state.voidVF));
+  const e = (lgVF1 + 3) / (4 * lgVF1 + 6);
+  const inner = Math.min(Math.log10(state.voidVF) * e, 300);
+  return clampLog(Math.log10(1 + Math.pow(10, inner)));
 }
 // 进入虚空：湮灭重置后应用选中的削弱集合
 function enterVoid(ids) {
