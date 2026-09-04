@@ -3465,9 +3465,10 @@ function updateSpUI() {
   if (dtTitleEl) dtTitleEl.classList.toggle("hidden", !distortMsVisible);
   for (const r of msRefs) {
     if (r.distort) r.row.classList.toggle("hidden", !distortMsVisible);
-    // 1DA 描述动态显示当前倍率
+    // 1DA 描述动态显示当前倍率（仅里程碑自身；总倍率中的奇点凝聚部分单独标注）
     if (r.distort && r.m.n === 1 && r.descEl) {
-      r.descEl.textContent = "1 DA：基于扭曲宇宙湮灭数，将奇点效果变为 " + daExpMult().toFixed(2) + " 倍";
+      r.descEl.textContent = "1 DA：基于扭曲宇宙湮灭数，奇点效果指数 ×" + (1 + Math.log2(1 + distortDA())).toFixed(2)
+        + (sauMult() > 1 ? "（另受奇点凝聚 ×" + sauMult().toFixed(2) + "）" : "");
     }
     // 8DA：7DA 前显示 ？？？？？（防剧透），7DA 后显示真实描述（金色）
     // 8DA：7DA 前显示 ？？？？？；7DA 后金色文字（完成前红框、完成后金框全金）
