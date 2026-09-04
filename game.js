@@ -2719,23 +2719,22 @@ function svu2AdiabaticExp() {
 // 投入量累计到 svu1SpLog/svu1VpLog/svu1VfLog（log 域），对应资源同步扣减
 function svu1FillTick(realDt) {
   if (!state.svu1Filling) return;
-  const frac = 1 - Math.pow(0.99, realDt);
+  const frac = 1 - Math.pow(0.99, realDt); // dt 秒共投入现有量的 frac（每整秒恰为 1%）
   const takeLog = Math.log10(Math.max(frac, 1e-300));
-  const keepLog = Math.log10(Math.max(1 - frac, 1e-300));
   // 注意 Sp 的零哨兵是字面 0（非 NLOG）：sp=0 时 getLogSp()=0 会越过哨兵判定，必须显式判 sp>0
   if (state.sp > 0) {
     const spLog = getLogSp();
-    state.svu1SpLog = clampLog(logAddLogs(state.svu1SpLog, spLog + takeLog));
-    subSpLog(spLog + keepLog);
+    state.svu1SpLog = clampLog(logAddLogs(state.svu1SpLog, spLog + takeLog)); // 累计投入 += sp×frac
+    subSpLog(spLog + takeLog);                                                // 扣减 sp×frac（保留 1−frac）
   }
   if (state.virtualParticles > 0) {
     const vpLog = getLogVP();
     state.svu1VpLog = clampLog(logAddLogs(state.svu1VpLog, vpLog + takeLog));
-    subVPLog(vpLog + keepLog);
+    subVPLog(vpLog + takeLog);
   }
   if (state.logVoidVF10 > NLOG + 1) {
     state.svu1VfLog = clampLog(logAddLogs(state.svu1VfLog, state.logVoidVF10 + takeLog));
-    setVoidVFLog(state.logVoidVF10 + keepLog);
+    setVoidVFLog(state.logVoidVF10 + takeLog);
   }
 }
 // 虚空升级定义（虚空里程碑 1 解锁）
@@ -4818,8 +4817,7 @@ function tick() {
 // ---------- 快捷键（v0.5.0.3 QoL，所有玩家可用）----------
 // ←/→ 大标签、↑/↓ 子标签、U 湮灭前升级全买、R 湮灭后升级全买、A 湮灭、L 升级3、
 // 按住 B+1/2/3 黑洞状态、Shift+1~8 进扭曲、Shift+A/R/L/M 自动化开关
-let bhHotkeyArmed = false; // 按住 B 的武装状态（松开 B、0.5s 超时或触发切换后保持，可连续切换）
-let bhHotkeyTimer = 0;     // 0.5s 武装超时定时器（重复按 B 时重置）
+let bhHotkeyArmed = false; // 按住 B 的武装状态（松开 B 或窗口失焦解除；按住时可连续切换 1/2/3）
 function buyAllPreAnnihilation() {
   // 湮灭前升级：最大购买——循环买到底（升级间有依赖/价格联动，等级无变化即收敛）
   for (let round = 0; round < 200; round++) {
@@ -4938,9 +4936,7 @@ function handleGameHotkey(e) {
       buyUp3();
       break;
     case "b": case "B":
-      bhHotkeyArmed = true; // 按住期间保持武装（keyup B、窗口失焦或 0.5s 超时解除）
-      clearTimeout(bhHotkeyTimer);
-      bhHotkeyTimer = setTimeout(() => { bhHotkeyArmed = false; }, 500);
+      bhHotkeyArmed = true; // 按住期间保持武装（keyup B 或窗口失焦解除），可连续按 1/2/3 顺滑切换
       break;
   }
 }
@@ -5268,10 +5264,10 @@ function init() {
   // 快捷键（v0.5.0.3 QoL）：全局监听，输入框聚焦时忽略
   document.addEventListener("keydown", handleGameHotkey);
   document.addEventListener("keyup", (e) => {
-    if (e.key === "b" || e.key === "B") { bhHotkeyArmed = false; clearTimeout(bhHotkeyTimer); }
+    if (e.key === "b" || e.key === "B") { bhHotkeyArmed = false; }
   });
   // 窗口失焦兜底：防止 B 的 keyup 丢失导致武装卡死
-  window.addEventListener("blur", () => { bhHotkeyArmed = false; clearTimeout(bhHotkeyTimer); });
+  window.addEventListener("blur", () => { bhHotkeyArmed = false; });
   setInterval(tick, 100); // 逻辑 tick 恒定 100ms（数值节奏不变）
   // 显示循环：按所选频率刷新快变数字（全局资源栏 + 声子资源行）
   const uiLoop = (t) => {
