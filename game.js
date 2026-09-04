@@ -4153,10 +4153,18 @@ function updateAchievementsUI() {
       continue;
     }
     const done = state.ach.normal.includes(a.id);
-    // A52 为测试模式限定成就：非测试模式下整个单元格隐藏
-    const hiddenByTest = a.id === "A52" && !state.testMode;
-    root.style.display = hiddenByTest ? "none" : "";
-    if (hiddenByTest) continue;
+    // A52 为测试模式限定成就：非测试模式下显示为 ???（与其他占位一致，不可完成）
+    if (a.id === "A52" && !state.testMode) {
+      root.classList.remove("completed");
+      idEl.style.display = "none";
+      nameEl.style.display = "none";
+      descEl.style.display = "none";
+      checkEl.style.display = "none";
+      starEl.style.display = "none";
+      lockEl.style.display = "";
+      lockEl.textContent = "???";
+      continue;
+    }
     root.classList.toggle("completed", done);
     lockEl.style.display = "none";
     starEl.style.display = a.star ? "" : "none";
