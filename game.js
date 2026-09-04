@@ -4239,6 +4239,7 @@ const NORMAL_ACH = [
   { id: "A52", name: "超载", desc: "达到 1e50 Sp", star: true, reward: "解锁“虚空”选项卡", check: () => state.testMode && getLogTotalSp() >= 50 },
   { id: "A53", name: "融合", desc: "完成至少两种扭曲的虚空", star: true, reward: "up1 获得免费等级 1（重置不清零）", check: () => state.testMode && state.voidBestRules >= 2 },
   { id: "A54", name: "混沌", desc: "完成所有扭曲生效的虚空", check: () => state.testMode && state.voidBestRules >= 8 },
+  { id: "A55", name: "卷缩", desc: "达到 1.79e308 奇点", check: () => getLogSp() >= SP_SOFTCAP_PIVOT_LOG },
 ];
 const ACH_PER_ROW = 5;
 // 已定义行数；之后整行为未解锁 ???
