@@ -2570,6 +2570,7 @@ function bhAccretionGainLog() {
 }
 function bhAccretionRateLog() {
   const au44 = auOwned("au44");
+  const sbu1Total = state.sbu1 + sbuFree(); // 事件视界总等级（含量子狂潮免费等级）
   let gainLog = bhAccretionGainLog();
   // 软上限：Gain 超起始点（log50，潮汐撕裂每级 +10 个数量级）的部分缩放：
   // 实际获得 = 1e(10n+50) × (Gain/1e(10n+50))^((15/lg(Gain))^e)——e=1/2；
@@ -2721,13 +2722,14 @@ function svu1FillTick(realDt) {
   const frac = 1 - Math.pow(0.99, realDt);
   const takeLog = Math.log10(Math.max(frac, 1e-300));
   const keepLog = Math.log10(Math.max(1 - frac, 1e-300));
-  const spLog = getLogSp();
-  if (spLog > NLOG + 1) {
+  // 注意 Sp 的零哨兵是字面 0（非 NLOG）：sp=0 时 getLogSp()=0 会越过哨兵判定，必须显式判 sp>0
+  if (state.sp > 0) {
+    const spLog = getLogSp();
     state.svu1SpLog = clampLog(logAddLogs(state.svu1SpLog, spLog + takeLog));
     subSpLog(spLog + keepLog);
   }
-  const vpLog = getLogVP();
-  if (vpLog > NLOG + 1) {
+  if (state.virtualParticles > 0) {
+    const vpLog = getLogVP();
     state.svu1VpLog = clampLog(logAddLogs(state.svu1VpLog, vpLog + takeLog));
     subVPLog(vpLog + keepLog);
   }
