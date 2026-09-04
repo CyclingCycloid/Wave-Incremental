@@ -178,7 +178,7 @@ const DISTORT_UNIVERSES = [
   },
   {
     id: "cooldown", name: "冷却",
-    desc: "购买任何升级后，波速获取受到指数削弱（最高 0.75 次方），在 15 秒内线性回复到最大值",
+    desc: "波速获取受到指数削弱（最高 0.75 次方），购买任何升级后指数在 15 秒内从 0 线性回复到 0.75；进入时即视为已完全回复",
     tp: 1e90,
   },
   {
@@ -586,6 +586,12 @@ function cooldownExp() {
   const t = (gameNow() - state.lastPurchaseAt) / 1000;
   if (t >= 15) return 0.75;
   return 0.75 * (t / 15); // k: 0 → 0.75 线性（最大指数 0.75）
+}
+// 进入冷却环境（冷却扭曲宇宙，或含冷却削弱的虚空）时：
+// 冷却视为已完全生效（k=0.75）——lastPurchaseAt 的 0 哨兵语义是「从未购买→不削弱」，
+// 直接依赖它会让进入后不买任何升级时指数停留在 1.00。此后每次购买把 k 重置为 0 并线性回复
+function startCooldownRamp() {
+  if (inDistort("cooldown")) state.lastPurchaseAt = gameNow() - 15000;
 }
 
 
@@ -1914,6 +1920,7 @@ function enterDistort(id) {
   distortEnterAt = gameNow();
   if (id === "simple") setPhonons(1); // 简洁宇宙：声子恒 1
   if (id === "narrow") state.narrowPurchases = 0; // 狭窄宇宙：进入时购买次数强制重置（防残留）
+  startCooldownRamp(); // 冷却宇宙：进入时视为已完全生效（k=0.75）
   state.annStartReal = gameNow();
   state.annStartGame = state.playTime; state.annGameElapsed = 0;
   applyAnnihilationVisibility(); // 重设按钮为扭曲模式文案
@@ -2004,6 +2011,7 @@ function retryDistort() {
   // 再次进入
   state.distortActive = id;
   distortEnterAt = gameNow();
+  startCooldownRamp(); // 冷却宇宙：进入时视为已完全生效（k=0.75）
   state.annStartReal = gameNow();
   state.annStartGame = state.playTime; state.annGameElapsed = 0;
   applyAnnihilationVisibility();
@@ -2644,6 +2652,7 @@ function enterVoid(ids) {
   }
   state.narrowPurchases = 0; // 狭窄削弱：进入时购买次数清零
   distortEnterAt = gameNow(); // 膨胀削弱的时间基
+  startCooldownRamp(); // 冷却削弱：进入时视为已完全生效（k=0.75）
   state.annStartReal = gameNow();
   state.annStartGame = state.playTime; state.annGameElapsed = 0;
   updateDispAnchor();
