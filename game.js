@@ -5017,6 +5017,7 @@ function handleGameHotkey(e) {
 function applyTestModeUIGlobal() {
   const enterBtn = document.getElementById("enter-test-btn");
   const clearBtn = document.getElementById("clear-vf-btn");
+  const forceAnnBtn = document.getElementById("force-ann-btn");
   const verEl = document.getElementById("version-label");
   // 测试模式下按钮变为「退出测试模式」（一直可见，否则退出分支不可达）
   if (enterBtn) {
@@ -5024,6 +5025,7 @@ function applyTestModeUIGlobal() {
     enterBtn.textContent = state.testMode ? "退出测试" : "进入测试";
   }
   if (clearBtn) clearBtn.classList.toggle("hidden", !state.testMode);
+  if (forceAnnBtn) forceAnnBtn.classList.toggle("hidden", !state.testMode);
   if (verEl) verEl.textContent = state.testMode
     ? "v0.5.1 The Void Update（测试）"
     : "v0.5.0.3 The Black Hole Update";
@@ -5275,6 +5277,15 @@ function setupUI() {
     saveGame();
     updateVoidUI();
     setAutosaveStatus("虚空泡沫已清零");
+  });
+  // 无 Sp 湮灭（测试功能）：执行一次不获取奇点的湮灭重置（扭曲/虚空中不可用——各有专属出口）
+  document.getElementById("force-ann-btn").addEventListener("click", () => {
+    if (!state.testMode) return;
+    if (state.distortActive || state.voidActive) { setAutosaveStatus("扭曲/虚空中不可用，请先退出"); return; }
+    if (!confirm("确定进行不获取奇点的湮灭重置吗？（当前持有的奇点与进度按湮灭规则重置，但不获得 Sp）")) return;
+    forceAnnihilationReset(0);
+    updateVoidUI();
+    setAutosaveStatus("已执行无 Sp 湮灭重置（测试）");
   });
   applyTestModeUI();
   // 湮灭按钮（首次湮灭后显示；点击直接湮灭，不强制切换选项卡）
