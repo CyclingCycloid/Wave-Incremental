@@ -2212,6 +2212,9 @@ let voidSelection = []; // 进入前勾选的削弱
 function updateVoidUI() {
   if (simActive) return;
   if (!state.ach.normal.includes("A52")) return;
+  // 描述按模式显示目标与频率指数（普通 1e1000/0.0003，测试 1e2000/渐减指数）
+  document.getElementById("void-target").textContent = state.testMode ? "1e2000" : "1e1000";
+  document.getElementById("void-expo").textContent = state.testMode ? "min(0.0003, √(0.0009/lg(F+1)))" : "0.0003";
   buildVoidOnce();
   document.getElementById("subtab-void").classList.toggle("hidden", !state.ach.normal.includes("A52"));
   document.getElementById("void-enter-row").classList.toggle("hidden", state.voidActive);
@@ -2569,7 +2572,7 @@ function bhVPGainLog() {
   const x = 0.1 * mLog;
   // 大质量时 10^x−1 ≈ 10^x（log ≈ x）；小质量直接算，避免精度损失
   const inner = x > 15 ? x : Math.log10(Math.max(Math.pow(10, x) - 1, 1e-300));
-  return clampLog(inner + sbu3Eff() * Math.log10(2));
+  return clampLog(inner + sbu3Eff() * Math.log10(2) + vfVPMultLog()); // VF 加成
 }
 // 黑洞升级定义
 const SBU_DEFS = [
@@ -4531,23 +4534,28 @@ function tick() {
 // ←/→ 大标签、↑/↓ 子标签、U 湮灭前升级全买、R 湮灭后升级全买、A 湮灭、L 升级3、
 // 按住 B+1/2/3 黑洞状态、Shift+1~8 进扭曲、Shift+A/R/L/M 自动化开关
 let bhHotkeyArmed = false; // 按住 B 的武装状态（松开 B、0.5s 超时或触发切换后保持，可连续切换）
-let bhHotkeyTimeout = 0;
 function buyAllPreAnnihilation() {
-  // 湮灭前升级：多轮尽力购买（升级间有依赖/价格联动）
-  for (let round = 0; round < 5; round++) {
+  // 湮灭前升级：最大购买——循环买到底（升级间有依赖/价格联动，等级无变化即收敛）
+  for (let round = 0; round < 200; round++) {
+    const before = [state.up1, state.up2, state.up3, state.pg1, state.pg2, state.pg3, state.phFluct, state.phCoupling, state.phUnlocked, state.meta1].join(",");
     buyUp1(); buyUp2(); buyUp3();
     buyPhUnlock(); buyPG1(); buyPG2(); buyPG3(); buyFluct(); buyCoupling();
+    const after = [state.up1, state.up2, state.up3, state.pg1, state.pg2, state.pg3, state.phFluct, state.phCoupling, state.phUnlocked, state.meta1].join(",");
+    if (after === before) return;
   }
 }
 function buyAllPostAnnihilation() {
-  // 湮灭后升级：多轮尽力购买
-  for (let round = 0; round < 5; round++) {
+  // 湮灭后升级：最大购买（同款收敛判定）
+  for (let round = 0; round < 200; round++) {
+    const before = [state.spu1, state.sau1, state.sau2, state.sau3, state.sau4, state.sbu1, state.sbu2, state.sbu3, state.svpu1, state.svpu2, state.svpu3, Object.keys(state.au).length].join(",");
     buySAU("sau1"); buySAU("sau2"); buySAU("sau3"); buySAU("sau4");
     buySAU("spu1");
     for (const grp of AU_DEFS) for (const u of grp) buyAU(u.id);
     if (bhUnlocked()) { buySBU("sbu1"); buySBU("sbu2"); buySBU("sbu3"); }
     for (const u of SVPU_DEFS) buySVPU(u.id);
     for (const u of VPU_DEFS) buyVPU(u.id);
+    const after = [state.spu1, state.sau1, state.sau2, state.sau3, state.sau4, state.sbu1, state.sbu2, state.sbu3, state.svpu1, state.svpu2, state.svpu3, Object.keys(state.au).length].join(",");
+    if (after === before) return;
   }
 }
 function visibleTabs() {
@@ -4573,6 +4581,7 @@ function switchSubtabByOffset(offset) {
 function handleGameHotkey(e) {
   const tag = (e.target.tagName || "").toLowerCase();
   if (tag === "input" || tag === "textarea" || e.target.isContentEditable) return;
+  if (state.annihilations < 1) return; // 快捷键在首次湮灭后才可用
   if (e.repeat) return;
   const bhArmed = bhHotkeyArmed;
   const k = e.key;
@@ -4589,19 +4598,23 @@ function handleGameHotkey(e) {
   if (e.shiftKey) {
     // Shift 系：自动化开关（须已解锁对应自动化）
     if (k === "A" || k === "a") {
+      e.preventDefault(); // 防 Shift+浏览器快捷键抢占
       if (state.autoWaveUpg) { state.autoOn.wave = !state.autoOn.wave; updateAutomationUI(); setAutosaveStatus("主要页自动化：" + (state.autoOn.wave ? "开" : "关")); saveGame(); }
       if (state.autoPhononUpg) { state.autoOn.phonon = !state.autoOn.phonon; updateAutomationUI(); setAutosaveStatus("声子页自动化：" + (state.autoOn.phonon ? "开" : "关")); saveGame(); }
       return;
     }
     if (k === "R" || k === "r") {
+      e.preventDefault();
       if (state.autoAnn) { state.autoOn.ann = !state.autoOn.ann; updateAutomationUI(); setAutosaveStatus("自动湮灭：" + (state.autoOn.ann ? "开" : "关")); saveGame(); }
       return;
     }
     if (k === "L" || k === "l") {
+      e.preventDefault();
       if (state.autoUp3) { state.autoOn.up3 = !state.autoOn.up3; updateAutomationUI(); setAutosaveStatus("自动升级3：" + (state.autoOn.up3 ? "开" : "关")); saveGame(); }
       return;
     }
     if (k === "M" || k === "m") {
+      e.preventDefault();
       if (state.ach.normal.includes("A34")) {
         state.batchMode.wave = !state.batchMode.wave;
         state.batchMode.phonon = !state.batchMode.phonon;
@@ -4610,11 +4623,15 @@ function handleGameHotkey(e) {
       }
       return;
     }
-    // Shift+1~8：进入对应扭曲宇宙
-    const digit = parseInt(k, 10);
-    if (digit >= 1 && digit <= 8) {
-      const u = DISTORT_UNIVERSES[digit - 1];
-      if (u) enterDistort(u.id);
+    // Shift+1~8：进入对应扭曲宇宙。注意 Shift+数字的 e.key 是符号（"!"、"@"…），
+    // 必须用 e.code（"Digit1"~"Digit8"）判定
+    if (e.code && e.code.startsWith("Digit")) {
+      const digit = parseInt(e.code.slice(5), 10);
+      if (digit >= 1 && digit <= 8) {
+        e.preventDefault();
+        const u = DISTORT_UNIVERSES[digit - 1];
+        if (u) enterDistort(u.id);
+      }
       return;
     }
     return;
@@ -4635,9 +4652,7 @@ function handleGameHotkey(e) {
       buyUp3();
       break;
     case "b": case "B":
-      bhHotkeyArmed = true; // 按住期间保持武装
-      clearTimeout(bhHotkeyTimeout);
-      bhHotkeyTimeout = setTimeout(() => { bhHotkeyArmed = false; }, 500);
+      bhHotkeyArmed = true; // 按住期间保持武装（keyup B 或窗口失焦解除）
       break;
   }
 }
@@ -4931,8 +4946,10 @@ function init() {
   // 快捷键（v0.5.0.3 QoL）：全局监听，输入框聚焦时忽略
   document.addEventListener("keydown", handleGameHotkey);
   document.addEventListener("keyup", (e) => {
-    if (e.key === "b" || e.key === "B") { bhHotkeyArmed = false; clearTimeout(bhHotkeyTimeout); }
+    if (e.key === "b" || e.key === "B") { bhHotkeyArmed = false; }
   });
+  // 窗口失焦兜底：防止 B 的 keyup 丢失导致武装卡死
+  window.addEventListener("blur", () => { bhHotkeyArmed = false; });
   setInterval(tick, 100); // 逻辑 tick 恒定 100ms（数值节奏不变）
   // 显示循环：按所选频率刷新快变数字（全局资源栏 + 声子资源行）
   const uiLoop = (t) => {
