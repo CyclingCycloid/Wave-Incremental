@@ -1260,6 +1260,8 @@ function switchTab(name) {
   document.querySelectorAll(".page").forEach(p => p.classList.add("hidden"));
   const page = document.getElementById("page-" + name);
   if (page) page.classList.remove("hidden");
+  // 记录最后所在的大标签（刷新后恢复）
+  try { localStorage.setItem("waveIncremental_lastTab", name); } catch {}
   // 返回上次离开时所处的子标签页；无记录则用默认
   const sub = lastSubtab[name] || DEFAULT_SUBTAB[name];
   if (sub) switchSubtab(sub);
@@ -2039,7 +2041,7 @@ function applyAnnihilationVisibility() {
   document.getElementById("tab-automation").classList.toggle("hidden", !done);
   document.getElementById("subtab-distort").classList.toggle("hidden", state.annihilations < 20);
   document.getElementById("subtab-blackhole").classList.toggle("hidden", !bhUnlocked());
-  document.getElementById("subtab-void").classList.toggle("hidden", !state.ach.normal.includes("A52"));
+  document.getElementById("subtab-void").classList.toggle("hidden", !state.testMode || !state.ach.normal.includes("A52"));
   const ready = annihilationReady();
   if (!done) {
     // 首次湮灭：全屏遮罩接管（类似第一次大塌缩）；序列进行中不重复拉起
@@ -2211,12 +2213,17 @@ function buildVoidOnce() {
 let voidSelection = []; // 进入前勾选的削弱
 function updateVoidUI() {
   if (simActive) return;
-  if (!state.ach.normal.includes("A52")) return;
+  // 虚空仅测试模式可访问：非测试模式下子页隐藏、UI 不更新
+  const voidAccessible = state.testMode && state.ach.normal.includes("A52");
+  const subtab = document.getElementById("subtab-void");
+  if (subtab) subtab.classList.toggle("hidden", !voidAccessible);
+  if (!voidAccessible) return;
   // 描述按模式显示目标与频率指数（普通 1e1000/0.0003，测试 1e2000/渐减指数）
-  document.getElementById("void-target").textContent = state.testMode ? "1e2000" : "1e1000";
-  document.getElementById("void-expo").textContent = state.testMode ? "min(0.0003, √(0.0009/lg(F+1)))" : "0.0003";
+  const tEl = document.getElementById("void-target");
+  if (tEl) tEl.textContent = state.testMode ? "1e2000" : "1e1000";
+  const xEl = document.getElementById("void-expo");
+  if (xEl) xEl.textContent = state.testMode ? "min(0.0003, √(0.0009/lg(F+1)))" : "0.0003";
   buildVoidOnce();
-  document.getElementById("subtab-void").classList.toggle("hidden", !state.ach.normal.includes("A52"));
   document.getElementById("void-enter-row").classList.toggle("hidden", state.voidActive);
   document.getElementById("void-active-panel").classList.toggle("hidden", !state.voidActive);
   const stats = document.getElementById("void-stats");
@@ -2515,7 +2522,7 @@ function vfVPMultLog() {
 }
 // 进入虚空：湮灭重置后应用选中的削弱集合
 function enterVoid(ids) {
-  if (!state.ach.normal.includes("A52")) return;
+  if (!state.testMode || !state.ach.normal.includes("A52")) return;
   if (state.voidActive || state.distortActive) return;
   const list = (ids || []).filter(id => DISTORT_UNIVERSES.some(u => u.id === id));
   if (!list.length) return;
@@ -3915,7 +3922,7 @@ const NORMAL_ACH = [
   { id: "A45", name: "万物", desc: "购买所有奇点升级", star: true, reward: "解锁虚幻升级", check: () => ALL_SP_UPGRADES_OWNED() },
   // 第 5 行 (A51-…) 虚粒子
   { id: "A51", name: "虚幻", desc: "购买第一个虚幻升级", check: () => VPU_DEFS.some(u => vpuOwned(u.id)) },
-  { id: "A52", name: "超载", desc: "达到 1e50Sp", star: true, reward: "解锁“虚空”选项卡", check: () => getLogTotalSp() >= 50 },
+  { id: "A52", name: "超载", desc: "达到 1e50Sp", star: true, reward: "解锁“虚空”选项卡", check: () => state.testMode && getLogTotalSp() >= 50 },
 ];
 const ACH_PER_ROW = 5;
 // 已定义行数；之后整行为未解锁 ???
@@ -4657,6 +4664,18 @@ function handleGameHotkey(e) {
   }
 }
 
+// 测试模式 UI 同步（全局：危险操作区按钮显隐 + 顶栏版本显示）
+function applyTestModeUIGlobal() {
+  const enterBtn = document.getElementById("enter-test-btn");
+  const clearBtn = document.getElementById("clear-vf-btn");
+  const verEl = document.getElementById("version-label");
+  if (enterBtn) enterBtn.classList.toggle("hidden", state.testMode);
+  if (clearBtn) clearBtn.classList.toggle("hidden", !state.testMode);
+  if (verEl) verEl.textContent = state.testMode
+    ? "v0.5.1 The Void Update（测试）"
+    : "v0.5.0.3 The Black Hole Update";
+}
+
 // ---------- Wire up UI ----------
 function setupUI() {
   document.querySelectorAll(".tab").forEach(t => {
@@ -4866,14 +4885,18 @@ function setupUI() {
 
   // 测试模式（危险操作区）：密码进入后解锁 v0.5.1 最新内容
   const TEST_PASSWORD = "ilvcycloiduwu";
-  const applyTestModeUI = () => {
-    document.getElementById("enter-test-btn").classList.toggle("hidden", state.testMode);
-    document.getElementById("clear-vf-btn").classList.toggle("hidden", !state.testMode);
-    document.getElementById("version-label").textContent = state.testMode
-      ? "v0.5.1 The Void Update（测试）"
-      : "v0.5.0.3 The Black Hole Update";
-  };
+  const applyTestModeUI = applyTestModeUIGlobal;
   document.getElementById("enter-test-btn").addEventListener("click", () => {
+    if (state.testMode) {
+      // 退出测试模式：移除 A52（虚空虚空泡沫为测试模式内容）
+      state.testMode = false;
+      state.ach.normal = state.ach.normal.filter(a => a !== "A52");
+      applyTestModeUI();
+      saveGame();
+      renderAll();
+      setAutosaveStatus("已退出测试模式");
+      return;
+    }
     const pw = prompt("输入测试密码：");
     if (pw === null) return;
     if (pw !== TEST_PASSWORD) { setAutosaveStatus("密码错误"); return; }
@@ -4934,7 +4957,10 @@ function init() {
     state.annStartReal = gameNow();
     state.annStartGame = state.playTime; state.annGameElapsed = 0;
   }
-  switchTab("wave");
+  // 恢复上次所在的大标签（无记录默认波动页）
+  let lastTab = "wave";
+  try { lastTab = localStorage.getItem("waveIncremental_lastTab") || "wave"; } catch {}
+  switchTab(lastTab);
   switchSubtab("main");
   renderAll();
 
