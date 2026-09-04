@@ -4232,6 +4232,7 @@ const NORMAL_ACH = [
   { id: "A51", name: "虚幻", desc: "购买第一个虚幻升级", check: () => VPU_DEFS.some(u => vpuOwned(u.id)) },
   { id: "A52", name: "超载", desc: "达到 1e50 Sp", star: true, reward: "解锁“虚空”选项卡", check: () => state.testMode && getLogTotalSp() >= 50 },
   { id: "A53", name: "融合", desc: "完成至少两种扭曲的虚空", star: true, reward: "up1 获得免费等级 1（重置不清零）", check: () => state.testMode && state.voidBestRules >= 2 },
+  { id: "A54", name: "混沌", desc: "完成所有扭曲生效的虚空", check: () => state.testMode && state.voidBestRules >= 8 },
 ];
 const ACH_PER_ROW = 5;
 // 已定义行数；之后整行为未解锁 ???
@@ -4479,8 +4480,8 @@ function updateAchievementsUI() {
       continue;
     }
     const done = state.ach.normal.includes(a.id);
-    // A52/A53 为测试模式限定成就：非测试模式下显示为 ???（与其他占位一致，不可完成）
-    if ((a.id === "A52" || a.id === "A53") && !state.testMode) {
+    // A52/A53/A54 为测试模式限定成就：非测试模式下显示为 ???（与其他占位一致，不可完成）
+    if ((a.id === "A52" || a.id === "A53" || a.id === "A54") && !state.testMode) {
       root.classList.remove("completed");
       idEl.style.display = "none";
       nameEl.style.display = "none";
@@ -5250,8 +5251,8 @@ function setupUI() {
       if (state.voidActive) exitVoid();
       state.testMode = false;
       state.svu1Filling = false; // 停止 SVU1 填充（测试内容随测试模式关闭）
-      // 移除测试模式限定成就：A52（虚空入口）、A53/S26（虚空内容）
-      state.ach.normal = state.ach.normal.filter(a => a !== "A52" && a !== "A53");
+      // 移除测试模式限定成就：A52（虚空入口）、A53/A54（虚空内容）
+      state.ach.normal = state.ach.normal.filter(a => a !== "A52" && a !== "A53" && a !== "A54");
       state.ach.hidden = state.ach.hidden.filter(a => a !== "S26");
       applyTestModeUI();
       saveGame();
