@@ -61,6 +61,12 @@ function defaultState() {
     voidRules: [],         // 虚空中生效的扭曲宇宙削弱（id 数组，D1-D8）
     voidVF: 0,             // 虚空泡沫（double 缓存；极端值看 logVoidVF10）
     logVoidVF10: NLOG,     // log10(虚空泡沫) 权威表示（选满削弱时 VF 可超 double）
+    voidBestRules: 0,      // 虚空里程碑：已完成的虚空最大同时生效削弱数（0=未完成过）
+    svu1SpLog: NLOG,       // SVU1 虚空共振：累计投入的 Sp（log10；投入持久）
+    svu1VpLog: NLOG,       // SVU1：累计投入的 VP（log10）
+    svu1VfLog: NLOG,       // SVU1：累计投入的 VF（log10）
+    svu1Filling: false,    // SVU1：填充开关（开启时每真实秒投入现有资源 1%）
+    svu2Level: 0,          // SVU2 能标偏移等级（虚空外增长，不清零不重置）
     au: {},                                 // 奇点单次升级已购标记（id→1）
     testBreakRules: false, // 测试按钮：临时打破规则（不获 Sp，v0.4.3 移除）
     testMode: false,       // 测试模式：解锁 v0.5.1 最新内容（A52/虚空/清零VF）
@@ -432,15 +438,16 @@ function temperatureCappedLog() {
     if (state.voidRules.includes("inflation")) t /= 2; // 滞涨：有效温度开方（先于软上限）
     const capLog = temperatureCapLog(); // 主宇宙 T_p
     if (t > capLog) {
-      const p = Math.pow(capLog / t, 1 / (state.svpu4 + 2)) / 2;
+      const p = Math.pow(capLog / t, 1 / (effSvpu4() + 2)) / 2;
       return clampLog(capLog + (t - capLog) * p);
     }
     return clampLog(t);
   }
   const capLog = effectiveCapLog();
   if (state.rulesBroken && !state.distortActive && raw > capLog) {
-    // 软上限：超出部分 × (lg(Tp)/lg(T))^(1/(n+2))/2，n 为热能超载（svpu4）等级（n=0 时为 1/2）
-    const p = Math.pow(capLog / raw, 1 / (state.svpu4 + 2)) / 2;
+    // 软上限：超出部分 × (lg(Tp)/lg(T))^(1/(n+2))/2，n 为热能超载（svpu4）有效等级（n=0 时为 1/2；
+    // SVU2 能标偏移在虚空外提供减半的加成）
+    const p = Math.pow(capLog / raw, 1 / (effSvpu4() + 2)) / 2;
     return clampLog(capLog + (raw - capLog) * p);
   }
   // 滞涨宇宙：有效温度变为原来的平方根（log ÷ 2），热涨落等加成相应减弱
@@ -453,7 +460,7 @@ function temperature() {
 }
 // 热涨落：波速获取 ×= max(1, T)^0.2
 function thermalMult() {
-  if (inDistort("adiabatic")) return 1 / Math.pow(Math.max(1, temperature()), 0.5); // 热寂：温度反而削弱波速获取
+  if (inDistort("adiabatic")) return 1 / Math.pow(Math.max(1, temperature()), svu2AdiabaticExp()); // 热寂：温度反而削弱波速获取（SVU2 削弱虚空内该惩罚）
   if (inDistort("simple")) return 1; // 简洁：热涨落无效
   return Math.pow(Math.max(1, temperature()), thermalExp());
 }
@@ -461,7 +468,7 @@ function thermalMult() {
 // 否则 log 域会绕过温度上限，令「声子↔温度↔热涨落」正反馈失控（通胀/滞涨爆炸的根因）。
 function thermalMultLog() {
   const tLog = Math.max(0, temperatureCappedLog()); // max(1,T) 的 log（已裁剪）
-  if (inDistort("adiabatic")) return clampLog(-0.5 * tLog);
+  if (inDistort("adiabatic")) return clampLog(-svu2AdiabaticExp() * tLog);
   if (inDistort("simple")) return 0;
   return clampLog(thermalExp() * tLog);
 }
@@ -589,7 +596,7 @@ const T_P0 = 1.4168e32; // 最初宇宙的普朗克温度
 function planckMultLog() {
   if (inDistort("simple")) return 0; // 简洁宇宙：普朗克常数倍率始终为 1
   const exp = hasDistortMilestone(1) ? 1.5 * daExpMult() : 1.5;
-  return clampLog(exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp)));
+  return clampLog(exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp)) + vpu2SingMultLog());
 }
 function planckMult() {
   const l = planckMultLog();
@@ -599,7 +606,7 @@ function planckMult() {
 // log10 版本（权威）：log10(T_P0) + exp·log10(1+totalSp)，含 250 软上限收敛
 function temperatureCapLog() {
   const exp = hasDistortMilestone(1) ? 10 * daExpMult() : 10;
-  let logCap = Math.log10(T_P0) + exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp));
+  let logCap = Math.log10(T_P0) + exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp)) + vpu2SingMultLog();
   if (logCap > 250) logCap = (vpuOwned("vpu1") ? 212.5 + 0.15 * logCap : 225 + 0.1 * logCap); // 软上限：超 1e250 部分开十次方根（单圈重整后 0.15 次方）；截距各自校准使 1e250 拐点连续（212.5+0.15×250=225+0.1×250=250）
   return clampLog(logCap);
 }
@@ -661,7 +668,7 @@ function gainRate() {
     g = 1;
   } else {
     // A21 奖励：up1 的效果变为原来的 1.5 次方；AU11 机械共振：指数 up1Exp()
-    const base = Math.pow(state.up1, (state.ach.normal.includes("A21") ? 1.5 : 1) * up1Exp());
+    const base = Math.pow(getUp1Eff(), (state.ach.normal.includes("A21") ? 1.5 : 1) * up1Exp());
     g = base * Math.pow(up2Base(), state.up2);
   }
   // 单次升级"频率加成波速获取"：拥有后 ×(1 + lg(F+1))；F 超 double 时用 FLog（防 Infinity 污染）
@@ -682,6 +689,7 @@ function gainRate() {
     } else {
       g *= Math.pow(1 + state.totalSp, exp);
     }
+    g *= vpu2SingMult(); // 量子狂潮：奇点效果额外乘数
   }
   // 定向：每刻 50% 概率取反（F 计算取绝对值，故 U 可为负）。与 log 版相同：
   // 按 100ms 时间窗确定性取反，保证同窗口内生产/显示符号一致
@@ -692,6 +700,14 @@ function gainRate() {
   if (inDistort("inflation")) g = Math.sqrt(Math.max(0, g));
   // 膨胀宇宙：波速获取指数随时间下降（每秒 -0.1，到 0 为止）
   if (inDistort("expand")) g = Math.pow(Math.max(0, g), distortGainExp());
+  // 虚空共振（SVU1）：虚空内波速获取速率整体幂次（符号保持——定向宇宙中可为负）
+  if (state.voidActive) {
+    const e = svu1GainExp();
+    if (e !== 1) {
+      const s = g < 0 ? -1 : 1;
+      g = s * Math.pow(Math.abs(g), e);
+    }
+  }
   return g;
 }
 // gainRate 的 log10 版本（完整乘法链在 log 域，永不溢出）。
@@ -701,15 +717,15 @@ function gainRateLog() {
   let log, sign = 1;
   if (inDistort("simple")) {
     log = 0; // 基础固定 1
-  } else if (state.up1 <= 0) {
-    // up1=0（升级3 重置后）：真实增益为 0（0^exp×…，up1Exp 恒 ≥1）。
+  } else if (getUp1Eff() <= 0) {
+    // up1=0 且无免费等级（升级3 重置后）：真实增益为 0（0^exp×…，up1Exp 恒 ≥1）。
     // 不提前返回的话 NLOG×exp + up2·lg(base) 会落在 NLOG 与 NLOG+1e9 之间，
     // 逃过所有哨兵守卫，显示层渲染出 1.000e-999999970 之类的下溢误报
     return { log: NLOG, sign: 1 };
   } else {
     // A21：up1 效果 1.5 次方；AU11：指数 up1Exp()
     const up1ExpTotal = (state.ach.normal.includes("A21") ? 1.5 : 1) * up1Exp();
-    log = Math.log10(state.up1) * up1ExpTotal;
+    log = Math.log10(getUp1Eff()) * up1ExpTotal;
     log += state.up2 * Math.log10(Math.max(1e-300, up2Base()));
   }
   // 单次升级"频率加成波速获取"：×(1 + lg(F+1))。因子 = 1 + lg(F+1)；lg(F+1)≈FLog（F 大时）
@@ -727,6 +743,7 @@ function gainRateLog() {
     if (inDistort("simple")) exp /= 2;
     log += exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp));
   }
+  log += vpu2SingMultLog(); // 量子狂潮：奇点效果额外乘数
   // 定向：每刻 50% 概率取反。按 100ms 时间窗确定性取反（替代每次调用独立掷随机），
   // 保证同一窗口内生产 tick / 渲染外推 / Hz/s 显示的符号一致，避免同帧“逻辑加、显示减”
   if (inDistort("directed") && Math.floor(gameNow() / 100) % 2 === 1) sign = -1;
@@ -743,6 +760,8 @@ function gainRateLog() {
     if (ge <= 0) return { log: NLOG, sign: 1 };
     log *= ge;
   }
+  // 虚空共振（SVU1）：虚空内波速获取速率整体幂次（幂在 log 域 = 乘指数）
+  if (state.voidActive) log *= svu1GainExp();
   return { log: clampLog(log), sign };
 }
 // 获取速率的显示口径 log：gain 为 0（gainRateLog 返回 NLOG 哨兵）时保持 NLOG（语义零）。
@@ -1056,6 +1075,13 @@ function migrateState() {
     state.voidVF = state.logVoidVF10 > 308 ? Infinity
       : (state.logVoidVF10 <= NLOG + 1 ? 0 : Math.pow(10, state.logVoidVF10));
   }
+  // v0.5.1：虚空里程碑与 SVU 字段回填
+  if (state.voidBestRules === undefined) state.voidBestRules = 0;
+  if (state.svu1SpLog === undefined || !isFinite(state.svu1SpLog)) state.svu1SpLog = NLOG;
+  if (state.svu1VpLog === undefined || !isFinite(state.svu1VpLog)) state.svu1VpLog = NLOG;
+  if (state.svu1VfLog === undefined || !isFinite(state.svu1VfLog)) state.svu1VfLog = NLOG;
+  if (state.svu1Filling === undefined) state.svu1Filling = false;
+  if (state.svu2Level === undefined) state.svu2Level = 0;
   if (state.up3LastF === null || state.up3LastF === undefined) {
     const lp = getLogUp3LastF();
     state.up3LastF = (lp <= NLOG + 1) ? 0 : fromLog(lp);
@@ -1324,8 +1350,8 @@ function buyUp2() {
   if (inDistort("simple")) return; // 简洁宇宙：波动升级1/2无效（不可购买）
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
   // 边界防卡死：up2 是「×倍率」型，up1=0 时获取速率为 0——没有 spu1（免费）或其失效
-  // （spu1 只在主宇宙生效，扭曲宇宙中失效）时要求至少买过一级升级1
-  if (state.up1 < 1 && !upgradesFree()) return;
+  // （spu1 只在主宇宙生效，扭曲宇宙中失效）时要求至少一级升级1（A53 免费等级计入）
+  if (getUp1Eff() < 1 && !upgradesFree()) return;
   const c = up2Cost();
   if (cmpLT(F(), c, FLog(), up2CostLog())) return; // 资源必须达标（spu1 只免扣款，不免门槛）
   if (!upgradesFree()) subULog(up2CostLog());
@@ -1484,15 +1510,15 @@ function updateUpgradesUI() {
   const f = F();
   const fLog = FLog();
   up1Card.update({
-    level: `等级 ${state.up1}`,
+    level: `等级 ${state.up1}` + (up1FreeLevel() ? ` + ${up1FreeLevel()} 免费` : ""),
     effect: `当前获取速率: ${fmtNum(gainRate() * timeRate(), gainRateDispLog(timeRateLog()))} m/s²`,
     cost: fmtNum(up1Cost(), up1CostLog()) + " Hz",
     affordable: cmpGE(f, up1Cost(), FLog(), up1CostLog()),
   });
     const up2MultLog = state.up2 * Math.log10(up2Base());
     const up2Mult = up2MultLog > 308 ? Infinity : Math.pow(10, up2MultLog);
-    // 与 buyUp2 同门槛：无 spu1（或失效）时至少需要一级升级1
-    const up2Allowed = state.up1 >= 1 || upgradesFree();
+    // 与 buyUp2 同门槛：无 spu1（或失效）时至少需要一级升级1（免费等级计入）
+    const up2Allowed = getUp1Eff() >= 1 || upgradesFree();
     up2Card.update({
       level: `等级 ${state.up2}`,
       effect: `当前倍率: ×${fmtNum(up2Mult, up2MultLog)}`,
@@ -2113,6 +2139,7 @@ function applyHelpVisibility() {
   document.getElementById("help-blackhole").classList.toggle("hidden", !bhUnlocked());  // 黑洞章节内防剧透：虚幻升级（VPU）区相关内容按进度显隐
   document.getElementById("help-vpu-extra").classList.toggle("hidden", !state.ach.normal.includes("A45"));
   document.getElementById("help-svpu-extra").classList.toggle("hidden", !vpuOwned("vpu5"));
+  document.getElementById("help-void").classList.toggle("hidden", !(state.testMode && state.ach.normal.includes("A52")));
   document.getElementById("stat-ann-group").classList.toggle("hidden", state.annihilations < 1);
   document.getElementById("subtab-stats-challenge").classList.toggle("hidden", state.annihilations < 20);
 }
@@ -2176,7 +2203,7 @@ function totalEffectText(id) {
     case "svpu3":
       return { text: `总效果：升级3软上限削弱 ÷${n("svpu3") + 1}`, capped: false };
     case "svpu4":
-      return { text: `总效果：温度软上限缩放指数 1/${n("svpu4") + 2}`, capped: false };
+      return { text: `总效果：温度软上限缩放指数 1/${n("svpu4") + 2}` + (svu2Svpu4Bonus() > 0 ? `（含能标偏移 +${fmt(svu2Svpu4Bonus())}）` : ""), capped: false };
     case "svpu5":
       return { text: `总效果：黑洞质量软上限起始 1e${bhMassSoftcapLog()}`, capped: false };
     default:
@@ -2218,22 +2245,37 @@ function buildVoidOnce() {
     enterVoid(voidSelection.slice());
   });
   document.getElementById("void-exit-btn").addEventListener("click", exitVoid);
-  // 虚空升级占位（3 个，尚未实装）
+  // 虚空升级（SVU，虚空里程碑 1 解锁；全行卡片）
   const upg = document.getElementById("void-upg-list");
   upg.innerHTML = "";
-  for (let i = 0; i < 3; i++) {
-    const btn = document.createElement("button");
-    btn.className = "sau-btn bh-upg-btn void-upg-card";
-    const nm = document.createElement("div"); nm.className = "sau-name"; nm.textContent = "???";
-    const ds = document.createElement("div"); ds.className = "sau-desc"; ds.textContent = "（占位）";
-    const ct = document.createElement("div"); ct.className = "sau-cost"; ct.textContent = "未开放";
-    btn.append(nm, ds, ct);
-    btn.disabled = true;
-    upg.appendChild(btn);
+  voidSvuEls = {};
+  for (const def of SVU_DEFS) {
+    const card = document.createElement("div");
+    card.className = "void-svu-card";
+    const nm = document.createElement("div"); nm.className = "sau-name"; nm.textContent = def.name;
+    const ds = document.createElement("div"); ds.className = "sau-desc";
+    const ct = document.createElement("div"); ct.className = "sau-cost";
+    card.append(nm, ds, ct);
+    if (def.fill) {
+      const fillBtn = document.createElement("button");
+      fillBtn.className = "void-svu-fill";
+      fillBtn.textContent = "开始填充";
+      fillBtn.addEventListener("click", () => {
+        if (!voidMilestone1()) return;
+        state.svu1Filling = !state.svu1Filling;
+        saveGame();
+        updateVoidUI();
+      });
+      card.appendChild(fillBtn);
+      voidSvuEls.fillBtn = fillBtn;
+    }
+    upg.appendChild(card);
+    voidSvuEls[def.id] = { card, nm, ds, ct };
   }
   voidBuilt = true;
 }
 let voidSelection = []; // 进入前勾选的削弱
+let voidSvuEls = {};    // SVU 卡片元素引用
 function updateVoidUI() {
   if (simActive) return;
   // 虚空仅测试模式可访问：非测试模式下子页隐藏、UI 不更新
@@ -2246,9 +2288,37 @@ function updateVoidUI() {
   document.getElementById("void-active-panel").classList.toggle("hidden", !state.voidActive);
   const stats = document.getElementById("void-stats");
   const vfMultLog = vfVPMultLog();
+  const m1 = voidMilestone1();
+  // VF 效果行：第一效果（VP 获取）恒有；第二效果（吸积 ×VF^(2/3)）里程碑 1 解锁
   const vfLine = state.logVoidVF10 > NLOG + 1
     ? `虚空泡沫（VF）：${fmtLog(state.logVoidVF10)}\nVP 获取 ×${fmtLog(vfMultLog)}`
+      + (m1 ? `\n黑洞吸积 ×${fmtLog(clampLog((2 / 3) * state.logVoidVF10))}` : "")
     : "虚空泡沫（VF）：尚无";
+  // 虚空里程碑显示
+  const msEl = document.getElementById("void-milestone");
+  if (msEl) {
+    msEl.textContent = m1
+      ? "里程碑 1「聚合浪潮」已完成（完成至少同时 4 种扭曲生效的虚空）——解锁虚空泡沫第二效果（黑洞吸积 ×VF^(2/3)）与虚空升级"
+      : `??? —— 虚空里程碑 1：完成至少同时 4 种扭曲生效的虚空（当前最高 ${state.voidBestRules} 种）`;
+  }
+  // SVU 卡片状态
+  for (const def of SVU_DEFS) {
+    const el = voidSvuEls[def.id];
+    if (!el) continue;
+    el.card.classList.toggle("locked", !m1);
+    if (!m1) {
+      el.ds.textContent = "??? —— 完成虚空里程碑 1 后解锁";
+      el.ct.textContent = "";
+    } else {
+      el.ds.textContent = def.desc;
+      el.ct.textContent = def.effect();
+    }
+  }
+  if (voidSvuEls.fillBtn) {
+    voidSvuEls.fillBtn.classList.toggle("on", state.svu1Filling);
+    voidSvuEls.fillBtn.textContent = state.svu1Filling ? "停止填充" : "开始填充";
+    voidSvuEls.fillBtn.disabled = !m1;
+  }
   if (state.voidActive) {
     const fLog = FLog();
     const vfLog = voidVFLog(fLog);
@@ -2366,6 +2436,9 @@ function thermalExp() {
 }
 // AU11：up1 指数加成
 function up1Exp() { return auOwned("au11") ? Math.max(1, Math.sqrt(state.up1) / 5) : 1; }
+// A53 融合奖励：up1 免费等级（计入效果与「up2 需至少一级升级1」的判定，不计入价格/AU11 指数）
+function up1FreeLevel() { return state.ach.normal.includes("A53") ? 1 : 0; }
+function getUp1Eff() { return state.up1 + up1FreeLevel(); }
 // AU12：pg2 免费等级
 function pg2Free() { return auOwned("au12") ? state.pg1 * 2 : 0; }
 // AU13：up2 底数加成
@@ -2423,10 +2496,10 @@ function setVPLog(logV) {
   state.logVP = clampLog(logV);
   state.virtualParticles = (logV <= NLOG + 1) ? 0 : (logV > 308 ? Infinity : Math.pow(10, logV));
 }
-// SBU2 引力潮汐的有效级别（软上限：7+(n-7)^(1/4)）
-function sbu2Eff() { return effLevel(state.sbu2, 7, 0.25); }
-// SBU3 霍金辐射的有效级别（软上限：10+(n-10)^(1/2)，从原上限 10 起算）
-function sbu3Eff() { return effLevel(state.sbu3, 10, 0.5); }
+// SBU2 引力潮汐的有效级别（软上限：7+(n-7)^(1/4)；量子狂潮免费等级加在真实等级上、软上限前）
+function sbu2Eff() { return effLevel(state.sbu2 + sbuFree(), 7, 0.25); }
+// SBU3 霍金辐射的有效级别（软上限：10+(n-10)^(1/2)，从原上限 10 起算；免费等级同上）
+function sbu3Eff() { return effLevel(state.sbu3 + sbuFree(), 10, 0.5); }
 // 黑洞基础效果：M^（0.2 + sbu2 有效级别·0.05）（引力潮汐：效果指数 +0.05/级）；返回 double（扭曲状态给时间倍率）
 function bhEffect() {
   const mLog = getLogBhMass();
@@ -2473,13 +2546,17 @@ function spAccretionMultLog() {
 // 本 tick 的质量获取 Gain（log10）超 1e50 时受软上限：
 // 实际获得 = 1e(10n+50) × (Gain/1e(10n+50))^( (15/lg(Gain))^(1/2) )，n 为潮汐撕裂（svpu5）等级
 // AU44 监察原理：SBU1 事件视界（×2^sbu1）的加成移动到软上限之后生效
+// 虚空里程碑 1「聚合浪潮」：完成至少同时 4 种扭曲生效的虚空。
+// 效果：解锁虚空泡沫第二效果（黑洞吸积速率 ×VF^(2/3)，软上限前）并解锁虚空升级（SVU）
+function voidMilestone1() { return state.voidBestRules >= 4; }
 // 吸积的软上限前 Gain（log10）——bhAccretionRateLog 与 bhMassSoftcapped 共用的唯一实现。
 // AU44 已购买时不含 SBU1 倍率（SBU1 移到软上限之后乘；软上限未触发时正常生效）。
 // 倍率以 log 相加（= 数值相乘），totalSp 超 double 时也不产生 Infinity
 function bhAccretionGainLog() {
   const mLog = getLogBhMass();
   const fLog = FLog();
-  const accMultLog = (auOwned("au44") ? 0 : state.sbu1) * Math.log10(2) + spAccretionMultLog();
+  const sbu1Total = state.sbu1 + sbuFree(); // 量子狂潮免费等级与 SBU1 同进退（AU44 时一并移到软上限后）
+  const accMultLog = (auOwned("au44") ? 0 : sbu1Total) * Math.log10(2) + spAccretionMultLog();
   // 频率部分（1e2000 处非常硬的软上限）：
   // F<1e2000：(F/1e200)^0.01 → log = 0.01×(FLog−200)
   // F>1e2000：1e18×(F/1e2000)^((0.1/lgF)^0.6) → log = 18+(FLog−2000)×(0.1/FLog)^0.6
@@ -2487,7 +2564,9 @@ function bhAccretionGainLog() {
   const freqPartLog = fLog < 2000
     ? 0.01 * (fLog - 200)
     : 18 + (fLog - 2000) * Math.pow(0.1 / fLog, 0.6);
-  return clampLog(bhAccretionMassExp() * mLog + freqPartLog + accMultLog);
+  // 虚空里程碑 1：吸积速率 ×VF^(2/3)（软上限前）
+  const vfPart = voidMilestone1() && state.logVoidVF10 > NLOG + 1 ? (2 / 3) * state.logVoidVF10 : 0;
+  return clampLog(bhAccretionMassExp() * mLog + freqPartLog + accMultLog + vfPart);
 }
 function bhAccretionRateLog() {
   const au44 = auOwned("au44");
@@ -2502,13 +2581,13 @@ function bhAccretionRateLog() {
   }
   // AU44：SBU1 倍率在软上限之后乘上；软上限未触发时正常生效
   //（否则低增益区间该升级完全无效）
-  if (au44 && state.sbu1 > 0) gainLog = clampLog(gainLog + state.sbu1 * Math.log10(2));
+  if (au44 && sbu1Total > 0) gainLog = clampLog(gainLog + sbu1Total * Math.log10(2));
   return gainLog;
 }
 // 黑洞质量获取是否正受软上限影响（显示提示用）：用与 bhAccretionRateLog 相同的软上限前 Gain
 // ---------- 虚空（A52 解锁：多扭曲削弱同时生效的挑战，结算虚空泡沫 VF）----------
-// D1-D8 顺序对应扭曲宇宙显示顺序；乘数（热寂100 简洁100 为最高档，狭窄10 为最低档）
-const VOID_MULTIPLIERS = { rigid: 20, expand: 20, directed: 10, cooldown: 16, inflation: 40, adiabatic: 100, narrow: 10, simple: 100 };
+// D1-D8 顺序对应扭曲宇宙显示顺序；乘数（热寂100 简洁100 为最高档，狭窄20/定向10 为最低档）
+const VOID_MULTIPLIERS = { rigid: 20, expand: 20, directed: 10, cooldown: 16, inflation: 40, adiabatic: 100, narrow: 20, simple: 100 };
 const VOID_TARGET_FLOG = 2000; // 挑战目标：频率 ≥ 1e2000 Hz（测试模式）
 // 当前虚空配置下的预计 VF（log10；FLog 未达标时返回 NLOG）。
 // VF = 8^(N-1)×Π乘数×(F/1e2000)^min(0.0003, √(0.0009/lg(F+1)))
@@ -2549,6 +2628,12 @@ function enterVoid(ids) {
   setPhonons(0);
   state.voidActive = true;
   state.voidRules = list;
+  // S26 你才是挑战者：进入所有扭曲生效的虚空
+  if (list.length >= DISTORT_UNIVERSES.length && !state.ach.hidden.includes("S26")) {
+    grantHidden("S26");
+    updateAchievementsUI();
+    setAutosaveStatus("隐藏成就达成：你才是挑战者");
+  }
   state.narrowPurchases = 0; // 狭窄削弱：进入时购买次数清零
   distortEnterAt = gameNow(); // 膨胀削弱的时间基
   state.annStartReal = gameNow();
@@ -2559,12 +2644,16 @@ function enterVoid(ids) {
   updateVoidUI();
   setAutosaveStatus("已进入虚空（" + list.length + " 个削弱生效）");
 }
-// 退出虚空：达到 1e2000 Hz 时结算 VF（里程碑式：更高才更新），随后湮灭重置回主宇宙
+// 退出虚空：达到 1e2000 Hz 时结算 VF（里程碑式：更高才更新），随后湮灭重置回主宇宙。
+// 达成结算时记录里程碑（最大同时生效削弱数）
 function exitVoid() {
   if (!state.voidActive) return;
   const fLog = FLog();
   const vfLog = voidVFLog(fLog);
   const achieved = vfLog > NLOG + 1;
+  if (achieved && state.voidRules.length > state.voidBestRules) {
+    state.voidBestRules = state.voidRules.length;
+  }
   const prevVFLog = state.logVoidVF10;
   const improved = achieved && vfLog > prevVFLog;
   if (improved) setVoidVFLog(vfLog);
@@ -2586,6 +2675,76 @@ function bhMassSoftcapped() {
   if (!bhUnlocked()) return false;
   return bhAccretionGainLog() > bhMassSoftcapLog();
 }
+// ---------- 虚空升级（SVU，虚空里程碑 1 解锁；给虚空内的游戏提供加成或削弱虚空惩罚）----------
+// lg(X+1) 的精确值（X 以 log10 存储；X≤1e15 用 double 精确算 +1，超出后 +1 可忽略）
+function lg1FromLog(lg) {
+  if (lg <= NLOG + 1) return 0;
+  return lg <= 15 ? Math.log10(Math.pow(10, lg) + 1) : lg;
+}
+// SVU1 虚空共振等级：由累计投入计算（投入持久，不随虚空重置）
+// Level = (lg(Sp投+1)/50+1)(lg(VP投+1)/15+1)(lg(VF投+1)/6+1) − 1
+function svu1Level() {
+  const sp = lg1FromLog(state.svu1SpLog) / 50 + 1;
+  const vp = lg1FromLog(state.svu1VpLog) / 15 + 1;
+  const vf = lg1FromLog(state.svu1VfLog) / 6 + 1;
+  return sp * vp * vf - 1;
+}
+// SVU2 能标偏移的等级增速（仅虚空外，每真实秒）：SVU1_level/(1+SVU2_level)^1.5
+function svu2GainRate() {
+  return svu1Level() / Math.pow(1 + state.svu2Level, 1.5);
+}
+// SVU1 效果：虚空内波速获取速率的幂次 ^= 1 + min(level/6, √(2·level)/6)（虚空外恒 1）
+function svu1GainExp() {
+  if (!state.voidActive) return 1;
+  const lv = svu1Level();
+  if (lv <= 0) return 1;
+  return 1 + Math.min(lv / 6, Math.sqrt(2 * lv) / 6);
+}
+// SVU2 效果 1（内外都生效）：热能超载（svpu4）有效等级加成——虚空内 +2·lg(1+lg(n+1))，
+// 虚空外 +lg(1+lg(n+1))（n=SVU2 等级）
+function svu2Svpu4Bonus() {
+  if (state.svu2Level <= 0) return 0;
+  const b = Math.log10(1 + Math.log10(state.svu2Level + 1));
+  return state.voidActive ? 2 * b : b;
+}
+// 热能超载的有效等级（温度软上限缩放指数 1/(n+2) 中的 n；含 SVU2 加成）
+function effSvpu4() { return state.svpu4 + svu2Svpu4Bonus(); }
+// SVU2 效果 2（仅虚空内）：热寂削弱指数 0.5 → 1/(2+lg(n+1))
+function svu2AdiabaticExp() {
+  if (!state.voidActive || state.svu2Level <= 0) return 0.5;
+  return 1 / (2 + Math.log10(state.svu2Level + 1));
+}
+// SVU1 填充：每真实秒投入现有 Sp/VP/VF 的 1%（连续复利等效：dt 秒投入 1−0.99^dt）。
+// 投入量累计到 svu1SpLog/svu1VpLog/svu1VfLog（log 域），对应资源同步扣减
+function svu1FillTick(realDt) {
+  if (!state.svu1Filling) return;
+  const frac = 1 - Math.pow(0.99, realDt);
+  const takeLog = Math.log10(Math.max(frac, 1e-300));
+  const keepLog = Math.log10(Math.max(1 - frac, 1e-300));
+  const spLog = getLogSp();
+  if (spLog > NLOG + 1) {
+    state.svu1SpLog = clampLog(logAddLogs(state.svu1SpLog, spLog + takeLog));
+    subSpLog(spLog + keepLog);
+  }
+  const vpLog = getLogVP();
+  if (vpLog > NLOG + 1) {
+    state.svu1VpLog = clampLog(logAddLogs(state.svu1VpLog, vpLog + takeLog));
+    subVPLog(vpLog + keepLog);
+  }
+  if (state.logVoidVF10 > NLOG + 1) {
+    state.svu1VfLog = clampLog(logAddLogs(state.svu1VfLog, state.logVoidVF10 + takeLog));
+    setVoidVFLog(state.logVoidVF10 + keepLog);
+  }
+}
+// 虚空升级定义（虚空里程碑 1 解锁）
+const SVU_DEFS = [
+  { id: "svu1", name: "虚空共振", fill: true,
+    desc: "根据累计投入的 Sp、VP、VF 计算等级；虚空内的波速获取速率获得指数加成",
+    effect: () => `等级 ${fmt(svu1Level())} · 虚空内波速获取 ^${fmt(svu1GainExp())}\n投入：Sp ${fmtLog(state.svu1SpLog)} · VP ${fmtLog(state.svu1VpLog)} · VF ${fmtLog(state.svu1VfLog)}` },
+  { id: "svu2", name: "能标偏移", fill: false,
+    desc: "削弱温度的软上限（热能超载有效等级增加），并降低虚空内热寂的惩罚；在虚空外随时间自动增长（虚空内不增长）",
+    effect: () => `等级 ${fmt(state.svu2Level)}（虚空外 +${fmt(svu2GainRate())}/s）\n热能超载有效等级 +${fmt(svu2Svpu4Bonus())}${state.voidActive ? " · 热寂削弱指数 " + fmt(svu2AdiabaticExp()) : ""}` },
+];
 // 脉冲状态：虚粒子获取速率（每秒）= floor(mult × (M^0.1 − 1))；M=1 时自然为 0。返回 log10
 function bhVPGainLog() {
   const mLog = getLogBhMass();
@@ -2662,7 +2821,7 @@ function buySVPU(id) {
 // 未达成解锁条件时卡片显示具体达成条件（vpuCondText）
 const VPU_DEFS = [
   { id: "vpu1", name: "单圈重整", desc: "加强象限拓张和紫外灾难，并取消等级上限，削弱普朗克温度软上限", cost: 5e10 },
-  { id: "vpu2", name: "???", desc: "（占位）", cost: Infinity },
+  { id: "vpu2", name: "量子狂潮", desc: "虚粒子给三个黑洞升级提供免费等级，并且加成奇点的效果", cost: 1e6, currency: "vf" },
   { id: "vpu3", name: "???", desc: "（占位）", cost: Infinity },
   { id: "vpu4", name: "对偶原理", desc: "取消全息原理的等级限制，吸积公式的质量指数+0.05，并削弱黑洞质量的软上限", cost: 2e8 },
   { id: "vpu5", name: "临界湮灭", desc: "取消自动湮灭的 CD，并把共轭湮灭的效果变为原来的^2，增加两个虚粒子升级", cost: 1e7 },
@@ -2697,6 +2856,8 @@ function vpuUnlocked(id) {
     met = getLogBhMass() >= 70;
   } else if (id === "vpu1") {
     met = state.sau1 >= 10 && state.sau3 >= 10; // 象限拓张与紫外灾难均满级
+  } else if (id === "vpu2") {
+    met = true; // 量子狂潮：无额外解锁条件（1e6 VF 的价格本身即门槛）
   }
   if (met) {
     if (!state.vpuCondMet) state.vpuCondMet = [];
@@ -2727,19 +2888,43 @@ function vpuCondText(id) {
   return "";
 }
 function vpuOwned(id) { return !!state.au["vpu_" + id]; }
-// VPU 花虚粒子 VP（与「虚粒子单次升级」定位一致；占位条目 cost=Infinity 恒不可负担）
+// VPU 花虚粒子 VP（与「虚粒子单次升级」定位一致；占位条目 cost=Infinity 恒不可负担）。
+// VPU2 例外：花虚空泡沫 VF（可消耗，扣减当前 voidVF）
 function buyVPU(id) {
   if (!bhUnlocked() || !vpuUnlocked(id)) return;
   const u = VPU_DEFS.find(x => x.id === id);
   if (!u || vpuOwned(id)) return;
-  const cLog = Math.log10(u.cost);
-  if (cmpLT(state.virtualParticles, u.cost, getLogVP(), cLog)) return;
-  subVPLog(cLog);
+  if (u.currency === "vf") {
+    if (!(state.logVoidVF10 >= Math.log10(u.cost))) return;
+    setVoidVFLog(state.logVoidVF10 - Math.log10(u.cost));
+  } else {
+    const cLog = Math.log10(u.cost);
+    if (cmpLT(state.virtualParticles, u.cost, getLogVP(), cLog)) return;
+    subVPLog(cLog);
+  }
   state.au["vpu_" + id] = 1;
   checkAchievements(); // A51 虚幻：购买第一个虚粒子单次升级
   updateBlackholeUI();
   setAutosaveStatus("已购买黑洞升级：" + u.name);
 }
+// VPU2 量子狂潮：lg(VP+1) 的数值（VP 超 double 时 +1 可忽略）
+function logVp1() {
+  const v = getLogVP();
+  if (v <= NLOG + 1) return 0;
+  return v <= 15 ? Math.log10((state.virtualParticles || 0) + 1) : v;
+}
+// VPU2：三个黑洞升级（SBU1/2/3）各获得的免费等级（软上限前）：sqrt(max(0, lg(VP+1)−10))
+function sbuFree() {
+  if (!vpuOwned("vpu2")) return 0;
+  return Math.sqrt(Math.max(0, logVp1() - 10));
+}
+// VPU2：奇点效果额外乘数：1 + min(2, lg(max(1, lg(VP+1)))/2)/4
+//（乘在所有 (1+总Sp)^指数 类效果上：波速获取、温度上限、普朗克常数倍率）
+function vpu2SingMult() {
+  if (!vpuOwned("vpu2")) return 1;
+  return 1 + Math.min(2, Math.log10(Math.max(1, logVp1())) / 2) / 4;
+}
+function vpu2SingMultLog() { return vpuOwned("vpu2") ? Math.log10(vpu2SingMult()) : 0; }
 // VPU5 临界湮灭效果：自动湮灭无 CD（由 autoAnnCD 调用）；共轭湮灭效果 ^2（由 phononSpMult 调用）
 // 吸积质量指数：基础 0.75 + 全息原理 0.03/级 + 对偶原理（VPU4）+0.05
 function bhAccretionMassExp() { return 0.75 + 0.03 * state.svpu1 + (vpuOwned("vpu4") ? 0.05 : 0); }
@@ -2869,7 +3054,7 @@ function buildBlackholeOnce() {
   bhVpuSection.classList.toggle("hidden", !state.ach.normal.includes("A45"));
   for (const u of VPU_DEFS) {
     const btn = document.createElement("button");
-    btn.className = "sau-btn bh-upg-btn vpu-btn";
+    btn.className = "sau-btn bh-upg-btn vpu-btn" + (u.currency === "vf" ? " vpu2-card" : "");
     const nm = document.createElement("div"); nm.className = "sau-name"; nm.textContent = u.name;
     const ds = document.createElement("div"); ds.className = "sau-desc";
     const ct = document.createElement("div"); ct.className = "sau-cost";
@@ -3025,7 +3210,13 @@ function updateBlackholeUI() {
       costStr = fmtNum(c, cLog) + " Sp";
       resUnit = "Sp";
     }
-    r.descEl.textContent = r.u.desc + (effMax !== Infinity ? "（" + state[r.u.key] + "/" + effMax + "）" : "（等级 " + state[r.u.key] + "）");
+    {
+      // 等级显示：量子狂潮免费等级以「+N 免费」并入（仅展示，不影响价格）
+      const free = (!r.vp && sbuFree() > 0) ? " + " + fmt(sbuFree()) + " 免费" : "";
+      r.descEl.textContent = r.u.desc + (effMax !== Infinity
+        ? "（" + state[r.u.key] + free + "/" + effMax + "）"
+        : "（等级 " + state[r.u.key] + free + "）");
+    }
     if (r.totalEl) renderTotalEffect(r.totalEl, r.u.id);
     r.costEl.textContent = maxed ? "已满级" : costStr;
     r.btn.disabled = maxed || !affordable;
@@ -3051,6 +3242,17 @@ function updateBlackholeUI() {
     }
     r.descEl.textContent = r.u.desc;
     if (r.nameEl) r.nameEl.textContent = r.u.name;
+    if (r.u.currency === "vf") {
+      // VPU2：VF 购买；描述附当前免费等级与奇点乘数
+      r.descEl.textContent = r.u.desc
+        + "\n当前免费等级 +" + fmt(sbuFree()) + "/个 · 奇点效果 ×" + fmt(vpu2SingMult());
+      const afford = state.logVoidVF10 >= Math.log10(r.u.cost);
+      r.costEl.textContent = owned ? "已购买" : fmt(r.u.cost) + " VF";
+      r.btn.disabled = owned || !afford;
+      r.btn.classList.toggle("bought", owned);
+      r.btn.classList.toggle("affordable", !owned && afford);
+      continue;
+    }
     r.costEl.textContent = owned ? "已购买" : (isFinite(r.u.cost) ? fmt(r.u.cost) + " VP" : "未开放");
     const afford = isFinite(r.u.cost) && cmpGE(state.virtualParticles, r.u.cost, getLogVP(), Math.log10(r.u.cost));
     r.btn.disabled = owned || !afford;
@@ -3954,6 +4156,7 @@ const NORMAL_ACH = [
   // 第 5 行 (A51-…) 虚粒子
   { id: "A51", name: "虚幻", desc: "购买第一个虚幻升级", check: () => VPU_DEFS.some(u => vpuOwned(u.id)) },
   { id: "A52", name: "超载", desc: "达到 1e50 Sp", star: true, reward: "解锁“虚空”选项卡", check: () => state.testMode && getLogTotalSp() >= 50 },
+  { id: "A53", name: "融合", desc: "完成至少两种扭曲的虚空", star: true, reward: "up1 获得免费等级 1（重置不清零）", check: () => state.testMode && state.voidBestRules >= 2 },
 ];
 const ACH_PER_ROW = 5;
 // 已定义行数；之后整行为未解锁 ???
@@ -3989,6 +4192,7 @@ const HIDDEN_ACH = [
   { id: "S23", name: "裸奇点", check: () => false }, // 黑洞倍率为 1 时保持扭曲状态 10 分钟以上
   { id: "S24", name: "你变秃了，也变强了", check: () => false }, // 一天（当日窗口）内 rua 摆线 200 次
   { id: "S25", name: "这是旮旯给木吗？", check: () => false }, // 好感度达到 500
+  { id: "S26", name: "你才是挑战者", check: () => false }, // 进入所有（8 种）扭曲生效的虚空
 ];
 // S5 目标序列：S1,S1,S4,S5,S1,S4
 const S5_SEQUENCE = ["S1", "S1", "S4", "S5", "S1", "S4"];
@@ -4200,8 +4404,8 @@ function updateAchievementsUI() {
       continue;
     }
     const done = state.ach.normal.includes(a.id);
-    // A52 为测试模式限定成就：非测试模式下显示为 ???（与其他占位一致，不可完成）
-    if (a.id === "A52" && !state.testMode) {
+    // A52/A53 为测试模式限定成就：非测试模式下显示为 ???（与其他占位一致，不可完成）
+    if ((a.id === "A52" || a.id === "A53") && !state.testMode) {
       root.classList.remove("completed");
       idEl.style.display = "none";
       nameEl.style.display = "none";
@@ -4500,6 +4704,16 @@ function tick() {
   state.lastTick = now;
   state.realTime += realDt;
   applyProduction(realDt);
+
+  // 虚空升级 tick：SVU1 填充（真实时间，任意位置可运转）；
+  // SVU2 能标偏移仅在虚空外增长（进入虚空不增长、不清零）
+  if (state.ach.normal.includes("A52")) {
+    svu1FillTick(realDt);
+    if (!state.voidActive) {
+      const rate = svu2GainRate();
+      if (rate > 0) state.svu2Level += rate * realDt;
+    }
+  }
 
   // 自动化解锁门槛（首次湮灭后生效）
   if (state.annihilations >= 1) {
@@ -4954,7 +5168,10 @@ function setupUI() {
       // 虚空页隐藏、湮灭/自动湮灭/扭曲入口全部被阻，玩家无任何 UI 出口（永久软锁）
       if (state.voidActive) exitVoid();
       state.testMode = false;
-      state.ach.normal = state.ach.normal.filter(a => a !== "A52");
+      state.svu1Filling = false; // 停止 SVU1 填充（测试内容随测试模式关闭）
+      // 移除测试模式限定成就：A52（虚空入口）、A53/S26（虚空内容）
+      state.ach.normal = state.ach.normal.filter(a => a !== "A52" && a !== "A53");
+      state.ach.hidden = state.ach.hidden.filter(a => a !== "S26");
       applyTestModeUI();
       saveGame();
       renderAll();

@@ -245,7 +245,24 @@ body {
 .void-enter-btn:disabled { opacity: 0.4; cursor: default; }
 #void-progress { font-size: 14px; line-height: 1.9; margin-bottom: 12px; font-family: var(--font-num); white-space: pre-line; }
 .void-sub { margin: 20px 0 8px; color: #dcdcf0; }
-.void-upg-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+#void-upg-list.void-upg-grid { grid-template-columns: 1fr; gap: 8px; }
+/* SVU 虚空升级：全行卡片，亮白色半透明边框 */
+.void-svu-card {
+  width: 100%; text-align: left; cursor: pointer;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.45);
+  border-radius: 8px; padding: 10px 14px; color: #f2f2f7;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.void-svu-card.locked { opacity: 0.5; cursor: default; }
+.void-svu-card .sau-name { font-weight: 600; font-size: 15px; }
+.void-svu-card .sau-desc { font-size: 12px; color: rgba(242,242,247,0.75); }
+.void-svu-card .sau-cost { font-size: 12px; font-family: var(--font-num); color: rgba(242,242,247,0.9); white-space: pre-line; }
+.void-svu-fill {
+  margin-top: 6px; align-self: flex-start; padding: 4px 14px; border-radius: 4px;
+  font-size: 12px; cursor: pointer; background: transparent;
+  border: 1px solid rgba(255,255,255,0.45); color: #f2f2f7;
+}
+.void-svu-fill.on { background: rgba(255,255,255,0.18); box-shadow: 0 0 8px rgba(255,255,255,0.35); }
 .void-milestone {
   border: 1px dashed rgba(255,255,255,0.3); border-radius: 8px; text-align: center;
   padding: 12px; font-size: 13px; color: rgba(242,242,247,0.75); background: rgba(255,255,255,0.03);
@@ -562,6 +579,9 @@ body[data-theme="white"] #bh-canvas { box-shadow: 0 0 0 2px #888, 0 2px 8px rgba
 
 /* 黑洞虚粒子升级（v0.4.3）*/
 .svpu-btn { border-style: dashed !important; }
+/* VPU2 量子狂潮：VF 购买，白亮边框 */
+.vpu2-card { border-color: rgba(255,255,255,0.85) !important; box-shadow: 0 0 6px rgba(255,255,255,0.22); }
+.vpu2-card.affordable { box-shadow: 0 0 10px rgba(255,255,255,0.45); }
 
 /* ===== 成就弹窗（左上角，堆叠+补位动画）===== */
 #ach-popup-stack { position: fixed; top: 16px; left: 16px; z-index: 200; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
