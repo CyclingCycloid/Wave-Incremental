@@ -705,9 +705,9 @@ function gainRate() {
     }
     g *= vpu2SingMult(); // 量子狂潮：奇点效果额外乘数
   }
-  // 定向：每刻 50% 概率取反（F 计算取绝对值，故 U 可为负）。与 log 版相同：
-  // 按 100ms 时间窗确定性取反，保证同窗口内生产/显示符号一致
-  if (inDistort("directed") && Math.floor(gameNow() / 100) % 2 === 1) g = -g;
+  // 定向：每刻独立 50% 概率取反（原版语义；符号随机而非固定，U 有 0 硬下限，
+  // 长程为带反射壁的随机游走——正漂移保证进度推进，不会卡死）
+  if (inDistort("directed") && Math.random() < 0.5) g = -g;
   // 冷却宇宙：波速获取量变为 A^k（k 随购买后时间线性 0→1）
   if (inDistort("cooldown")) g = Math.pow(Math.max(0, g), cooldownExp());
   // 滞涨宇宙（原通胀）：波速获取变为原来的平方根（^0.5）
@@ -759,9 +759,8 @@ function gainRateLog() {
     log += exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp));
   }
   log += vpu2SingMultLog(); // 量子狂潮：奇点效果额外乘数
-  // 定向：每刻 50% 概率取反。按 100ms 时间窗确定性取反（替代每次调用独立掷随机），
-  // 保证同一窗口内生产 tick / 渲染外推 / Hz/s 显示的符号一致，避免同帧“逻辑加、显示减”
-  if (inDistort("directed") && Math.floor(gameNow() / 100) % 2 === 1) sign = -1;
+  // 定向：每刻独立 50% 概率取反（与 gainRate 同款原版语义）
+  if (inDistort("directed") && Math.random() < 0.5) sign = -1;
   // 冷却：g^cooldownExp → log ×= cooldownExp（仅 g>0；g≤0 时原代码 max(0,g) 归零）
   if (inDistort("cooldown")) {
     if (log <= NLOG + 1) return { log: NLOG, sign: 1 }; // g=0
