@@ -3778,11 +3778,11 @@ function updateCompactUI() {
   const rateTxt = rateLog <= NLOG + 1 ? "0" : fmtNum(Math.pow(10, Math.min(rateLog, 308)), rateLog);
   document.getElementById("comp-cm-rate").textContent =
     `每秒 +${rateTxt}（真实时间${theoryOwned("01") ? "，受削弱的时间倍率加成" : "，不受游戏速度影响"}）`;
-  // CM 三个效果（一个一行，只显示数值；公式说明见帮助页）
+  // CM 三个效果（一个一行，简洁格式）
   document.getElementById("comp-dim-effect").textContent =
-    `效果① 波速获取：当前 ×${fmtLog(cmGainMultLog())}\n`
-    + `效果② 波长指数：当前 e = ${wavelengthExp().toFixed(4)}\n`
-    + `效果③ 奇点获取：当前 ×${fmtLog(cmSpMultLog())}`;
+    `波速获取 ×${fmtLog(cmGainMultLog())}\n`
+    + `波长公式内指数: ${wavelengthExp().toFixed(4)}\n`
+    + `奇点获取 ×${fmtLog(cmSpMultLog())}`;
   // 拓扑节点（价格按总节点数计）
   const tpCostV = tpNextCostValue();
   const tpCostLogV = clampLog((tpTotal() + 1) * Math.log10(1.5));
