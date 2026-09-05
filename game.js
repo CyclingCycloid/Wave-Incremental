@@ -1054,6 +1054,18 @@ function migrateState() {
   if (state.autoAnnCDLvl === undefined) state.autoAnnCDLvl = 0;
   // v0.5.0：本次湮灭游戏时长独立累计字段回填
   if (state.annGameElapsed === undefined) state.annGameElapsed = 0;
+  // 旧版把 gained=Infinity 记入最好单次奇点/历史（JSON 序列化后为 null）：统计页会显示 ∞。
+  // 统一归位为软上限拐点（历史最高获取的实际显示口径）。
+  // 注意不能用 !isFinite(null)——null 强转 0 后 isFinite 为 true，必须显式判 typeof
+  if (state.annBestSp === undefined || typeof state.annBestSp !== "number" || !isFinite(state.annBestSp)) state.annBestSp = Math.pow(10, Math.log10(1.79e308));
+  if (Array.isArray(state.annHistory)) {
+    for (const h of state.annHistory) {
+      if (h) {
+        if (typeof h.sp !== "number" || !isFinite(h.sp)) h.sp = Math.pow(10, Math.log10(1.79e308));
+        if (typeof h.rate !== "number" || !isFinite(h.rate)) h.rate = Math.pow(10, Math.log10(1.79e308));
+      }
+    }
+  }
   // 测试开关不跨会话残留：加载存档时重置（温度无上限的测试状态若被保存，
   // 热反馈失控会让每次湮灭后十几秒就再次到达 Tcap 且不获 Sp）
   if (state.testBreakRules) state.testBreakRules = false;
@@ -1835,8 +1847,10 @@ function doAnnihilation() {
       addSpLog(gLog);
       addTotalSpLog(gLog);
     }
-    // gained=Infinity（或 annBestSp 已 NaN）时也正确记录为 Infinity
-    if (!(state.annBestSp >= gained)) state.annBestSp = gained;
+    // gained 可能为 Infinity（历史遗留路径）：记录时用有限值（封顶口径）兜底，
+    // 否则统计页 bestSp 走 Math.log10(Infinity)=Infinity 显示 ∞
+    const bestVal = isFinite(gained) ? gained : Math.pow(10, spGainLog());
+    if (!(state.annBestSp >= bestVal)) state.annBestSp = bestVal;
     if (rate > state.annBestRate) state.annBestRate = rate;
     if (state.annFastest === 0 || realDur < state.annFastest) state.annFastest = realDur;
   }
@@ -1958,7 +1972,8 @@ function forceAnnihilationReset(gained) {
       addSpLog(isFinite(gained) ? Math.log10(gained) : NLOG);
       addTotalSpLog(isFinite(gained) ? Math.log10(gained) : NLOG);
     }
-    if (!(state.annBestSp >= gained)) state.annBestSp = gained;
+    const bestVal = isFinite(gained) ? gained : Math.pow(10, spGainLog());
+    if (!(state.annBestSp >= bestVal)) state.annBestSp = bestVal;
     if (rate > state.annBestRate) state.annBestRate = rate;
     if (state.annFastest === 0 || realDur < state.annFastest) state.annFastest = realDur;
   }
@@ -2762,11 +2777,15 @@ function svu2GainRate() {
   return svu1Level() / Math.pow(1 + state.svu2Level, 1.5);
 }
 // SVU1 效果：虚空内波速获取速率的幂次 ^= 1 + min(level/6, √(2·level)/6)（虚空外恒 1）
-function svu1GainExp() {
-  if (!state.voidActive) return 1;
+// SVU1 效果幂次：等级换算的指数（仅依赖等级）；应用与否由调用方按 voidActive 判定
+function svu1GainExpRaw() {
   const lv = svu1Level();
   if (lv <= 0) return 1;
   return 1 + Math.min(lv / 6, Math.sqrt(2 * lv) / 6);
+}
+// 实际应用的幂次：仅虚空内生效（虚空外恒 1，但 UI 仍显示潜在值供预览）
+function svu1GainExp() {
+  return state.voidActive ? svu1GainExpRaw() : 1;
 }
 // SVU2 效果 1（内外都生效）：热能超载（svpu4）有效等级加成——虚空内 +2·lg(1+lg(n+1))，
 // 虚空外 +lg(1+lg(n+1))（n=SVU2 等级）
@@ -2809,7 +2828,7 @@ function svu1FillTick(realDt) {
 const SVU_DEFS = [
   { id: "svu1", name: "虚空共振", fill: true,
     desc: "根据累计投入的 Sp、VP、VF 计算等级；虚空内的波速获取速率获得指数加成",
-    effect: () => `等级 ${fmt(svu1Level())} · 虚空内波速获取 ^${fmt(svu1GainExp())}\n投入：Sp ${fmtLog(state.svu1SpLog)} · VP ${fmtLog(state.svu1VpLog)} · VF ${fmtLog(state.svu1VfLog)}` },
+    effect: () => `等级 ${fmt(svu1Level())} · 波速获取 ^${fmt(svu1GainExpRaw())}${state.voidActive ? "" : "（仅虚空内生效）"}\n投入：Sp ${fmtLog(state.svu1SpLog)} · VP ${fmtLog(state.svu1VpLog)} · VF ${fmtLog(state.svu1VfLog)}` },
   { id: "svu2", name: "能标偏移", fill: false,
     desc: "削弱温度的软上限（热能超载有效等级增加），并降低虚空内热寂的惩罚；在虚空外随时间自动增长（虚空内不增长）",
     effect: () => `等级 ${fmt(state.svu2Level)}（虚空外 +${fmt(svu2GainRate())}/s）\n热能超载有效等级 +${fmt(svu2Svpu4Bonus())}${state.voidActive ? " · 热寂削弱指数 " + fmt(svu2AdiabaticExp()) : ""}` },
@@ -4122,7 +4141,7 @@ function renderStats() {
   document.getElementById("stat-ann-time").textContent =
     state.annihilations >= 1 ? `${fmtTime(annReal, true)} / ${fmtTime(annGame, true)}` : "— / —";
   document.getElementById("stat-ann-total-sp").textContent = fmtNum(state.totalSp, getLogTotalSp());
-  document.getElementById("stat-ann-best-sp").textContent = fmtNum(state.annBestSp, state.annBestSp > 0 ? Math.log10(state.annBestSp) : NLOG);
+  document.getElementById("stat-ann-best-sp").textContent = fmtNum(state.annBestSp, state.annBestSp > 0 ? Math.log10(state.annBestSp) : NLOG) + " Sp";
   document.getElementById("stat-ann-best-rate").textContent = fmtNum(state.annBestRate, state.annBestRate > 0 ? Math.log10(state.annBestRate) : NLOG) + " Sp/分";
   document.getElementById("stat-ann-fastest").textContent = state.annFastest > 0 ? fmtTime(state.annFastest) : "—";
   document.getElementById("stat-ann-count").textContent = fmt(effAnnihilations());
