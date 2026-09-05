@@ -644,8 +644,15 @@ body[data-theme="white"] #bh-canvas { box-shadow: 0 0 0 2px #888, 0 2px 8px rgba
 .bh-vpu-grid .sau-btn { min-height: 88px; padding: 8px 6px; }
 .bh-vpu-grid .sau-btn .sau-desc { font-size: 10px; min-height: 36px; }
 
+/* ===== 白色主题：虚空页保持深色底（浅色文字/星尘在两套主题下都可读）===== */
+body[data-theme="white"] #sub-ann-void {
+  background: #14141c; border-radius: 10px; padding: 14px;
+}
+
 /* ===== 卷缩层（v0.6.0.0 测试，橙色主题）===== */
 .orange-text { color: var(--orange); }
+.orange-title { color: var(--orange); }
+.comp-group .stat-value { color: var(--orange); }
 /* 顶栏卷缩按钮：形式与湮灭按钮一致，橙色；条件满足时亮橙+呼吸光效 */
 .compactify-btn { color: var(--orange); border-color: var(--orange); }
 .compactify-btn:hover:not(:disabled) { background: rgba(255,140,26,0.12); }
@@ -662,7 +669,7 @@ body[data-theme="white"] #bh-canvas { box-shadow: 0 0 0 2px #888, 0 2px 8px rgba
 /* 卷缩主选项卡与子选项卡 */
 .tab.compact-tab.active { color: var(--orange); border-color: var(--orange); }
 #page-compact .subtab.active { color: var(--orange); border-color: var(--orange); }
-.compact-title { color: var(--orange); font-size: 16px; margin-bottom: 10px; }
+.compact-title { color: var(--orange); font-size: 16px; margin-bottom: 10px; text-align: center; }
 .comp-btn {
   background: var(--bg-panel); border: 1px solid var(--orange-dim); color: var(--orange);
   border-radius: 6px; padding: 6px 14px; cursor: pointer; font-size: 13px; transition: all 0.15s;
@@ -670,54 +677,76 @@ body[data-theme="white"] #bh-canvas { box-shadow: 0 0 0 2px #888, 0 2px 8px rgba
 .comp-btn:hover:not(:disabled) { background: rgba(255,140,26,0.12); }
 .comp-btn:disabled { opacity: 0.45; cursor: default; }
 .comp-btn.small { padding: 2px 12px; font-size: 14px; }
-/* 里程碑（仿虚空里程碑格子：一行一格，亮橙虚线框、完成后发光） */
-.comp-ms-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
-.comp-ms-cell {
-  border: 1px dashed var(--orange-dim); border-radius: 8px; text-align: center;
-  padding: 12px 10px; font-size: 13px; color: var(--text-dim); background: rgba(255,140,26,0.04);
-  display: flex; flex-direction: column; gap: 4px;
-}
-.comp-ms-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; font-weight: 600; font-size: 14px; color: var(--orange); }
-.comp-ms-status { font-size: 11px; font-weight: 400; color: var(--text-dim); }
-.comp-ms-prog { font-family: var(--font-num); font-size: 12px; color: var(--text); }
-.comp-ms-cell.done {
-  border-style: solid; border-color: var(--orange-bright);
-  box-shadow: 0 0 10px rgba(255,140,26,0.35);
-}
-.comp-ms-cell.done .comp-ms-status, .comp-ms-cell.done .comp-ms-prog { color: var(--orange-bright); }
-/* 维度折叠器 */
-.comp-section { margin: 14px 0; }
-.comp-section h3 { font-size: 14px; margin-bottom: 6px; }
-.comp-cm-value { font-size: 18px; font-weight: 700; color: var(--orange); font-family: var(--font-num); }
+/* 里程碑：参照湮灭里程碑横条（编号 + 奖励 + 状态），橙色主题 */
+.comp-ms-list { margin-top: 6px; }
+.comp-milestone { border-left: 3px solid var(--orange-dim); }
+.comp-milestone .comp-ms-label { font-size: 14px; font-weight: 700; color: var(--orange); white-space: nowrap; }
+.comp-milestone .comp-ms-main { display: flex; flex-direction: column; gap: 2px; align-items: flex-end; text-align: right; flex: 1; }
+.comp-milestone .comp-ms-reward { font-size: 13px; }
+.comp-milestone .comp-ms-status { font-family: var(--font-num); font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+.comp-milestone.done { border-color: var(--orange-bright); box-shadow: 0 0 10px rgba(255,140,26,0.25); }
+.comp-milestone.done .comp-ms-reward { color: var(--orange-bright); }
+.comp-milestone.done .comp-ms-status { color: var(--orange-bright); }
+/* 维度页（居中排版；公式区在上，效果只显示数值——公式说明见帮助页） */
+.comp-dim-top { text-align: center; }
+.comp-cm-value { font-size: 20px; font-weight: 700; color: var(--orange); font-family: var(--font-num); }
 .comp-cm-rate { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
-.comp-cm-effects { font-size: 13px; margin-top: 8px; white-space: pre-line; }
-.comp-tp-line, .comp-betti-line, .comp-formula-line, .comp-ins-line {
-  font-family: var(--font-num); font-size: 13px; margin: 6px 0;
-}
-.comp-geo-row { display: flex; gap: 18px; flex-wrap: wrap; margin: 8px 0; }
+.comp-dim-formulas { text-align: center; font-family: var(--font-num); font-size: 13px; color: var(--text-dim); margin: 12px 0 4px; }
+.comp-dim-effect { text-align: center; font-size: 14px; margin: 8px 0 4px; }
+.comp-section { margin: 14px 0; text-align: center; }
+.comp-tp-line { font-family: var(--font-num); font-size: 13px; margin: 6px 0 10px; }
+.comp-geo-hint { font-size: 13px; color: var(--text-dim); margin-bottom: 8px; }
+.comp-geo-row { display: flex; gap: 26px; flex-wrap: wrap; justify-content: center; margin: 8px 0; }
 .comp-geo-box { text-align: center; }
 .comp-geo-name { font-size: 13px; margin-bottom: 4px; }
-.comp-geo-btns { display: flex; align-items: center; gap: 6px; justify-content: center; }
+.comp-geo-btns { display: flex; align-items: center; gap: 8px; justify-content: center; }
 .comp-geo-count { font-family: var(--font-num); min-width: 2.5em; display: inline-block; }
-.comp-ins-buy-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 14px; }
-/* 理论树：按层分行，节点盒，父连线为竖线桩 */
-.theory-tree { display: flex; flex-direction: column; align-items: center; }
-.theory-layer { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; }
+/* 理论树灵感大框：总灵感（可用）+ 三途径格子 */
+.comp-ins-box {
+  border: 1px solid var(--orange-dim); border-radius: 10px; padding: 12px 14px;
+  background: rgba(255,140,26,0.04); margin-bottom: 14px;
+}
+.comp-ins-head { text-align: center; font-family: var(--font-num); font-size: 15px; font-weight: 600; margin-bottom: 10px; }
+.comp-ins-cells { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.comp-ins-cell {
+  display: flex; flex-direction: column; gap: 4px; align-items: center; justify-content: center;
+  background: var(--bg-panel); border: 1px solid var(--orange-dim); border-radius: 8px;
+  padding: 10px 6px; cursor: pointer; transition: all 0.15s; font-family: var(--font-main);
+}
+.comp-ins-cell:hover:not(:disabled) { background: rgba(255,140,26,0.12); }
+.comp-ins-cell:disabled { opacity: 0.45; cursor: default; }
+.comp-ins-cell .cis-src { font-size: 13px; font-weight: 600; color: var(--orange); }
+.comp-ins-cell .cis-cost { font-family: var(--font-num); font-size: 12px; text-align: center; }
+/* 理论树视口：恒定深色底 + 点阵（参照黑洞画布做法，白主题下名称同样可读） */
+.tree-viewport {
+  position: relative; height: 460px; overflow: hidden;
+  border: 1px solid var(--border); border-radius: 10px;
+  background-color: #17171f;
+  background-image: radial-gradient(rgba(255,140,26,0.14) 1.2px, transparent 1.2px);
+  background-size: 24px 24px;
+  touch-action: none; cursor: grab; user-select: none;
+  -webkit-user-select: none;
+}
+.tree-viewport.grabbing { cursor: grabbing; }
+body[data-theme="white"] .tree-viewport { border-color: #c9c9d2; }
+.tree-world { position: absolute; top: 0; left: 0; width: 1100px; height: 800px; transform-origin: 0 0; }
+#tree-lines { position: absolute; top: 0; left: 0; pointer-events: none; }
+.tree-line { stroke: #7a5a2e; stroke-width: 2; }
+/* 树节点：名称在框外左上角（白色粗体），框内为效果文本 */
 .tn-node {
-  position: relative; width: 132px; margin-top: 16px; padding: 8px 6px; text-align: center;
-  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; cursor: default;
+  position: absolute; background: #20202a; border: 2px solid #3a3a46; border-radius: 8px;
+  padding: 8px 6px 6px; text-align: center;
 }
-.tn-node:not(.root)::before {
-  content: ""; position: absolute; top: -16px; left: 50%; width: 2px; height: 16px;
-  background: var(--border);
+.tn-node .tn-name {
+  position: absolute; top: -24px; left: -4px; font-size: 15px; font-weight: 700; color: #ffffff;
+  white-space: nowrap; text-shadow: 0 1px 3px rgba(0,0,0,0.85), 0 0 6px rgba(0,0,0,0.6);
 }
-.tn-node .tn-id { font-family: var(--font-num); font-size: 10px; color: var(--text-dim); }
-.tn-node .tn-name { font-size: 13px; font-weight: 600; }
-.tn-node .tn-state { font-size: 11px; color: var(--text-dim); margin-top: 3px; white-space: pre-line; }
+.tn-node .tn-id { font-family: var(--font-num); font-size: 10px; color: #8a8a96; }
+.tn-node .tn-state { font-size: 10px; color: #b9b9c4; line-height: 1.35; margin-top: 4px; white-space: pre-line; }
 .tn-node.available { border-color: var(--orange-dim); cursor: pointer; }
-.tn-node.available:hover { background: rgba(255,140,26,0.1); }
-.tn-node.bought { border-color: var(--orange); box-shadow: 0 0 8px rgba(255,140,26,0.35); }
-.tn-node.bought .tn-name { color: var(--orange); }
+.tn-node.available:hover { border-color: var(--orange); background: #262631; }
+.tn-node.bought { border-color: var(--orange); box-shadow: 0 0 10px rgba(255,140,26,0.4); }
+.tn-node.bought .tn-name { color: var(--orange-bright); }
 .tn-node.locked { opacity: 0.55; }
-/* 统计-通用 内的卷缩数据（橙色数值） */
-.comp-stat-group .stat-value { color: var(--orange); }
+.tree-controls { position: absolute; right: 10px; bottom: 10px; display: flex; gap: 6px; z-index: 5; }
+.tree-hint { position: absolute; left: 10px; bottom: 12px; font-size: 11px; color: #8a8a96; z-index: 5; pointer-events: none; }

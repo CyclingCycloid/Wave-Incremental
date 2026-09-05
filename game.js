@@ -951,12 +951,14 @@ function fmt(num) {
 }
 
 function fmtLog(logV) {
-  // 以 log10 显示：|logV| 在 double 范围内用 double 指数；超出用 log 域还原尾数（a.bbe±N）
+  // 以 log10 显示：|logV| 在 double 范围内还原 double 后走 fmt——
+  // fmt 自带「<1000 定点小数 / <0.001 科学计数 / ≥1000 按记数法设置」的完整规则，
+  // 避免 12.6 显示成 1.259e1 这类小值指数记数（<1000 一律定点）
   if (!isFinite(logV) || logV >= LOG_CAP) return "∞"; // LOG_CAP 钳制值视为无穷
   if (logV <= NLOG + 1e6) return "0"; // 哨兵噪声区（NLOG~NLOG+1e6）：语义为零，防 1e-9999999xx 误报
-  // 小数位数跟随设置（与 fmt 一致），不再硬编码 3 位
+  // 小数位数跟随设置（与 fmt 一致）
   const d = Math.min(6, Math.max(3, (state.settings && state.settings.decimals) || 3));
-  if (logV > -308 && logV < 308) return Math.pow(10, logV).toExponential(d).replace("e+", "e");
+  if (logV > -308 && logV < 308) return fmt(Math.pow(10, logV));
   // log 域：logV = floor(logV) + frac；值 = 10^frac × 10^floor(logV)
   // （负指数也走此分支：10^frac 是 1~10 间的有限数，不会下溢）
   const exp = Math.floor(logV);
@@ -998,12 +1000,18 @@ function fmtTime(seconds, precise) {
   if (m > 0) return `${m}m ${sStr}s`;
   return `${sStr}s`;
 }
-// 时间显示的 log 域版本：秒数为非有限值（double 封顶 MAX_VALUE，fmtTime 会得到天文数字）
-// 时按「天」数科学计数显示（天数的 log = log10(秒) − log10(86400)）。普通范围回落 fmtTime
+// 时间显示的 log 域版本：log 权威超过 double 上限（缓存封顶 MAX_VALUE 已失真）时，
+// 直接按「天」数 log 域显示（天数的 log = log10(秒) − log10(86400)）；普通范围回落 fmtTime。
+// 不可先判 isFinite(seconds)：playTime 被封顶成 MAX_VALUE（有限）会让显示永远卡在 2.08e303d
+const LOG_MAX_DOUBLE = Math.log10(Number.MAX_VALUE); // ≈308.2547
 function fmtTimeLog(seconds, secondsLog) {
+  const lg = (typeof secondsLog === "number" && isFinite(secondsLog) && secondsLog > NLOG + 1) ? secondsLog : null;
+  if (lg !== null && lg > LOG_MAX_DOUBLE) {
+    const dLog = lg - Math.log10(86400);
+    return (10 ** (dLog - Math.floor(dLog))).toFixed(3) + "e" + Math.floor(dLog) + "d";
+  }
   if (seconds !== undefined && isFinite(seconds)) return fmtTime(seconds);
-  const dLog = (typeof secondsLog === "number" && isFinite(secondsLog) && secondsLog > NLOG + 1)
-    ? secondsLog - Math.log10(86400) : null;
+  const dLog = lg !== null ? lg - Math.log10(86400) : null;
   if (dLog === null || dLog <= 4) return fmtTime(86400 * 1e4); // 兜底
   return (10 ** (dLog - Math.floor(dLog))).toFixed(3) + "e" + Math.floor(dLog) + "d";
 }
@@ -1945,7 +1953,11 @@ function doAnnihilation() {
 
   // 统计（扭曲宇宙内不刷新 Sp 相关纪录，但记入历史）
   const realNow = gameNow();
-  const realDur = (realNow - state.annStartReal) / 1000;
+  // 首次湮灭（annStartReal=0）：时长回落为开局至今的真实游玩时长
+  //（否则会算出自 1970 年起的天文数字，污染最快湮灭与最佳速率）
+  const realDur = state.annStartReal > 0
+    ? Math.max((realNow - state.annStartReal) / 1000, 0)
+    : Math.max(state.realTime || 0, 0);
   const gameDur = state.annGameElapsed || (state.playTime - state.annStartGame);
   // Sp/分（double 缓存口径）：gained 超 double 时为 Infinity，log 口径在下方 pushAnnHistory 计算
   const rate = realDur > 0 && isFinite(gained) ? (gained / realDur) * 60 : 0;
@@ -2086,7 +2098,10 @@ function enterDistort(id) {
 // 强制重置（进入扭曲用）：gained 为获得的 Sp（可为 0）
 function forceAnnihilationReset(gained) {
   const realNow = gameNow();
-  const realDur = (realNow - state.annStartReal) / 1000;
+  // 首次湮灭（annStartReal=0）：时长回落为开局至今的真实游玩时长（同 doAnnihilation）
+  const realDur = state.annStartReal > 0
+    ? Math.max((realNow - state.annStartReal) / 1000, 0)
+    : Math.max(state.realTime || 0, 0);
   const gameDur = state.annGameElapsed || (state.playTime - state.annStartGame);
   const rate = realDur > 0 ? (gained / realDur) * 60 : 0;
   if (gained > 0) {
@@ -2318,6 +2333,7 @@ function applyHelpVisibility() {
   // 卷缩章节：测试模式下首次卷缩后显示
   document.getElementById("help-compact").classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
   document.getElementById("stat-ann-group").classList.toggle("hidden", state.annihilations < 1);
+  document.getElementById("stat-comp-area").classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
   document.getElementById("subtab-stats-challenge").classList.toggle("hidden", state.annihilations < 20);
 }
 
@@ -3339,16 +3355,16 @@ function cmTick(realDt) {
   const dtLog = Math.log10(Math.max(realDt, 1e-300)) + cmTimeMultLog();
   setCMLog(logAddLogs(getLogCM(), rateLog + dtLog));
 }
-// 购买拓扑节点：第 n 个花费 floor(1.5^n) SS（n 从 1 起）
+// 购买拓扑节点：第 n 个花费 floor(1.5^n) SS（n 从 1 起，按**总节点数**计——
+// 含已转换为点/边/面的部分，否则转换后再购买会重新从第 1 个的价钱起算）
 function tpNextCostValue() {
-  const n = state.tp + 1;
+  const n = tpTotal() + 1;
   const lg = n * Math.log10(1.5);
   return lg < 15 ? Math.floor(Math.pow(1.5, n)) : null; // null：小数位已无意义，走 log 口径
 }
 function buyTP() {
   const v = tpNextCostValue();
-  const n = state.tp + 1;
-  const cLog = clampLog(n * Math.log10(1.5));
+  const cLog = clampLog((tpTotal() + 1) * Math.log10(1.5));
   if (v !== null) {
     if (cmpLT(state.ss, v, getLogSS(), Math.log10(Math.max(v, 1)))) return;
     subSSLog(Math.log10(Math.max(v, 1)));
@@ -3403,7 +3419,8 @@ function buyIns(src) {
     if (!spAffordLog(cLog)) return;
     subSpLog(cLog);
   } else {
-    if (state.compactions < 1) return; // SS 途径需拥有维度折叠器
+    // SS 途径需拥有维度折叠器（至少 1 个拓扑节点）——第一个 SS 必须花在折叠器上
+    if (tpTotal() < 1) return;
     const cLog = insCostLogSS();
     if (!ssAffordLog(cLog)) return;
     subSSLog(cLog);
@@ -3449,7 +3466,10 @@ function compactify() {
   if (!canCompactify()) return;
   if (!confirm("确定要进行卷缩重置吗？\n这将重置几乎所有内容（统计-通用与统计-挑战保留），并获得超弦（SS）。")) return;
   const realNow = gameNow();
-  const realDur = state.compStartReal > 0 ? Math.max((realNow - state.compStartReal) / 1000, 0) : 0;
+  // 首次卷缩（尚无上一纪元）：本纪元时长 = 开局至今的真实游玩时长
+  const realDur = state.compStartReal > 0
+    ? Math.max((realNow - state.compStartReal) / 1000, 0)
+    : Math.max(state.realTime || 0, 0);
   // 统计：最快卷缩（真实秒）、最好单次 SS、最佳 SS/分（真实分口径，与湮灭一致，log 权威）
   if (state.compFastest === 0 || realDur < state.compFastest) state.compFastest = realDur;
   const gained = COMPACT_SS_GAIN_FIRST;
@@ -3524,23 +3544,21 @@ let compMsEls = [];
 let compactEls = {};
 function buildCompactOnce() {
   if (compactBuilt) return;
-  // 里程碑格子（仿虚空里程碑：一行一格，亮橙主题）
+  // 里程碑（参照湮灭里程碑横条：编号 + 奖励 + 状态，橙色主题）
   const msGrid = document.getElementById("comp-milestone-list");
   msGrid.innerHTML = "";
   compMsEls = [];
   for (const def of COMP_MILESTONES) {
     const cell = document.createElement("div");
-    cell.className = "comp-ms-cell";
-    const head = document.createElement("div"); head.className = "comp-ms-head";
-    const title = document.createElement("span"); title.textContent = `里程碑 ${def.n} · ${def.title}`;
+    cell.className = "milestone comp-milestone";
+    const label = document.createElement("span"); label.className = "comp-ms-label"; label.textContent = `里程碑 ${def.n}`;
+    const main = document.createElement("div"); main.className = "comp-ms-main";
+    const reward = document.createElement("span"); reward.className = "comp-ms-reward"; reward.textContent = def.reward;
     const status = document.createElement("span"); status.className = "comp-ms-status";
-    head.append(title, status);
-    const desc = document.createElement("div"); desc.className = "sau-desc"; desc.textContent = def.desc;
-    const prog = document.createElement("div"); prog.className = "comp-ms-prog";
-    const reward = document.createElement("div"); reward.className = "sau-desc"; reward.textContent = "奖励：" + def.reward;
-    cell.append(head, desc, prog, reward);
+    main.append(reward, status);
+    cell.append(label, main);
     msGrid.appendChild(cell);
-    compMsEls.push({ cell, statusEl: status, progEl: prog });
+    compMsEls.push({ cell, statusEl: status });
   }
   // 拓扑节点购买
   document.getElementById("comp-tp-buy").addEventListener("click", buyTP);
@@ -3562,52 +3580,133 @@ function buildCompactOnce() {
     geoRow.appendChild(box);
     compactEls.geo[key] = cnt;
   }
-  // 灵感购买按钮（F / Sp / SS 三途径，价格各自独立累计）
-  const insRow = document.getElementById("comp-ins-buy-row");
-  insRow.innerHTML = "";
+  // 灵感三格子（大框内：频率 / 奇点 / 超弦，各自花费）
+  const insCells = document.getElementById("comp-ins-cells");
+  insCells.innerHTML = "";
   compactEls.ins = {};
+  const INS_SRC_NAMES = { F: "频率", Sp: "奇点", SS: "超弦" };
   for (const src of ["F", "Sp", "SS"]) {
     const b = document.createElement("button");
-    b.className = "comp-btn";
+    b.className = "comp-ins-cell";
+    const s1 = document.createElement("span"); s1.className = "cis-src"; s1.textContent = INS_SRC_NAMES[src];
+    const s2 = document.createElement("span"); s2.className = "cis-cost";
+    b.append(s1, s2);
     b.addEventListener("click", () => buyIns(src));
-    insRow.appendChild(b);
-    compactEls.ins[src] = b;
+    insCells.appendChild(b);
+    compactEls.ins[src] = { btn: b, cost: s2 };
   }
-  // 理论树（按层分行；节点盒，父连线为竖线桩）
-  const tree = document.getElementById("comp-theory-tree");
-  tree.innerHTML = "";
-  compactEls.nodes = {};
-  const layers = {};
-  for (const def of THEORY_NODES) (layers[def.id[0]] = layers[def.id[0]] || []).push(def);
-  for (const lk of Object.keys(layers).sort()) {
-    const rowEl = document.createElement("div"); rowEl.className = "theory-layer";
-    for (const def of layers[lk]) {
-      const node = document.createElement("div");
-      node.className = "tn-node" + (def.parents.length === 0 ? " root" : "");
-      const idl = document.createElement("div"); idl.className = "tn-id"; idl.textContent = "节点 " + def.id;
-      const nm = document.createElement("div"); nm.className = "tn-name"; nm.textContent = def.name;
-      const st = document.createElement("div"); st.className = "tn-state";
-      node.append(idl, nm, st);
-      if (!def.placeholder) node.addEventListener("click", () => { buyTheoryNode(def.id); updateCompactUI(); });
-      rowEl.appendChild(node);
-      compactEls.nodes[def.id] = { node, st };
+  // 理论树（固定坐标世界 + SVG 连线 + 拖动/缩放；手机与桌面布局完全一致，只有缩放差异）
+  const svg = document.getElementById("tree-lines");
+  svg.setAttribute("width", TREE_WORLD_W);
+  svg.setAttribute("height", TREE_WORLD_H);
+  svg.innerHTML = "";
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  for (const def of THEORY_NODES) {
+    for (const p of def.parents) {
+      const a = TREE_LAYOUT[p], b = TREE_LAYOUT[def.id];
+      const line = document.createElementNS(SVG_NS, "line");
+      line.setAttribute("x1", a.x + TREE_NODE_W / 2); line.setAttribute("y1", a.y + TREE_NODE_H);
+      line.setAttribute("x2", b.x + TREE_NODE_W / 2); line.setAttribute("y2", b.y);
+      line.setAttribute("class", "tree-line");
+      svg.appendChild(line);
     }
-    tree.appendChild(rowEl);
   }
+  const world = document.getElementById("tree-world");
+  compactEls.nodes = {};
+  for (const def of THEORY_NODES) {
+    const pos = TREE_LAYOUT[def.id];
+    const node = document.createElement("div");
+    node.className = "tn-node";
+    node.style.left = pos.x + "px"; node.style.top = pos.y + "px";
+    node.style.width = TREE_NODE_W + "px"; node.style.height = TREE_NODE_H + "px";
+    const nm = document.createElement("div"); nm.className = "tn-name"; nm.textContent = def.name;
+    const idl = document.createElement("div"); idl.className = "tn-id"; idl.textContent = "节点 " + def.id;
+    const st = document.createElement("div"); st.className = "tn-state";
+    node.append(nm, idl, st);
+    if (!def.placeholder) node.addEventListener("click", (e) => { e.stopPropagation(); buyTheoryNode(def.id); updateCompactUI(); });
+    world.appendChild(node);
+    compactEls.nodes[def.id] = { node, st };
+  }
+  setupTreePanZoom();
+  treeResetView();
   compactBuilt = true;
+}
+// 理论树固定布局（世界坐标；节点 150×92，层间距 150）
+const TREE_LAYOUT = {
+  "01": { x: 445, y: 70 },
+  "11": { x: 185, y: 220 }, "12": { x: 705, y: 220 },
+  "21": { x: 185, y: 370 }, "22": { x: 525, y: 370 }, "23": { x: 865, y: 370 },
+  "31": { x: 185, y: 520 }, "32": { x: 695, y: 520 },
+  "41": { x: 445, y: 670 },
+};
+const TREE_NODE_W = 150, TREE_NODE_H = 92;
+const TREE_WORLD_W = 1100, TREE_WORLD_H = 800;
+let treeView = { x: 0, y: 0, z: 1 }; // 平移/缩放状态
+function treeApplyView() {
+  document.getElementById("tree-world").style.transform =
+    `translate(${treeView.x}px, ${treeView.y}px) scale(${treeView.z})`;
+}
+// 初始/重置视图：自适应宽度并水平居中（手机上缩小到能看全整棵树）
+function treeResetView() {
+  const vp = document.getElementById("tree-viewport");
+  const vw = vp.clientWidth || 700;
+  const z = Math.max(0.3, Math.min(1, vw / TREE_WORLD_W));
+  treeView = { x: (vw - TREE_WORLD_W * z) / 2, y: 8, z };
+  treeApplyView();
+}
+// 围绕视口内某点缩放
+function treeZoomAt(cx, cy, factor) {
+  const nz = Math.max(0.3, Math.min(2.2, treeView.z * factor));
+  const k = nz / treeView.z;
+  treeView.x = cx - (cx - treeView.x) * k;
+  treeView.y = cy - (cy - treeView.y) * k;
+  treeView.z = nz;
+  treeApplyView();
+}
+// 拖动平移（pointer 事件，兼容触屏）+ 滚轮/按钮缩放
+function setupTreePanZoom() {
+  const vp = document.getElementById("tree-viewport");
+  let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+  vp.addEventListener("pointerdown", (e) => {
+    dragging = true; sx = e.clientX; sy = e.clientY; ox = treeView.x; oy = treeView.y;
+    vp.classList.add("grabbing");
+    try { vp.setPointerCapture(e.pointerId); } catch {}
+  });
+  vp.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    treeView.x = ox + (e.clientX - sx);
+    treeView.y = oy + (e.clientY - sy);
+    treeApplyView();
+  });
+  const end = () => { dragging = false; vp.classList.remove("grabbing"); };
+  vp.addEventListener("pointerup", end);
+  vp.addEventListener("pointercancel", end);
+  vp.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const rect = vp.getBoundingClientRect();
+    treeZoomAt(e.clientX - rect.left, e.clientY - rect.top, Math.pow(1.0015, -e.deltaY));
+  }, { passive: false });
+  document.getElementById("tree-zoom-in").addEventListener("click", () => {
+    const rect = vp.getBoundingClientRect();
+    treeZoomAt(rect.width / 2, rect.height / 2, 1.25);
+  });
+  document.getElementById("tree-zoom-out").addEventListener("click", () => {
+    const rect = vp.getBoundingClientRect();
+    treeZoomAt(rect.width / 2, rect.height / 2, 0.8);
+  });
+  document.getElementById("tree-zoom-reset").addEventListener("click", treeResetView);
 }
 function updateCompactUI() {
   if (simActive) return;
   if (!state.testMode || state.compactions < 1) return;
   buildCompactOnce();
-  // 里程碑
+  // 里程碑（横条：编号 + 奖励 + 状态）
   for (let i = 0; i < COMP_MILESTONES.length; i++) {
     const def = COMP_MILESTONES[i], el = compMsEls[i];
     if (!el) continue;
     const done = def.check();
     el.cell.classList.toggle("done", done);
     el.statusEl.textContent = done ? "✓ 已完成" : "进行中";
-    el.progEl.textContent = def.prog();
   }
   // 维度折叠器：CM 值（显示 floor，后台小数）与产量
   const cmLog = getLogCM();
@@ -3617,39 +3716,37 @@ function updateCompactUI() {
   const rateTxt = rateLog <= NLOG + 1 ? "0" : fmtNum(Math.pow(10, Math.min(rateLog, 308)), rateLog);
   document.getElementById("comp-cm-rate").textContent =
     `每秒 +${rateTxt}（真实时间${theoryOwned("01") ? "，受削弱的时间倍率加成" : "，不受游戏速度影响"}）`;
-  document.getElementById("comp-cm-effects").textContent =
-    `效果① 波速获取 ×(1+CM)^(1/2)：当前 ×${cmGainMultLog() > -0.001 ? fmtLog(cmGainMultLog()) : "1"}\n`
-    + `效果② 频率公式 F = U / L^e，e = ${wavelengthExp().toFixed(4)}`;
-  // 拓扑节点
+  // 当前效果（只显示数值；公式说明见帮助页）
+  document.getElementById("comp-dim-effect").textContent =
+    `当前效果：波速获取 ×${fmtLog(cmGainMultLog())} ｜ 波长指数 e = ${wavelengthExp().toFixed(4)}`;
+  // 拓扑节点（价格按总节点数计）
   const tpCostV = tpNextCostValue();
-  const tpCostTxt = tpCostV !== null ? `${fmtInt(tpCostV)} SS` : `${fmtLog(state.tp + 1 ? clampLog((state.tp + 1) * Math.log10(1.5)) : 0)} SS`;
+  const tpCostLogV = clampLog((tpTotal() + 1) * Math.log10(1.5));
+  const tpCostTxt = tpCostV !== null ? `${fmtInt(tpCostV)} SS` : `${fmtLog(tpCostLogV)} SS`;
   const tpBuy = document.getElementById("comp-tp-buy");
   tpBuy.textContent = `购买拓扑节点（花费 ${tpCostTxt}）`;
   tpBuy.disabled = tpCostV !== null
     ? cmpLT(state.ss, tpCostV, getLogSS(), Math.log10(Math.max(tpCostV, 1)))
-    : !ssAffordLog(clampLog((state.tp + 1) * Math.log10(1.5)));
+    : !ssAffordLog(tpCostLogV);
   document.getElementById("comp-tp-line").textContent =
     `拓扑节点：${tpTotal()}（可用 ${state.tp} ｜ 点 ${state.tpV} · 边 ${state.tpE} · 面 ${state.tpF}）`;
-  // 贝蒂数与 CM 公式
-  document.getElementById("comp-betti-line").textContent =
-    `b₁ = max(0, E−V+1) = ${betti1()}　　b₂ = max(0, min(F, ⌊2E/3⌋)−E+V) = ${betti2()}`;
-  document.getElementById("comp-formula-line").textContent =
-    `基础 CM 获取：TP² × 3^√(3·b₁·b₂) = ${rateTxt} / 秒`;
-  // 灵感与三途径价格
+  // 灵感大框：总灵感（可用）+ 三途径格子
   document.getElementById("comp-ins-line").textContent =
-    `灵感（Ins）：${fmtNum(state.ins, getLogIns())}（总获取 ${fmtNum(state.totalIns, getLogTotalIns())}）`;
-  const insDefs = [
-    ["F", `以 F 购买（花费 ${fmtLog(insCostLogF())} Hz）`, cmpLT(F(), Math.pow(10, Math.min(insCostLogF(), 308)), FLog(), insCostLogF())],
-    ["Sp", `以 Sp 购买（花费 ${fmtLog(insCostLogSp())} Sp）`, !spAffordLog(insCostLogSp())],
-    ["SS", `以 SS 购买（花费 ${fmtLog(insCostLogSS())} SS）`, !ssAffordLog(insCostLogSS())],
-  ];
-  for (const [src, txt, cant] of insDefs) {
-    const b = compactEls.ins[src];
-    if (!b) continue;
-    b.textContent = txt;
-    b.disabled = cant;
+    `总灵感：${fmtNum(state.totalIns, getLogTotalIns())}（可用 ${fmtNum(state.ins, getLogIns())}）`;
+  const insCant = {
+    F: cmpLT(F(), Math.pow(10, Math.min(insCostLogF(), 308)), FLog(), insCostLogF()),
+    Sp: !spAffordLog(insCostLogSp()),
+    SS: tpTotal() < 1 || !ssAffordLog(insCostLogSS()), // 需先购买拓扑节点（第一个 SS 必须花在折叠器上）
+  };
+  const insHint = { F: "", Sp: "", SS: tpTotal() < 1 ? "（需先购买拓扑节点）" : "" };
+  const insCostLogs = { F: insCostLogF(), Sp: insCostLogSp(), SS: insCostLogSS() };
+  for (const src of ["F", "Sp", "SS"]) {
+    const el = compactEls.ins[src];
+    if (!el) continue;
+    el.cost.textContent = fmtLog(insCostLogs[src]) + insHint[src];
+    el.btn.disabled = insCant[src];
   }
-  // 理论树节点状态
+  // 理论树节点状态（框内写效果文本）
   for (const def of THEORY_NODES) {
     const el = compactEls.nodes[def.id];
     if (!el) continue;
@@ -3657,15 +3754,15 @@ function updateCompactUI() {
     el.node.classList.toggle("bought", owned);
     el.node.classList.toggle("available", theoryAvailable(def));
     el.node.classList.toggle("locked", !owned && !theoryAvailable(def));
+    let txt;
     if (owned) {
-      el.st.textContent = def.id === "01"
-        ? `已解锁（折叠器时间乘数 ×${fmtLog(cmTimeMultLog())}）` : "已解锁";
+      txt = def.id === "01" ? `${def.desc}\n当前乘数 ×${fmtLog(cmTimeMultLog())}` : "已解锁";
     } else if (def.placeholder) {
-      el.st.textContent = theoryAvailable({ ...def, placeholder: false })
-        ? "占位 · 未实装" : "需先解锁上级节点";
+      txt = def.parents.some(p => theoryOwned(p)) ? "未实装\n（后续版本）" : "需先解锁\n上级节点";
     } else {
-      el.st.textContent = `花费 ${def.cost} 灵感解锁`;
+      txt = `${def.desc}\n花费 ${def.cost} 灵感`;
     }
+    el.st.textContent = txt;
   }
 }
 // 卷缩层可见性：主选项卡与全局栏超弦显示（首次卷缩后、且测试模式下）
@@ -4789,8 +4886,8 @@ function renderStats() {
   document.getElementById("stat-ann-count").textContent = fmt(effAnnihilations());
   document.getElementById("stat-ann-tp").textContent = fmtNum(Math.pow(10, Math.min(effectiveCapLog(), 308)), effectiveCapLog()) + " K";
   document.getElementById("stat-ann-distort").textContent = `${state.distortDone.length} / ${DISTORT_UNIVERSES.length}`;
-  // 卷缩统计（v0.6.0.0 测试，位于通用组；统计-通用不随卷缩重置）
-  const compGroup = document.getElementById("stat-comp-group");
+  // 卷缩统计（v0.6.0.0 测试，独立分组；不随卷缩重置——统计-通用/挑战之外的新组）
+  const compGroup = document.getElementById("stat-comp-area");
   if (compGroup) {
     compGroup.classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
     if (state.testMode && state.compactions >= 1) {

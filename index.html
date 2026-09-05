@@ -164,36 +164,6 @@
                 <span class="stat-label">时间速率</span>
                 <span class="stat-value" id="stat-timerate">×1.000</span>
               </div>
-              <div class="comp-stat-group hidden" id="stat-comp-group">
-                <div class="stat-row">
-                  <span class="stat-label">本次卷缩所花费时间（真实/游戏）</span>
-                  <span class="stat-value" id="stat-comp-time">— / —</span>
-                </div>
-                <div class="stat-row">
-                  <span class="stat-label">总超弦获取</span>
-                  <span class="stat-value" id="stat-total-ss">0</span>
-                </div>
-                <div class="stat-row">
-                  <span class="stat-label">卷缩次数</span>
-                  <span class="stat-value" id="stat-compactions">0</span>
-                </div>
-                <div class="stat-row">
-                  <span class="stat-label">总灵感</span>
-                  <span class="stat-value" id="stat-total-ins">0</span>
-                </div>
-                <div class="stat-row">
-                  <span class="stat-label">最好单次超弦获取</span>
-                  <span class="stat-value" id="stat-best-ss">0</span>
-                </div>
-                <div class="stat-row">
-                  <span class="stat-label">最快卷缩时间</span>
-                  <span class="stat-value" id="stat-comp-fastest">—</span>
-                </div>
-                <div class="stat-row">
-                  <span class="stat-label">最佳SS/分</span>
-                  <span class="stat-value" id="stat-best-ss-rate">0</span>
-                </div>
-              </div>
             </div>
           </div>
           <div class="stat-group ann-group hidden" id="stat-ann-group">
@@ -230,6 +200,39 @@
               <div class="stat-row">
                 <span class="stat-label">湮灭的扭曲宇宙数量</span>
                 <span class="stat-value" id="stat-ann-distort">0</span>
+              </div>
+            </div>
+          </div>
+          <div class="stat-group comp-group hidden" id="stat-comp-area">
+            <h3 class="sg-title orange-title">卷缩</h3>
+            <div class="stat-list">
+              <div class="stat-row">
+                <span class="stat-label">本次卷缩所花费时间（真实/游戏）</span>
+                <span class="stat-value" id="stat-comp-time">— / —</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">总超弦获取</span>
+                <span class="stat-value" id="stat-total-ss">0</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">卷缩次数</span>
+                <span class="stat-value" id="stat-compactions">0</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">总灵感</span>
+                <span class="stat-value" id="stat-total-ins">0</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">最好单次超弦获取</span>
+                <span class="stat-value" id="stat-best-ss">0</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">最快卷缩时间</span>
+                <span class="stat-value" id="stat-comp-fastest">—</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">最佳SS/分</span>
+                <span class="stat-value" id="stat-best-ss-rate">0</span>
               </div>
             </div>
           </div>
@@ -443,10 +446,9 @@
           <button class="subtab" data-subtab="comp-theory">理论树</button>
         </nav>
 
-        <!-- 里程碑 -->
+        <!-- 里程碑（参照湮灭里程碑横条） -->
         <div class="subpage" id="sub-comp-ms">
-          <h3 class="compact-title">卷缩里程碑</h3>
-          <div id="comp-milestone-list" class="comp-ms-grid"></div>
+          <div id="comp-milestone-list" class="milestone-list comp-ms-list"></div>
         </div>
 
         <!-- 维度 -->
@@ -456,26 +458,38 @@
             <div class="comp-cm-value">卡拉比-丘流形（CM）：<span id="comp-cm-value">0</span></div>
             <div class="comp-cm-rate" id="comp-cm-rate">每秒 +0（真实时间）</div>
           </div>
-          <div class="comp-cm-effects" id="comp-cm-effects"></div>
+          <div class="comp-dim-formulas">
+            <div id="comp-betti-line"></div>
+            <div id="comp-formula-line"></div>
+          </div>
+          <div class="comp-dim-effect" id="comp-dim-effect"></div>
           <div class="comp-section">
-            <h3>拓扑节点</h3>
             <div id="comp-tp-line" class="comp-tp-line"></div>
             <button id="comp-tp-buy" class="comp-btn">购买拓扑节点</button>
           </div>
           <div class="comp-section">
-            <h3>几何转换（每个消耗 1 拓扑节点，可退回）</h3>
+            <div class="comp-geo-hint">几何转换（每个消耗 1 拓扑节点，可退回）</div>
             <div id="comp-geo-row" class="comp-geo-row"></div>
-            <div id="comp-betti-line" class="comp-betti-line"></div>
-            <div id="comp-formula-line" class="comp-formula-line"></div>
           </div>
         </div>
 
         <!-- 理论树 -->
         <div class="subpage hidden" id="sub-comp-theory">
-          <h3 class="compact-title">理论树</h3>
-          <div id="comp-ins-line" class="comp-ins-line"></div>
-          <div id="comp-ins-buy-row" class="comp-ins-buy-row"></div>
-          <div id="comp-theory-tree" class="theory-tree"></div>
+          <div class="comp-ins-box">
+            <div class="comp-ins-head" id="comp-ins-line"></div>
+            <div id="comp-ins-cells" class="comp-ins-cells"></div>
+          </div>
+          <div class="tree-viewport" id="tree-viewport">
+            <div class="tree-world" id="tree-world">
+              <svg id="tree-lines" xmlns="http://www.w3.org/2000/svg"></svg>
+            </div>
+            <div class="tree-controls">
+              <button id="tree-zoom-in" class="comp-btn small">＋</button>
+              <button id="tree-zoom-out" class="comp-btn small">−</button>
+              <button id="tree-zoom-reset" class="comp-btn small">重置</button>
+            </div>
+            <div class="tree-hint">拖动移动 · 滚轮 / 按钮缩放</div>
+          </div>
         </div>
       </section>
 
@@ -640,7 +654,7 @@
               <li>折叠器初始<strong>不受游戏速度影响</strong>（按真实时间产出）；CM 在每次卷缩重置时归零（湮灭不影响），后台按小数计算、显示取整。</li>
             </ul>
             <p><strong>CM 的两个效果</strong>：① 波速获取 ×(1+CM)<sup>1/2</sup>；② 频率公式变为 <strong>F = U / L<sup>e</sup></strong>，其中 e = 1 + lg(1 + lg(1+CM)/3)/10——相当于把一些隐藏维度卷缩起来，从而改变宏观的物理公式（CM=0 时 e=1，与原公式一致）。</p>
-            <p><strong>理论树</strong>（理论树子页）：通过 F（第 n 次 10<sup>25000n</sup>）、Sp（第 n 次 10<sup>200(n-1)</sup>）或 SS（第 n 次 2<sup>n-1</sup>，需拥有维度折叠器）购买<strong>灵感（Ins）</strong>。Ins 用于解锁理论树节点；更下方的节点需要其<strong>任意一个父节点</strong>已购买。已实装节点 01「最小作用量原理」（1 灵感）：维度折叠器受<strong>严重削弱的时间倍率加成</strong>——折叠器的时间乘数变为 max((1+lg(1+时间倍率))/2, 时间倍率^0.005)。其余节点为占位（后续版本实装）。</p>
+            <p><strong>理论树</strong>（理论树子页）：通过 F（第 n 次 10<sup>25000n</sup>）、Sp（第 n 次 10<sup>200(n-1)</sup>）或 SS（第 n 次 2<sup>n-1</sup>，需先购买至少 1 个拓扑节点——第一个 SS 必须花在维度折叠器上）购买<strong>灵感（Ins）</strong>。Ins 用于解锁理论树节点；更下方的节点需要其<strong>任意一个父节点</strong>已购买。已实装节点 01「最小作用量原理」（1 灵感）：维度折叠器受<strong>严重削弱的时间倍率加成</strong>——折叠器的时间乘数变为 max((1+lg(1+时间倍率))/2, 时间倍率^0.005)。其余节点为占位（后续版本实装）。</p>
           </div>
         </details>
 
