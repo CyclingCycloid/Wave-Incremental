@@ -30,8 +30,9 @@ function defaultState() {
     autoAnnSp: 1,          // 自动湮灭 Sp 阈值
     annStartReal: 0,       // 本次湮灭开始（真实时间戳, ms）
     annStartGame: 0,       // 本次湮灭开始（游戏时间, s）
-    annBestSp: 0,          // 最好单次奇点获取
-    annBestRate: 0,        // 最好单次奇点/分
+    annBestSp: 0,          // 最好单次奇点获取（double 缓存，≤1.79e308 量级）
+    annBestSpLog: NLOG,    // 最好单次奇点获取的 log10 权威（封顶后仍可超 double）
+    annBestRate: 0,        // 最好单次奇点/分（可能与 annBestSpLog 不同源，仅 double 口径）
     annFastest: 0,         // 最快湮灭时间（真实秒，0=无记录）
     annHistory: [],        // 最近十次湮灭记录
     // 扭曲系统（v0.4.2.1 测试）
@@ -1064,6 +1065,10 @@ function migrateState() {
   // 统一归位为软上限拐点（历史最高获取的实际显示口径）。
   // 注意不能用 !isFinite(null)——null 强转 0 后 isFinite 为 true，必须显式判 typeof
   if (state.annBestSp === undefined || typeof state.annBestSp !== "number" || !isFinite(state.annBestSp)) state.annBestSp = Math.pow(10, Math.log10(1.79e308));
+  // annBestSp 的 log 权威回填：旧档无此字段时从 annBestSp 重建（含 Infinity→拐点口径）
+  if (state.annBestSpLog === undefined || typeof state.annBestSpLog !== "number" || !isFinite(state.annBestSpLog)) {
+    state.annBestSpLog = (state.annBestSp > 0 && isFinite(state.annBestSp)) ? Math.log10(state.annBestSp) : Math.log10(1.79e308);
+  }
   if (state.annBestRate === undefined || typeof state.annBestRate !== "number" || !isFinite(state.annBestRate)) state.annBestRate = 0;
   if (Array.isArray(state.annHistory)) {
     for (const h of state.annHistory) {
@@ -1854,12 +1859,13 @@ function doAnnihilation() {
       addSpLog(gLog);
       addTotalSpLog(gLog);
     }
-    // gained 可能为 Infinity（历史遗留路径）：记录时用有限值（封顶口径）兜底，
-    // 否则统计页 bestSp 走 Math.log10(Infinity)=Infinity 显示 ∞
-    const bestVal = isFinite(gained) ? gained : Math.pow(10, spGainLog());
-    if (!(state.annBestSp >= bestVal)) state.annBestSp = bestVal;
-    const bestRate = isFinite(rate) ? rate : (bestVal / Math.max(realDur, 1e-9)) * 60; // Infinity 速率按封顶 Sp 重算
-    if (bestRate > state.annBestRate) state.annBestRate = bestRate;
+    // gained 可能为 Infinity（封顶后仍超 double，如 lg=317.8）：记录时改用 log 权威
+    // annBestSpLog（软上限拐点以上的真实 log），避免 10^cappedLog 再次溢出 → ∞
+    const bestValLog = isFinite(gained) ? Math.log10(gained) : spGainLog();
+    state.annBestSpLog = Math.max(state.annBestSpLog ?? NLOG, bestValLog);
+    state.annBestSp = Math.pow(10, Math.min(state.annBestSpLog, 308)); // double 缓存（≤1.79e308 量级）
+    const bestRate = isFinite(rate) ? rate : (Math.pow(10, bestValLog) / Math.max(realDur, 1e-9)) * 60; // Infinity 速率按封顶 Sp 重算
+    if (isFinite(bestRate) && bestRate > state.annBestRate) state.annBestRate = bestRate; // bestRate 仍可能超 double：不入账（显示走 bestSpLog×60/时长口径）
     if (state.annFastest === 0 || realDur < state.annFastest) state.annFastest = realDur;
   }
   // 历史记录
@@ -1980,10 +1986,11 @@ function forceAnnihilationReset(gained) {
       addSpLog(isFinite(gained) ? Math.log10(gained) : NLOG);
       addTotalSpLog(isFinite(gained) ? Math.log10(gained) : NLOG);
     }
-    const bestVal = isFinite(gained) ? gained : Math.pow(10, spGainLog());
-    if (!(state.annBestSp >= bestVal)) state.annBestSp = bestVal;
-    const bestRate = isFinite(rate) ? rate : (bestVal / Math.max(realDur, 1e-9)) * 60; // Infinity 速率按封顶 Sp 重算
-    if (bestRate > state.annBestRate) state.annBestRate = bestRate;
+    const bestValLog = isFinite(gained) ? Math.log10(gained) : spGainLog();
+    state.annBestSpLog = Math.max(state.annBestSpLog ?? NLOG, bestValLog);
+    state.annBestSp = Math.pow(10, Math.min(state.annBestSpLog, 308)); // double 缓存（≤1.79e308 量级）
+    const bestRate = isFinite(rate) ? rate : (Math.pow(10, bestValLog) / Math.max(realDur, 1e-9)) * 60; // Infinity 速率按封顶 Sp 重算
+    if (isFinite(bestRate) && bestRate > state.annBestRate) state.annBestRate = bestRate; // bestRate 仍可能超 double：不入账（显示走 bestSpLog×60/时长口径）
     if (state.annFastest === 0 || realDur < state.annFastest) state.annFastest = realDur;
   }
   pushAnnHistory({ label: `第 ${fmtAnnNum(state.annihilations + 1)} 次`, distort: "", sp: gained, realDur, gameDur, rate, at: realNow });
@@ -4151,9 +4158,10 @@ function renderStats() {
   document.getElementById("stat-ann-time").textContent =
     state.annihilations >= 1 ? `${fmtTime(annReal, true)} / ${fmtTime(annGame, true)}` : "— / —";
   document.getElementById("stat-ann-total-sp").textContent = fmtNum(state.totalSp, getLogTotalSp());
-  // bestSp/bestRate 可能是历史遗留的 Infinity（JSON → null）：Math.log10(Infinity)=Infinity
-  // 会让 fmtNum 双参失效显示 ∞。非有限值一律按软上限拐点 1.79e308 的 log 口径归位
-  const bestSpLog = (state.annBestSp > 0 && isFinite(state.annBestSp)) ? Math.log10(state.annBestSp) : (isFinite(state.annBestSp) ? NLOG : Math.log10(1.79e308));
+  // bestSp 走 annBestSpLog 权威（封顶后仍可超 double）；bestRate 无 log 权威，
+  // Infinity/null（历史遗留）按拐点口径归位，正常超大有限值走 fmtNum
+  const bestSpLog = (state.annBestSpLog !== undefined && typeof state.annBestSpLog === "number" && isFinite(state.annBestSpLog) && state.annBestSpLog > NLOG + 1)
+    ? state.annBestSpLog : NLOG;
   const bestRateLog = (state.annBestRate > 0 && isFinite(state.annBestRate)) ? Math.log10(state.annBestRate) : (isFinite(state.annBestRate) ? NLOG : Math.log10(1.79e308));
   document.getElementById("stat-ann-best-sp").textContent = fmtNum(state.annBestSp, bestSpLog) + " Sp";
   document.getElementById("stat-ann-best-rate").textContent = fmtNum(state.annBestRate, bestRateLog) + " Sp/分";
