@@ -433,11 +433,11 @@ function distortGainExp() {
 }
 // ---------- 卷缩层对物理公式的影响（v0.6.0.0 测试）----------
 // CM（卡拉比-丘流形）的两个效果：
-// ① 波速获取 ×(1+CM)^2；② 频率公式变为 F = U/L^e（把隐藏维度卷缩进来，改变宏观物理）
+// ① 波速获取 ×(1+CM)^4；② 频率公式变为 F = U/L^e（把隐藏维度卷缩进来，改变宏观物理）
 // e = 1 + lg(1 + lg(1+CM)/3)/10；CM=0 时 e=1，与原公式逐位一致（零回归）
 function cmLg1() { return lg1FromLog(getLogCM()); } // lg(CM+1)（CM=0 时为 0）
-// 效果①的 log10：lg((1+CM)^2) = 2·lg(CM+1)
-function cmGainMultLog() { return clampLog(2 * cmLg1()); }
+// 效果①的 log10：lg((1+CM)^4) = 4·lg(CM+1)
+function cmGainMultLog() { return clampLog(4 * cmLg1()); }
 // 效果②：波长效果指数 e
 function wavelengthExp() {
   const c = cmLg1();
@@ -781,7 +781,7 @@ function gainRate() {
       g = s * Math.pow(Math.abs(g), e);
     }
   }
-  // 卷缩（CM 效果①）：波速获取 ×(1+CM)^2
+  // 卷缩（CM 效果①）：波速获取 ×(1+CM)^4
   {
     const cmGl = cmGainMultLog();
     if (cmGl > 0) g *= Math.pow(10, Math.min(cmGl, 309)); // 超 double 时置 Infinity → tick 自动退 log 域
@@ -840,7 +840,7 @@ function gainRateLog() {
   // 虚空共振（SVU1）：虚空内波速获取速率整体幂次（幂在 log 域 = 乘指数）；
   // 虚空泡沫第三效果（里程碑 2）：全局整体幂次
   log *= svu1GainExp() * vfGainExp();
-  // 卷缩（CM 效果①）：波速获取 ×(1+CM)^2（乘在幂次之后，与 double 路径顺序一致）
+  // 卷缩（CM 效果①）：波速获取 ×(1+CM)^4（乘在幂次之后，与 double 路径顺序一致）
   log += cmGainMultLog();
   // 超级软上限（仅虚空内）：获取超过 1e20000 的部分变为原来的 0.5 次方——
   // SVU1 幂次加成过强会让获取远超外部；20000 处连续（输入=输出）。
@@ -3549,13 +3549,14 @@ function compactify() {
   state.sbu1 = 0; state.sbu2 = 0; state.sbu3 = 0;
   state.svpu1 = 0; state.svpu2 = 0; state.svpu3 = 0; state.svpu4 = 0; state.svpu5 = 0;
   // —— 虚空：可进入性（总 Sp 归零后需重新达到 1e50）与虚空数据全部重置 ——
-  //（量子泡沫 VF、虚空共振 SVU1 的累计投入与填充开关、能标偏移 SVU2 等级；
-  //  虚空里程碑记录 voidBestRules 保留——A53/A54 与成就体系依赖它）
+  //（量子泡沫 VF、虚空共振 SVU1 的累计投入与填充开关、能标偏移 SVU2 等级、
+  //  虚空里程碑记录 voidBestRules——其解锁的泡沫第二/第三效果与 SVU 资格随之失效）
   state.voidActive = false; state.voidRules = [];
   setVoidVFLog(NLOG);
   state.svu1SpLog = NLOG; state.svu1VpLog = NLOG; state.svu1VfLog = NLOG;
   state.svu1Filling = false;
   state.svu2Level = 0;
+  state.voidBestRules = 0;
   // —— 卷缩层自身：CM 重置（TP/V/E/F 配置、SS/Ins/理论树保留）——
   setCMLog(NLOG);
   // —— 计时 ——
