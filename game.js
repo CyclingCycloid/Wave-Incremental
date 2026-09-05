@@ -4151,8 +4151,12 @@ function renderStats() {
   document.getElementById("stat-ann-time").textContent =
     state.annihilations >= 1 ? `${fmtTime(annReal, true)} / ${fmtTime(annGame, true)}` : "— / —";
   document.getElementById("stat-ann-total-sp").textContent = fmtNum(state.totalSp, getLogTotalSp());
-  document.getElementById("stat-ann-best-sp").textContent = fmtNum(state.annBestSp, state.annBestSp > 0 ? Math.log10(state.annBestSp) : NLOG) + " Sp";
-  document.getElementById("stat-ann-best-rate").textContent = fmtNum(state.annBestRate, state.annBestRate > 0 ? Math.log10(state.annBestRate) : NLOG) + " Sp/分";
+  // bestSp/bestRate 可能是历史遗留的 Infinity（JSON → null）：Math.log10(Infinity)=Infinity
+  // 会让 fmtNum 双参失效显示 ∞。非有限值一律按软上限拐点 1.79e308 的 log 口径归位
+  const bestSpLog = (state.annBestSp > 0 && isFinite(state.annBestSp)) ? Math.log10(state.annBestSp) : (isFinite(state.annBestSp) ? NLOG : Math.log10(1.79e308));
+  const bestRateLog = (state.annBestRate > 0 && isFinite(state.annBestRate)) ? Math.log10(state.annBestRate) : (isFinite(state.annBestRate) ? NLOG : Math.log10(1.79e308));
+  document.getElementById("stat-ann-best-sp").textContent = fmtNum(state.annBestSp, bestSpLog) + " Sp";
+  document.getElementById("stat-ann-best-rate").textContent = fmtNum(state.annBestRate, bestRateLog) + " Sp/分";
   document.getElementById("stat-ann-fastest").textContent = state.annFastest > 0 ? fmtTime(state.annFastest) : "—";
   document.getElementById("stat-ann-count").textContent = fmt(effAnnihilations());
   document.getElementById("stat-ann-tp").textContent = fmtNum(Math.pow(10, Math.min(effectiveCapLog(), 308)), effectiveCapLog()) + " K";
