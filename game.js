@@ -3775,9 +3775,16 @@ function updateCompactUI() {
   const cmShow = cmLog <= NLOG + 1 ? 0 : (cmLog > 308 ? Infinity : Math.floor(Math.pow(10, cmLog)));
   document.getElementById("comp-cm-value").textContent = fmtNum(cmShow, cmLog);
   const rateLog = cmRateLog();
-  const rateTxt = rateLog <= NLOG + 1 ? "0" : fmtNum(Math.pow(10, Math.min(rateLog, 308)), rateLog);
-  document.getElementById("comp-cm-rate").textContent =
-    `每秒 +${rateTxt}（真实时间${theoryOwned("01") ? "，受削弱的时间倍率加成" : "，不受游戏速度影响"}）`;
+  // 每秒获取写最终值：基础产量 × 折叠器时间乘数（节点 01 的削弱加成等全部计入）
+  const finalRateLog = rateLog <= NLOG + 1 ? NLOG : clampLog(rateLog + cmTimeMultLog());
+  const rateTxt = finalRateLog <= NLOG + 1 ? "0" : fmtNum(Math.pow(10, Math.min(finalRateLog, 308)), finalRateLog);
+  document.getElementById("comp-cm-rate").textContent = `每秒 +${rateTxt}`;
+  const baseTxt = rateLog <= NLOG + 1 ? "0" : fmtNum(Math.pow(10, Math.min(rateLog, 308)), rateLog);
+  // 公式区：贝蒂数与基础 CM 公式（基础产量；最终值见上方「每秒」行）
+  document.getElementById("comp-betti-line").textContent =
+    `b₁ = max(0, E−V+1) = ${betti1()}　　b₂ = max(0, min(F, ⌊2E/3⌋)−E+V) = ${betti2()}`;
+  document.getElementById("comp-formula-line").textContent =
+    `基础 CM 获取：TP² × 3^√(3·b₁·b₂) = ${baseTxt} / 秒`;
   // CM 三个效果（一个一行，简洁格式）
   document.getElementById("comp-dim-effect").textContent =
     `波速获取 ×${fmtLog(cmGainMultLog())}\n`
