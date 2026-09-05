@@ -732,16 +732,17 @@ body[data-theme="white"] .tree-viewport { border-color: #c9c9d2; }
 .tree-world { position: absolute; top: 0; left: 0; width: 1100px; height: 800px; transform-origin: 0 0; }
 #tree-lines { position: absolute; top: 0; left: 0; pointer-events: none; }
 .tree-line { stroke: #7a5a2e; stroke-width: 2; }
-/* 树节点：名称在框外左上角（白色粗体），框内为效果文本 */
+/* 树节点：编号在框外左上角（白色粗体），框内顶部为名称、下方为效果文本 */
 .tn-node {
   position: absolute; background: #20202a; border: 2px solid #3a3a46; border-radius: 8px;
   padding: 8px 6px 6px; text-align: center;
 }
-.tn-node .tn-name {
+.tn-node .tn-id {
   position: absolute; top: -24px; left: -4px; font-size: 15px; font-weight: 700; color: #ffffff;
+  font-family: var(--font-num);
   white-space: nowrap; text-shadow: 0 1px 3px rgba(0,0,0,0.85), 0 0 6px rgba(0,0,0,0.6);
 }
-.tn-node .tn-id { font-family: var(--font-num); font-size: 10px; color: #8a8a96; }
+.tn-node .tn-name { font-size: 14px; font-weight: 700; color: var(--orange-bright); }
 .tn-node .tn-state { font-size: 10px; color: #b9b9c4; line-height: 1.35; margin-top: 4px; white-space: pre-line; }
 .tn-node.available { border-color: var(--orange-dim); cursor: pointer; }
 .tn-node.available:hover { border-color: var(--orange); background: #262631; }

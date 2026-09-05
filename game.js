@@ -96,6 +96,7 @@ function defaultState() {
     compGameElapsed: 0,    // 本次卷缩的游戏时长（double 缓存，超 double 封顶 MAX_VALUE）
     compGameElapsedLog: NLOG, // 本次卷缩游戏时长的 log10 权威
     compFastest: 0,        // 最快卷缩时间（真实秒，0=无记录）
+    compHistory: [],       // 最近十次卷缩记录（统计-重置子页）
     au: {},                                 // 奇点单次升级已购标记（id→1）
     testBreakRules: false, // 测试按钮：临时打破规则（不获 Sp，v0.4.3 移除）
     testMode: false,       // 测试模式：开发者预览开关（隔离未发布的开发内容，如未来的新重置层）
@@ -331,16 +332,23 @@ function setULog(logU) {
   state.logU10 = clampLog(logU);
   state.U = (logU <= NLOG + 1) ? 0 : (logU > 308 ? Infinity : Math.pow(10, logU));
 }
-// 购买扣款 U -= cost·L（costLog 为 log10(cost)）。U 与扣款额均在 double 范围内走 double；否则 log 域减法
+// 购买扣款 U -= cost·(有效波长)^e（costLog 为 log10(cost)，价格以 F 计）。
+// F = U/(L·膨胀倍率)^e：扣款必须按有效波长的 e 次幂计，F 才恰好下降 cost——
+// e≠1 时若仍扣 cost·L，扣款额与「F≥价格」的判定脱钩（L<1 时每次购买都超额扣款，
+// 自动化连买会把 U 拖成负数：频率显示 Xe-299、温度 0 的恶性 bug 根因）
 function subULog(costLog) {
   const uLog = getLogU10();
-  // double 路径必须同时保证 U 与扣款额 cost·L 可表示：价格超 1e308 时
-  // Math.pow(10,costLog) 为 Infinity，会把 U 减成 -Infinity/NaN 摧毁 logU10 权威
-  const subLog = costLog + getLogL10();
-  if (isFinite(state.U) && state.U < LOG_FALLBACK && costLog < 308 && subLog < 308) {
-    setU(state.U - Math.pow(10, costLog) * state.L);
+  const wExp = wavelengthExp();
+  const ml = distortLModLog();
+  // e=1 且无膨胀倍率时与旧公式逐位一致（10^costLog·L）；否则按有效波长 e 次幂
+  const legacy = wExp === 1 && ml === 0;
+  const subLog = legacy ? costLog + getLogL10() : clampLog(costLog + wExp * (getLogL10() + ml));
+  // double 路径必须保证 U 与扣款额均可表示：subLog ≥ 308 时 10^subLog 为 Infinity，
+  // 会把 U 减成 -Infinity/NaN 摧毁 logU10 权威，须退 log 域
+  if (isFinite(state.U) && state.U >= 0 && state.U < LOG_FALLBACK && costLog < 308 && subLog < 308) {
+    setU(legacy ? state.U - Math.pow(10, costLog) * state.L : state.U - Math.pow(10, subLog));
   } else {
-    // log 域：log10(cost·L) = costLog + logL10；U - cost·L（同号相减）
+    // log 域：U - cost·(有效波长)^e（同号相减）
     const r = logAddSigned(uLog, 1, subLog, -1);
     if (r.sign < 0) setULog(NLOG); else setULog(r.log);
   }
@@ -1167,6 +1175,9 @@ function migrateState() {
   // 且各级回填把 null 当 0。统一从 log 权威恢复缓存。
   const fromLog = (lg) => (lg <= NLOG + 1) ? 0 : (lg > 308 ? Infinity : Math.pow(10, lg));
   if (state.U === null || state.U === undefined) state.U = fromLog(getLogU10());
+  // v0.6.0.0 恶性 bug 的存档修复：subULog 扣款与 F 判价不一致（e≠1）曾把 U 扣成负数
+  //（log 权威写为零哨兵、double 缓存残留负值，频率恒 ≈0 造成软锁）。负 U 无合法语义，重置为湮灭初值
+  if (typeof state.U === "number" && state.U < 0) setU(resetU());
   if (state.totalFGained === null || state.totalFGained === undefined) state.totalFGained = fromLog(getLogTotalF());
   if (state.phonons === null || state.phonons === undefined) {
     state.phonons = (state.logDph !== undefined && isFinite(state.logDph) && state.logDph > 0) ? fromLog(state.logDph) : 0;
@@ -1224,6 +1235,7 @@ function migrateState() {
     state.compGameElapsedLog = (state.compGameElapsed > 0 && isFinite(state.compGameElapsed)) ? Math.log10(state.compGameElapsed) : NLOG;
   }
   if (state.compFastest === null || state.compFastest === undefined || !isFinite(state.compFastest) || state.compFastest < 0) state.compFastest = 0;
+  if (!Array.isArray(state.compHistory)) state.compHistory = [];
   if (state.ss === null || state.ss === undefined) state.ss = fromLog(getLogSS());
   if (state.totalSS === null || state.totalSS === undefined) state.totalSS = fromLog(getLogTotalSS());
   if (state.ins === null || state.ins === undefined) state.ins = fromLog(getLogIns());
@@ -1941,6 +1953,11 @@ function pushAnnHistory(entry) {
   state.annHistory.push(entry);
   if (state.annHistory.length > 10) state.annHistory.shift();
 }
+// 记录一次卷缩到历史（最近十次）
+function pushCompHistory(entry) {
+  state.compHistory.push(entry);
+  if (state.compHistory.length > 10) state.compHistory.shift();
+}
 
 // 大重置：回到波长1m波速10，重置所有升级购买；里程碑决定保留项
 function doAnnihilation() {
@@ -2334,7 +2351,9 @@ function applyHelpVisibility() {
   document.getElementById("help-compact").classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
   document.getElementById("stat-ann-group").classList.toggle("hidden", state.annihilations < 1);
   document.getElementById("stat-comp-area").classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
-  document.getElementById("subtab-stats-challenge").classList.toggle("hidden", state.annihilations < 20);
+  // 卷缩后保持统计-挑战子页可见（否则湮灭次数归零会重新隐藏）
+  document.getElementById("subtab-stats-challenge").classList.toggle("hidden", state.annihilations < 20 && state.compactions < 1);
+  document.getElementById("comp-history-area").classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
 }
 
 // ---------- 奇点升级 ----------
@@ -3479,6 +3498,18 @@ function compactify() {
   const rateLog = clampLog(gLog + Math.log10(60 / Math.max(realDur, 1e-9)));
   state.logBestSSRate = Math.max(state.logBestSSRate ?? NLOG, rateLog);
   state.bestSSRate = Math.max(state.bestSSRate || 0, Math.pow(10, Math.min(rateLog, 308)));
+  // 本次卷缩游戏时长的 log 权威（double 缓存被 MAX_VALUE 封顶时以 log 为准）
+  const compGameLog = (state.compGameElapsedLog !== undefined && isFinite(state.compGameElapsedLog) && state.compGameElapsedLog > NLOG + 1)
+    ? state.compGameElapsedLog
+    : ((state.compGameElapsed > 0 && isFinite(state.compGameElapsed)) ? Math.log10(state.compGameElapsed) : NLOG);
+  // 历史记录（最近十次卷缩；SS/速率存 log 权威，可超 double）
+  pushCompHistory({
+    label: `第 ${fmtAnnNum(state.compactions + 1)} 次`,
+    ss: gained, realDur,
+    gameDur: state.compGameElapsed, gameDurLog: compGameLog,
+    rate: realDur > 0 ? (gained / realDur) * 60 : 0, at: realNow,
+    ssLog: gLog, rateLog,
+  });
   addSSLog(gLog);
   addTotalSSLog(gLog);
   state.compactions++;
@@ -4971,6 +5002,32 @@ function renderStats() {
       val.textContent = `${spText} Sp · ${rateText} Sp/分`;
       row.append(label, val);
       hList.appendChild(row);
+    }
+  }
+  // 最近十次卷缩（重置子页；SS/速率存 log 权威，显示由 log 驱动）
+  const cList = document.getElementById("comp-history-list");
+  if (cList) {
+    cList.innerHTML = "";
+    const rows = state.compHistory.slice(-10).reverse();
+    if (rows.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "stat-row muted";
+      empty.innerHTML = "<span class='stat-label'>暂无卷缩记录</span><span class='stat-value'>—</span>";
+      cList.appendChild(empty);
+    }
+    for (const r of rows) {
+      const row = document.createElement("div");
+      row.className = "ann-history-row";
+      const label = document.createElement("span"); label.className = "ah-label";
+      label.textContent = `${r.label} · ${fmtTime(r.realDur)}（真实）/ ${fmtTimeLog(r.gameDur, r.gameDurLog)}（游戏）`;
+      const val = document.createElement("span"); val.className = "ah-val";
+      const cSsLog = (r.ssLog !== undefined && typeof r.ssLog === "number" && isFinite(r.ssLog)) ? r.ssLog
+        : (r.ss > 0 && isFinite(r.ss)) ? Math.log10(r.ss) : NLOG;
+      const cRateLog = (r.rateLog !== undefined && typeof r.rateLog === "number" && isFinite(r.rateLog)) ? r.rateLog
+        : (r.rate > 0 && isFinite(r.rate)) ? Math.log10(r.rate) : NLOG;
+      val.textContent = `${cSsLog > NLOG + 1 ? fmtLog(cSsLog) : "0"} SS · ${cRateLog > NLOG + 1 ? fmtLog(cRateLog) : "0"} SS/分`;
+      row.append(label, val);
+      cList.appendChild(row);
     }
   }
 }
