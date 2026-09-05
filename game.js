@@ -409,7 +409,10 @@ function F() {
 const H_OVER_KB = 6.62607015e-34 / 1.380649e-23; // ≈ 4.799e-11 K·s
 const LOG_H_OVER_KB = Math.log10(H_OVER_KB);
 // 温度的 log10（未裁剪，权威）：log10(n) + log10(h/k_B) + log10(F) + log10(planckMult)
+// F=0（FLog 为 NLOG 哨兵）或声子=0 时温度为 0，直接返回 NLOG 哨兵——
+// 否则「NLOG + 有限项」会产生 NLOG+ε 噪声，显示层渲染出 1e-9999999xx（定向宇宙 U=0 时实测）
 function temperatureLog() {
+  if (FLog() <= NLOG + 1 || !(getLogPhonons() > NLOG + 1)) return NLOG;
   return clampLog(getLogPhonons() + LOG_H_OVER_KB + FLog() + planckMultLog());
 }
 // 当前生效的温度上限 log10：
@@ -889,7 +892,7 @@ function fmt(num) {
 function fmtLog(logV) {
   // 以 log10 显示：|logV| 在 double 范围内用 double 指数；超出用 log 域还原尾数（a.bbe±N）
   if (!isFinite(logV) || logV >= LOG_CAP) return "∞"; // LOG_CAP 钳制值视为无穷
-  if (logV <= NLOG + 1) return "0";
+  if (logV <= NLOG + 1e6) return "0"; // 哨兵噪声区（NLOG~NLOG+1e6）：语义为零，防 1e-9999999xx 误报
   // 小数位数跟随设置（与 fmt 一致），不再硬编码 3 位
   const d = Math.min(6, Math.max(3, (state.settings && state.settings.decimals) || 3));
   if (logV > -308 && logV < 308) return Math.pow(10, logV).toExponential(d).replace("e+", "e");
@@ -1703,7 +1706,7 @@ function renderPhononFast() {
   // 显示必须用裁剪后的温度 log（temperatureCappedLog），传 raw 会在 T=Infinity 时
   // 显示未封顶的原始温度，看起来像温度超过了上限
   document.getElementById("ph-res-text").textContent =
-    `你拥有${fmtNum(Math.floor(state.phonons), getLogPhonons())}声子，温度为${fmtNum(T, temperatureCappedLog())} K`;
+    `你拥有${fmtInt(state.phonons, getLogPhonons())}声子，温度为${fmtNum(T, temperatureCappedLog())} K`;
   document.getElementById("ph-thermal").textContent =
     `热涨落把你的波速获取变为原来的${fmtNum(thermalMult(), thermalMultLog())}倍`;
   // 8DA 打破规则后：主宇宙普朗克温度为软上限，声子页显示红色提示行
