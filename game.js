@@ -4992,12 +4992,13 @@ function tick() {
 // 按住 B+1/2/3 黑洞状态、Shift+1~8 进扭曲、Shift+A/R/L/M 自动化开关
 let bhHotkeyArmed = false; // 按住 B 的武装状态（松开 B 或窗口失焦解除；按住时可连续切换 1/2/3）
 function buyAllPreAnnihilation() {
-  // 湮灭前升级：最大购买——循环买到底（升级间有依赖/价格联动，等级无变化即收敛）
+  // 湮灭前升级：最大购买——循环买到底（升级间有依赖/价格联动，等级无变化即收敛）。
+  // 注意不含升级 3（会重置波速与波长，属重置型购买，由快捷键 L 单独触发）
   for (let round = 0; round < 200; round++) {
-    const before = [state.up1, state.up2, state.up3, state.pg1, state.pg2, state.pg3, state.phFluct, state.phCoupling, state.phUnlocked, state.meta1].join(",");
-    buyUp1(); buyUp2(); buyUp3();
+    const before = [state.up1, state.up2, state.pg1, state.pg2, state.pg3, state.phFluct, state.phCoupling, state.phUnlocked, state.meta1].join(",");
+    buyUp1(); buyUp2();
     buyPhUnlock(); buyPG1(); buyPG2(); buyPG3(); buyFluct(); buyCoupling();
-    const after = [state.up1, state.up2, state.up3, state.pg1, state.pg2, state.pg3, state.phFluct, state.phCoupling, state.phUnlocked, state.meta1].join(",");
+    const after = [state.up1, state.up2, state.pg1, state.pg2, state.pg3, state.phFluct, state.phCoupling, state.phUnlocked, state.meta1].join(",");
     if (after === before) return;
   }
 }
