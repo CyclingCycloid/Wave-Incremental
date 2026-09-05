@@ -32,9 +32,12 @@ function defaultState() {
     annStartGame: 0,       // 本次湮灭开始（游戏时间, s）
     annBestSp: 0,          // 最好单次奇点获取（double 缓存，≤1.79e308 量级）
     annBestSpLog: NLOG,    // 最好单次奇点获取的 log10 权威（封顶后仍可超 double）
-    annBestRate: 0,        // 最好单次奇点/分（可能与 annBestSpLog 不同源，仅 double 口径）
+    annBestRate: 0,        // 最好单次奇点/分（double 缓存，≤1.79e308 量级）
+    annBestRateLog: NLOG,  // 最好单次奇点/分的 log10 权威（封顶后仍可超 double）
     annFastest: 0,         // 最快湮灭时间（真实秒，0=无记录）
     annHistory: [],        // 最近十次湮灭记录
+    annGameElapsed: 0,     // 本次湮灭的游戏时长（double 缓存，超 double 时封顶 MAX_VALUE）
+    annGameElapsedLog: NLOG, // 本次湮灭游戏时长的 log10 权威（时间倍率超 double 时持续累积）
     // 扭曲系统（v0.4.2.1 测试）
     distortActive: "",     // 当前所在扭曲宇宙 id（空=普通宇宙）
     distortDone: [],       // 已湮灭的扭曲宇宙 id（每宇宙只计一次奖励）
@@ -942,6 +945,15 @@ function fmtTime(seconds, precise) {
   if (m > 0) return `${m}m ${sStr}s`;
   return `${sStr}s`;
 }
+// 时间显示的 log 域版本：秒数为非有限值（double 封顶 MAX_VALUE，fmtTime 会得到天文数字）
+// 时按「天」数科学计数显示（天数的 log = log10(秒) − log10(86400)）。普通范围回落 fmtTime
+function fmtTimeLog(seconds, secondsLog) {
+  if (seconds !== undefined && isFinite(seconds)) return fmtTime(seconds);
+  const dLog = (typeof secondsLog === "number" && isFinite(secondsLog) && secondsLog > NLOG + 1)
+    ? secondsLog - Math.log10(86400) : null;
+  if (dLog === null || dLog <= 4) return fmtTime(86400 * 1e4); // 兜底
+  return (10 ** (dLog - Math.floor(dLog))).toFixed(3) + "e" + Math.floor(dLog) + "d";
+}
 // 湮灭次数等大计数的显示：≥1e4 用科学计数法（如 3.00e4）
 function fmtAnnNum(n) {
   return n >= 1e4 ? n.toExponential(2).replace("e+", "e") : `${n}`;
@@ -1070,6 +1082,14 @@ function migrateState() {
     state.annBestSpLog = (state.annBestSp > 0 && isFinite(state.annBestSp)) ? Math.log10(state.annBestSp) : Math.log10(1.79e308);
   }
   if (state.annBestRate === undefined || typeof state.annBestRate !== "number" || !isFinite(state.annBestRate)) state.annBestRate = 0;
+  // annBestRate 的 log 权威回填
+  if (state.annBestRateLog === undefined || typeof state.annBestRateLog !== "number" || !isFinite(state.annBestRateLog)) {
+    state.annBestRateLog = (state.annBestRate > 0 && isFinite(state.annBestRate)) ? Math.log10(state.annBestRate) : NLOG;
+  }
+  // annGameElapsed 的 log 权威回填（旧档封顶为 MAX_VALUE → 按 MAX_VALUE 的 log 归位）
+  if (state.annGameElapsedLog === undefined || typeof state.annGameElapsedLog !== "number" || !isFinite(state.annGameElapsedLog)) {
+    state.annGameElapsedLog = (state.annGameElapsed > 0 && isFinite(state.annGameElapsed)) ? Math.log10(state.annGameElapsed) : NLOG;
+  }
   if (Array.isArray(state.annHistory)) {
     for (const h of state.annHistory) {
       if (h) {
@@ -1864,8 +1884,11 @@ function doAnnihilation() {
     const bestValLog = isFinite(gained) ? Math.log10(gained) : spGainLog();
     state.annBestSpLog = Math.max(state.annBestSpLog ?? NLOG, bestValLog);
     state.annBestSp = Math.pow(10, Math.min(state.annBestSpLog, 308)); // double 缓存（≤1.79e308 量级）
-    const bestRate = isFinite(rate) ? rate : (Math.pow(10, bestValLog) / Math.max(realDur, 1e-9)) * 60; // Infinity 速率按封顶 Sp 重算
-    if (isFinite(bestRate) && bestRate > state.annBestRate) state.annBestRate = bestRate; // bestRate 仍可能超 double：不入账（显示走 bestSpLog×60/时长口径）
+    // bestRate log 权威：lg(每分速率) = lg(获取) + log10(60/真实秒)
+    const bestRateLog = bestValLog + Math.log10(60 / Math.max(realDur, 1e-9));
+    state.annBestRateLog = Math.max(state.annBestRateLog ?? NLOG, bestRateLog);
+    const bestRate = isFinite(rate) ? rate : Math.pow(10, Math.min(bestRateLog, 308)); // double 缓存（≤1.79e308）
+    if (bestRate > state.annBestRate) state.annBestRate = bestRate;
     if (state.annFastest === 0 || realDur < state.annFastest) state.annFastest = realDur;
   }
   // 历史记录
@@ -1925,7 +1948,7 @@ function doAnnihilation() {
 
   // 湮灭计时重置
   state.annStartReal = realNow;
-  state.annStartGame = state.playTime; state.annGameElapsed = 0;
+  state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG;
 
   updateDispAnchor();
   applyPhononVisibility();
@@ -1960,7 +1983,7 @@ function enterDistort(id) {
   if (id === "narrow") state.narrowPurchases = 0; // 狭窄宇宙：进入时购买次数强制重置（防残留）
   startCooldownRamp(); // 冷却宇宙：进入时视为已完全生效（k=0.75）
   state.annStartReal = gameNow();
-  state.annStartGame = state.playTime; state.annGameElapsed = 0;
+  state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG;
   applyAnnihilationVisibility(); // 重设按钮为扭曲模式文案
   updateDistortUI();
   switchTab("wave");
@@ -1989,8 +2012,11 @@ function forceAnnihilationReset(gained) {
     const bestValLog = isFinite(gained) ? Math.log10(gained) : spGainLog();
     state.annBestSpLog = Math.max(state.annBestSpLog ?? NLOG, bestValLog);
     state.annBestSp = Math.pow(10, Math.min(state.annBestSpLog, 308)); // double 缓存（≤1.79e308 量级）
-    const bestRate = isFinite(rate) ? rate : (Math.pow(10, bestValLog) / Math.max(realDur, 1e-9)) * 60; // Infinity 速率按封顶 Sp 重算
-    if (isFinite(bestRate) && bestRate > state.annBestRate) state.annBestRate = bestRate; // bestRate 仍可能超 double：不入账（显示走 bestSpLog×60/时长口径）
+    // bestRate log 权威：lg(每分速率) = lg(获取) + log10(60/真实秒)
+    const bestRateLog = bestValLog + Math.log10(60 / Math.max(realDur, 1e-9));
+    state.annBestRateLog = Math.max(state.annBestRateLog ?? NLOG, bestRateLog);
+    const bestRate = isFinite(rate) ? rate : Math.pow(10, Math.min(bestRateLog, 308)); // double 缓存（≤1.79e308）
+    if (bestRate > state.annBestRate) state.annBestRate = bestRate;
     if (state.annFastest === 0 || realDur < state.annFastest) state.annFastest = realDur;
   }
   pushAnnHistory({ label: `第 ${fmtAnnNum(state.annihilations + 1)} 次`, distort: "", sp: gained, realDur, gameDur, rate, at: realNow });
@@ -2020,7 +2046,7 @@ function applyAnnihilationResetBody(realNow) {
   if (hasMilestone(8)) state.autoUp3 = 1;
   if (hasMilestone(10)) state.autoAnn = 1;
   state.annStartReal = realNow;
-  state.annStartGame = state.playTime; state.annGameElapsed = 0;
+  state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG;
   applyPhononVisibility();
   applyAnnihilationVisibility();
   checkAchievements();
@@ -2054,7 +2080,7 @@ function retryDistort() {
   distortEnterAt = gameNow();
   startCooldownRamp(); // 冷却宇宙：进入时视为已完全生效（k=0.75）
   state.annStartReal = gameNow();
-  state.annStartGame = state.playTime; state.annGameElapsed = 0;
+  state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG;
   applyAnnihilationVisibility();
   updateDistortUI();
   switchTab("wave");
@@ -2094,7 +2120,7 @@ function exitDistort() {
   state.pg1 = 0; state.pg2 = 0; state.pg3 = 0;
   state.lastPurchaseAt = 0; state.narrowPurchases = 0;
   state.annStartReal = gameNow();
-  state.annStartGame = state.playTime; state.annGameElapsed = 0;
+  state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG;
   applyPhononVisibility();
   applyAnnihilationVisibility();
   renderAll();
@@ -2738,7 +2764,7 @@ function enterVoid(ids) {
   distortEnterAt = gameNow(); // 膨胀削弱的时间基
   startCooldownRamp(); // 冷却削弱：进入时视为已完全生效（k=0.75）
   state.annStartReal = gameNow();
-  state.annStartGame = state.playTime; state.annGameElapsed = 0;
+  state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG;
   updateDispAnchor();
   applyAnnihilationVisibility();
   renderAll();
@@ -4143,7 +4169,8 @@ function renderWave() {
 
 function renderStats() {
   if (simActive) return; // 离线模拟中不触碰 DOM/存档
-  document.getElementById("stat-playtime").textContent = fmtTime(state.playTime);
+  // 游戏时间超 double 时（playTime=MAX_VALUE）走 playTimeLog 的 log 域显示
+  document.getElementById("stat-playtime").textContent = fmtTimeLog(state.playTime, state.playTimeLog);
   document.getElementById("stat-realtime").textContent = fmtTime(state.realTime);
   document.getElementById("stat-total").textContent = fmtNum(state.totalFGained, getLogTotalF()) + " Hz";
   document.getElementById("stat-maxf").textContent = fmtNum(state.maxF, getLogMaxF()) + " Hz";
@@ -4155,8 +4182,9 @@ function renderStats() {
   // 湮灭统计
   const annReal = state.annihilations >= 1 ? (Date.now() - state.annStartReal) / 1000 : 0;
   const annGame = state.annihilations >= 1 ? (state.annGameElapsed || (state.playTime - state.annStartGame)) : 0;
+  // 游戏侧时长超 double 时（annGameElapsed=MAX_VALUE）走 annGameElapsedLog 显示
   document.getElementById("stat-ann-time").textContent =
-    state.annihilations >= 1 ? `${fmtTime(annReal, true)} / ${fmtTime(annGame, true)}` : "— / —";
+    state.annihilations >= 1 ? `${fmtTime(annReal, true)} / ${fmtTimeLog(annGame, state.annGameElapsedLog)}` : "— / —";
   document.getElementById("stat-ann-total-sp").textContent = fmtNum(state.totalSp, getLogTotalSp());
   // bestSp 走 annBestSpLog 权威（封顶后仍可超 double）；bestRate 无 log 权威，
   // Infinity/null（历史遗留）按拐点口径归位，正常超大有限值走 fmtNum
@@ -4213,7 +4241,12 @@ function renderStats() {
       const row = document.createElement("div");
       row.className = "ann-history-row" + (r.distort ? " distort-row" : "");
       const label = document.createElement("span"); label.className = "ah-label";
-      label.textContent = `${r.label} · ${fmtTime(r.realDur)}（真实）/ ${fmtTime(r.gameDur)}（游戏）`;
+      // gameDur 可能是 dtOverDouble 封顶的 MAX_VALUE：按 log(秒)−log(86400) 显示 eNd 天
+      const gdHuge = !(r.gameDur > 0 && isFinite(r.gameDur) && r.gameDur < 86400 * 1e4);
+      const durText = gdHuge
+        ? (() => { const dLog = Math.log10(Math.max(r.gameDur, 1e-300)) - Math.log10(86400); return (10 ** (dLog - Math.floor(dLog))).toFixed(3) + "e" + Math.floor(dLog) + "d"; })()
+        : fmtTime(r.gameDur);
+      label.textContent = `${r.label} · ${fmtTime(r.realDur)}（真实）/ ${durText}（游戏）`;
       const val = document.createElement("span"); val.className = "ah-val";
       // sp/rate 可能是历史遗留的 Infinity（JSON 存为 null）：走 log 域显示，非有限值按软上限拐点口径
       const spLog = (r.sp > 0 && isFinite(r.sp)) ? Math.log10(r.sp) : (isFinite(r.sp) ? NLOG : Math.log10(1.79e308));
@@ -4728,12 +4761,17 @@ function applyProduction(realDt) {
     state.playTime += dt;
   }
   // 本次湮灭的游戏时长独立累计（避免 playTime 饱和后 playTime-annStartGame 恒为 0）。
-  // dt 超 double 时封顶 MAX_VALUE（与 playTime 同语义）：继续累加会得 Infinity，
-  // JSON 序列化为 null 后 fmtTime 显示异常
+  // double 缓存封顶 MAX_VALUE（与 playTime 同语义），log 权威持续累积用于显示
   if (state.annihilations >= 1) {
     state.annGameElapsed = dtOverDouble
       ? Number.MAX_VALUE
       : (state.annGameElapsed || 0) + dt;
+    if (dtOverDouble) {
+      if (state.annGameElapsedLog === undefined || !isFinite(state.annGameElapsedLog)) state.annGameElapsedLog = NLOG;
+      state.annGameElapsedLog = clampLog(logAddLogs(Math.max(state.annGameElapsedLog, NLOG), gameDtLog));
+    } else if (dt > 0) {
+      state.annGameElapsedLog = clampLog(logAddLogs(Math.max(state.annGameElapsedLog ?? NLOG, NLOG), Math.log10(dt)));
+    }
   }
 
   // 波速生产（double 链不溢出时走原路径，零回归；饱和时退 log 域累积）
@@ -5362,7 +5400,7 @@ function init() {
   applyAnnihilationVisibility();
   if (state.annihilations >= 1 && !state.annStartReal) {
     state.annStartReal = gameNow();
-    state.annStartGame = state.playTime; state.annGameElapsed = 0;
+    state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG;
   }
   // 恢复上次所在的大标签（无记录默认波动页）；子标签由 switchTab 内部恢复默认
   //（不得再无条件 switchSubtab("main")——非波动页上它会把子页全部隐藏，内容不渲染）
