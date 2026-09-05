@@ -1058,6 +1058,7 @@ function migrateState() {
   // 统一归位为软上限拐点（历史最高获取的实际显示口径）。
   // 注意不能用 !isFinite(null)——null 强转 0 后 isFinite 为 true，必须显式判 typeof
   if (state.annBestSp === undefined || typeof state.annBestSp !== "number" || !isFinite(state.annBestSp)) state.annBestSp = Math.pow(10, Math.log10(1.79e308));
+  if (state.annBestRate === undefined || typeof state.annBestRate !== "number" || !isFinite(state.annBestRate)) state.annBestRate = 0;
   if (Array.isArray(state.annHistory)) {
     for (const h of state.annHistory) {
       if (h) {
@@ -1851,7 +1852,8 @@ function doAnnihilation() {
     // 否则统计页 bestSp 走 Math.log10(Infinity)=Infinity 显示 ∞
     const bestVal = isFinite(gained) ? gained : Math.pow(10, spGainLog());
     if (!(state.annBestSp >= bestVal)) state.annBestSp = bestVal;
-    if (rate > state.annBestRate) state.annBestRate = rate;
+    const bestRate = isFinite(rate) ? rate : (bestVal / Math.max(realDur, 1e-9)) * 60; // Infinity 速率按封顶 Sp 重算
+    if (bestRate > state.annBestRate) state.annBestRate = bestRate;
     if (state.annFastest === 0 || realDur < state.annFastest) state.annFastest = realDur;
   }
   // 历史记录
@@ -1974,7 +1976,8 @@ function forceAnnihilationReset(gained) {
     }
     const bestVal = isFinite(gained) ? gained : Math.pow(10, spGainLog());
     if (!(state.annBestSp >= bestVal)) state.annBestSp = bestVal;
-    if (rate > state.annBestRate) state.annBestRate = rate;
+    const bestRate = isFinite(rate) ? rate : (bestVal / Math.max(realDur, 1e-9)) * 60; // Infinity 速率按封顶 Sp 重算
+    if (bestRate > state.annBestRate) state.annBestRate = bestRate;
     if (state.annFastest === 0 || realDur < state.annFastest) state.annFastest = realDur;
   }
   pushAnnHistory({ label: `第 ${fmtAnnNum(state.annihilations + 1)} 次`, distort: "", sp: gained, realDur, gameDur, rate, at: realNow });
