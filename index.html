@@ -347,6 +347,7 @@
             <button id="enter-test-btn">进入测试</button>
             <button id="clear-vf-btn" class="hidden">清零VF</button>
             <button id="force-ann-btn" class="hidden">无Sp湮灭</button>
+            <button id="force-compact-btn" class="hidden">导致一次卷缩重置</button>
           </div>
         </div>
       </section>
@@ -657,7 +658,7 @@
               <li><strong>基础 CM 获取 = TP² × 3<sup>√(3·b₁·b₂)</sup></strong>（每秒，TP 按含已转换的总节点数计）。</li>
               <li>折叠器初始<strong>不受游戏速度影响</strong>（按真实时间产出）；CM 在每次卷缩重置时归零（湮灭不影响），后台按小数计算、显示取整。</li>
             </ul>
-            <p><strong>CM 的两个效果</strong>：① 波速获取 ×(1+CM)<sup>4</sup>；② 频率公式变为 <strong>F = U / L<sup>e</sup></strong>，其中 e = 1 + lg(1 + lg(1+CM)/3)/10——相当于把一些隐藏维度卷缩起来，从而改变宏观的物理公式（CM=0 时 e=1，与原公式一致）。</p>
+            <p><strong>CM 的三个效果</strong>：① 波速获取 ×(1+CM)<sup>4</sup>；② 频率公式变为 <strong>F = U / L<sup>e</sup></strong>，其中 e = 1 + lg(1 + lg(1+CM)/3)/10——相当于把一些隐藏维度卷缩起来，从而改变宏观的物理公式（CM=0 时 e=1，与原公式一致）；③ 奇点获取 ×max(1+lg(CM+1)², CM^0.1)（CM=0 时无加成）。</p>
             <p><strong>理论树</strong>（理论树子页）：通过 F（第 n 次 10<sup>25000n</sup>）、Sp（第 n 次 10<sup>200(n-1)</sup>）或 SS（第 n 次 2<sup>n-1</sup>，需先购买至少 1 个拓扑节点——第一个 SS 必须花在维度折叠器上）购买<strong>灵感（Ins）</strong>。Ins 用于解锁理论树节点；更下方的节点需要其<strong>任意一个父节点</strong>已购买。已实装节点 01「最小作用量原理」（1 灵感）：维度折叠器受<strong>严重削弱的时间倍率加成</strong>——折叠器的时间乘数变为 max((1+lg(1+时间倍率))/2, 时间倍率^0.005)。其余节点为占位（后续版本实装）。</p>
           </div>
         </details>

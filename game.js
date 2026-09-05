@@ -438,6 +438,12 @@ function distortGainExp() {
 function cmLg1() { return lg1FromLog(getLogCM()); } // lg(CM+1)（CM=0 时为 0）
 // 效果①的 log10：lg((1+CM)^4) = 4·lg(CM+1)
 function cmGainMultLog() { return clampLog(4 * cmLg1()); }
+// 效果③：奇点获取 ×max(1+lg(CM+1)^2, CM^0.1)（CM=0 时为 1，返回 log10）
+function cmSpMultLog() {
+  const c = cmLg1();
+  if (c <= 0) return 0;
+  return clampLog(Math.max(Math.log10(1 + c * c), 0.1 * getLogCM()));
+}
 // 效果②：波长效果指数 e
 function wavelengthExp() {
   const c = cmLg1();
@@ -701,7 +707,7 @@ function spGainBaseLog() {
 // 未封顶的最终获取 log10（base + 全部乘数 + 首次保底），spGain* 系列共用
 function spRawGainLog() {
   const mLog = Math.log10(state.distortMult) + state.sau4 * Math.log10(2)
-    + Math.log10(Math.max(1, phononSpMult())) + vpSpMultLog();
+    + Math.log10(Math.max(1, phononSpMult())) + vpSpMultLog() + cmSpMultLog();
   const bLog = spGainBaseLog() + mLog;
   const first = state.annihilations === 0 ? 1 : 0;
   // 首次保底 max(1, b)：log 域即 max(0, bLog)。
@@ -2112,8 +2118,9 @@ function enterDistort(id) {
   setAutosaveStatus(`进入扭曲宇宙「${u.name}」`);
 }
 
-// 强制重置（进入扭曲用）：gained 为获得的 Sp（可为 0）
-function forceAnnihilationReset(gained) {
+// 强制重置（进入扭曲/虚空与测试工具共用）：gained 为获得的 Sp（可为 0）；
+// noCount=true（「无Sp湮灭」测试按钮）不计入湮灭次数
+function forceAnnihilationReset(gained, noCount) {
   const realNow = gameNow();
   // 首次湮灭（annStartReal=0）：时长回落为开局至今的真实游玩时长（同 doAnnihilation）
   const realDur = state.annStartReal > 0
@@ -2150,7 +2157,10 @@ function forceAnnihilationReset(gained) {
     spLog: histSpLog,
     rateLog: histRateLog,
   });
-  state.annihilations += annSpMult();
+  // SVPU2 虚幻湮灭：每次获得的湮灭次数 ×2^svpu2（如 3 级则每次 +8 次而非 +1）。
+  // 注意：进入扭曲宇宙（forceAnnihilationReset）也计一次湮灭次数——「进入=湮灭」是有意设计；
+  // noCount=true（无Sp湮灭测试按钮）不计次数
+  if (!noCount) state.annihilations += annSpMult();
   applyAnnihilationResetBody(realNow);
   setAutosaveStatus(gained > 0 ? `湮灭完成：获得 ${fmtNum(gained, gained > 0 ? Math.log10(gained) : NLOG)} 奇点` : "湮灭完成");
 }
@@ -3513,6 +3523,12 @@ function compactify() {
   addSSLog(gLog);
   addTotalSSLog(gLog);
   state.compactions++;
+  applyCompactionResetBody(realNow);
+  setAutosaveStatus(`卷缩完成：获得 ${fmtNum(gained, gLog)} 超弦（SS）`);
+}
+
+// 卷缩重置主体（compactify 与测试工具「导致一次卷缩重置」共用）
+function applyCompactionResetBody(realNow) {
   // —— 波动 / 声子（全量重置；卷缩里程碑 1 给予的保留项在下方按 3 次湮灭补发）——
   setU(resetU()); state.L = 1; state.logL10 = 0;
   state.up1 = 0; state.up2 = 0; state.up3 = 0; state.up3LastF = 0; state.logUp3LastF = NLOG;
@@ -3573,7 +3589,15 @@ function compactify() {
   switchSubtab("main");
   saveGame();
   renderAll();
-  setAutosaveStatus(`卷缩完成：获得 ${fmtNum(gained, gLog)} 超弦（SS）`);
+}
+
+// 测试工具：「导致一次卷缩重置」——执行与卷缩完全相同的重置范围，
+// 但不获 SS、不计卷缩次数、不入统计与历史（仅测试模式的危险操作区可见）
+function forceCompactReset() {
+  if (!state.testMode) return;
+  if (!confirm("确定要导致一次卷缩重置吗？（测试：不获得 SS、不计卷缩次数）")) return;
+  applyCompactionResetBody(gameNow());
+  setAutosaveStatus("已导致一次卷缩重置（测试：无收益）");
 }
 
 // ---------- 卷缩层 UI ----------
@@ -3754,9 +3778,11 @@ function updateCompactUI() {
   const rateTxt = rateLog <= NLOG + 1 ? "0" : fmtNum(Math.pow(10, Math.min(rateLog, 308)), rateLog);
   document.getElementById("comp-cm-rate").textContent =
     `每秒 +${rateTxt}（真实时间${theoryOwned("01") ? "，受削弱的时间倍率加成" : "，不受游戏速度影响"}）`;
-  // 当前效果（只显示数值；公式说明见帮助页）
+  // CM 三个效果（一个一行，只显示数值；公式说明见帮助页）
   document.getElementById("comp-dim-effect").textContent =
-    `当前效果：波速获取 ×${fmtLog(cmGainMultLog())} ｜ 波长指数 e = ${wavelengthExp().toFixed(4)}`;
+    `效果① 波速获取：当前 ×${fmtLog(cmGainMultLog())}\n`
+    + `效果② 波长指数：当前 e = ${wavelengthExp().toFixed(4)}\n`
+    + `效果③ 奇点获取：当前 ×${fmtLog(cmSpMultLog())}`;
   // 拓扑节点（价格按总节点数计）
   const tpCostV = tpNextCostValue();
   const tpCostLogV = clampLog((tpTotal() + 1) * Math.log10(1.5));
@@ -5913,6 +5939,8 @@ function applyTestModeUIGlobal() {
   }
   if (clearBtn) clearBtn.classList.toggle("hidden", !state.testMode);
   if (forceAnnBtn) forceAnnBtn.classList.toggle("hidden", !state.testMode);
+  const forceCompactBtn = document.getElementById("force-compact-btn");
+  if (forceCompactBtn) forceCompactBtn.classList.toggle("hidden", !state.testMode);
   if (verEl) verEl.textContent = state.testMode
     ? "v0.6.0.0 The Compactification Update（测试）"
     : "v0.5.1 The Void Update";
@@ -6165,10 +6193,12 @@ function setupUI() {
   document.getElementById("force-ann-btn").addEventListener("click", () => {
     if (state.distortActive || state.voidActive) { setAutosaveStatus("扭曲/虚空中不可用，请先退出"); return; }
     if (!confirm("确定进行不获取奇点的湮灭重置吗？（当前持有的奇点与进度按湮灭规则重置，但不获得 Sp）")) return;
-    forceAnnihilationReset(0);
+    forceAnnihilationReset(0, true); // 测试工具：不计入湮灭次数
     updateVoidUI();
     setAutosaveStatus("已执行无 Sp 湮灭重置");
   });
+  // 测试工具：导致一次卷缩重置（不获 SS、不计卷缩次数）
+  document.getElementById("force-compact-btn").addEventListener("click", forceCompactReset);
   // 湮灭按钮（首次湮灭后显示；点击直接湮灭，不强制切换选项卡）
   document.getElementById("annihilate-btn").addEventListener("click", () => {
     if (state.annihilations === 0) return;

@@ -692,7 +692,7 @@ body[data-theme="white"] #sub-ann-void {
 .comp-cm-value { font-size: 20px; font-weight: 700; color: var(--orange); font-family: var(--font-num); }
 .comp-cm-rate { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
 .comp-dim-formulas { text-align: center; font-family: var(--font-num); font-size: 13px; color: var(--text-dim); margin: 12px 0 4px; }
-.comp-dim-effect { text-align: center; font-size: 14px; margin: 8px 0 4px; }
+.comp-dim-effect { text-align: center; font-size: 14px; margin: 8px 0 4px; white-space: pre-line; }
 .comp-section { margin: 14px 0; text-align: center; }
 .comp-tp-line { font-family: var(--font-num); font-size: 13px; margin: 6px 0 10px; }
 .comp-geo-hint { font-size: 13px; color: var(--text-dim); margin-bottom: 8px; }
