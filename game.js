@@ -4202,13 +4202,15 @@ function renderStats() {
     state.annihilations >= 1 ? `${fmtTime(annReal, true)} / ${fmtTimeLog(annGame, state.annGameElapsedLog)}` : "— / —";
   document.getElementById("stat-ann-total-sp").textContent = fmtNum(state.totalSp, getLogTotalSp());
   // bestSp/bestRate 都走 log 权威显示（超 double 的值 fmtNum 双参会失效）：double 缓存
-  // 仅在 log 权威无有效值时作参考
+  // 仅在 log 权威无有效值时作参考；double 缓存为 Infinity（旧档污染）时显示拐点口径
   const bestSpLog = (state.annBestSpLog !== undefined && typeof state.annBestSpLog === "number" && isFinite(state.annBestSpLog) && state.annBestSpLog > NLOG + 1)
-    ? state.annBestSpLog : NLOG;
+    ? state.annBestSpLog : ((state.annBestSp > 0 && isFinite(state.annBestSp)) ? Math.log10(state.annBestSp) : NLOG);
   const bestRateLog = (state.annBestRateLog !== undefined && typeof state.annBestRateLog === "number" && isFinite(state.annBestRateLog) && state.annBestRateLog > NLOG + 1)
     ? state.annBestRateLog : ((state.annBestRate > 0 && isFinite(state.annBestRate)) ? Math.log10(state.annBestRate) : NLOG);
-  document.getElementById("stat-ann-best-sp").textContent = (bestSpLog > NLOG + 1 ? fmtLog(bestSpLog) : fmt(state.annBestSp)) + " Sp";
-  document.getElementById("stat-ann-best-rate").textContent = (bestRateLog > NLOG + 1 ? fmtLog(bestRateLog) : fmt(state.annBestRate)) + " Sp/分";
+  const bestSpText = (bestSpLog > NLOG + 1) ? fmtLog(bestSpLog) : ((state.annBestSp > 0 && isFinite(state.annBestSp)) ? fmt(state.annBestSp) : "0");
+  const bestRateText = (bestRateLog > NLOG + 1) ? fmtLog(bestRateLog) : ((state.annBestRate > 0 && isFinite(state.annBestRate)) ? fmt(state.annBestRate) : "0");
+  document.getElementById("stat-ann-best-sp").textContent = bestSpText + " Sp";
+  document.getElementById("stat-ann-best-rate").textContent = bestRateText + " Sp/分";
   document.getElementById("stat-ann-fastest").textContent = state.annFastest > 0 ? fmtTime(state.annFastest) : "—";
   document.getElementById("stat-ann-count").textContent = fmt(effAnnihilations());
   document.getElementById("stat-ann-tp").textContent = fmtNum(Math.pow(10, Math.min(effectiveCapLog(), 308)), effectiveCapLog()) + " K";
