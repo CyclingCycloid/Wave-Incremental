@@ -425,11 +425,11 @@ function distortGainExp() {
 }
 // ---------- 卷缩层对物理公式的影响（v0.6.0.0 测试）----------
 // CM（卡拉比-丘流形）的两个效果：
-// ① 波速获取 ×(1+CM)^(1/2)；② 频率公式变为 F = U/L^e（把隐藏维度卷缩进来，改变宏观物理）
+// ① 波速获取 ×(1+CM)^2；② 频率公式变为 F = U/L^e（把隐藏维度卷缩进来，改变宏观物理）
 // e = 1 + lg(1 + lg(1+CM)/3)/10；CM=0 时 e=1，与原公式逐位一致（零回归）
 function cmLg1() { return lg1FromLog(getLogCM()); } // lg(CM+1)（CM=0 时为 0）
-// 效果①的 log10：lg((1+CM)^0.5) = 0.5·lg(CM+1)
-function cmGainMultLog() { return clampLog(0.5 * cmLg1()); }
+// 效果①的 log10：lg((1+CM)^2) = 2·lg(CM+1)
+function cmGainMultLog() { return clampLog(2 * cmLg1()); }
 // 效果②：波长效果指数 e
 function wavelengthExp() {
   const c = cmLg1();
@@ -773,7 +773,7 @@ function gainRate() {
       g = s * Math.pow(Math.abs(g), e);
     }
   }
-  // 卷缩（CM 效果①）：波速获取 ×(1+CM)^(1/2)
+  // 卷缩（CM 效果①）：波速获取 ×(1+CM)^2
   {
     const cmGl = cmGainMultLog();
     if (cmGl > 0) g *= Math.pow(10, Math.min(cmGl, 309)); // 超 double 时置 Infinity → tick 自动退 log 域
@@ -832,7 +832,7 @@ function gainRateLog() {
   // 虚空共振（SVU1）：虚空内波速获取速率整体幂次（幂在 log 域 = 乘指数）；
   // 虚空泡沫第三效果（里程碑 2）：全局整体幂次
   log *= svu1GainExp() * vfGainExp();
-  // 卷缩（CM 效果①）：波速获取 ×(1+CM)^(1/2)（乘在幂次之后，与 double 路径顺序一致）
+  // 卷缩（CM 效果①）：波速获取 ×(1+CM)^2（乘在幂次之后，与 double 路径顺序一致）
   log += cmGainMultLog();
   // 超级软上限（仅虚空内）：获取超过 1e20000 的部分变为原来的 0.5 次方——
   // SVU1 幂次加成过强会让获取远超外部；20000 处连续（输入=输出）。
