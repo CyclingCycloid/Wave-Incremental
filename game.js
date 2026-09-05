@@ -2223,8 +2223,10 @@ function totalEffectText(id) {
       return { text: `总效果：奇点效果 ×${fmt(sauMult())}`, capped: cappedSau("sau2"), eff };
     }
     case "sau3": {
+      // 热涨落指数本底 0.2 不计入显示：只显示升级加成部分（+0.015/级，单圈重整后 +0.018/级）
       const eff = effLevel(n("sau3") + vpu2FreeLevel(), 10, 1 / 3);
-      return { text: `总效果：热涨落效果指数 +${thermalExp().toFixed(3)}` + (vpu2FreeLevel() > 0 ? `（含免费 +${fmt(vpu2FreeLevel())}）` : ""), capped: cappedSau("sau3"), eff };
+      const per = vpuOwned("vpu1") ? 0.018 : 0.015;
+      return { text: `总效果：热涨落效果指数 +${(per * eff).toFixed(3)}` + (vpu2FreeLevel() > 0 ? `（含免费 +${fmt(vpu2FreeLevel())}）` : ""), capped: cappedSau("sau3"), eff };
     }
     case "sau4":
       return { text: `总效果：奇点获取 ×${fmt(Math.pow(2, n("sau4")))}`, capped: false };
