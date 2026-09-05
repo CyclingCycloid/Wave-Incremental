@@ -3548,8 +3548,14 @@ function compactify() {
   setBhMass(1); state.bhState = "accrete"; setVP(0);
   state.sbu1 = 0; state.sbu2 = 0; state.sbu3 = 0;
   state.svpu1 = 0; state.svpu2 = 0; state.svpu3 = 0; state.svpu4 = 0; state.svpu5 = 0;
-  // —— 虚空：可进入性重置（总 Sp 归零后需重新达到 1e50 才能进入）；VF/SVU/里程碑保留 ——
+  // —— 虚空：可进入性（总 Sp 归零后需重新达到 1e50）与虚空数据全部重置 ——
+  //（量子泡沫 VF、虚空共振 SVU1 的累计投入与填充开关、能标偏移 SVU2 等级；
+  //  虚空里程碑记录 voidBestRules 保留——A53/A54 与成就体系依赖它）
   state.voidActive = false; state.voidRules = [];
+  setVoidVFLog(NLOG);
+  state.svu1SpLog = NLOG; state.svu1VpLog = NLOG; state.svu1VfLog = NLOG;
+  state.svu1Filling = false;
+  state.svu2Level = 0;
   // —— 卷缩层自身：CM 重置（TP/V/E/F 配置、SS/Ins/理论树保留）——
   setCMLog(NLOG);
   // —— 计时 ——
