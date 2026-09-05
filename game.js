@@ -1864,7 +1864,8 @@ function doAnnihilation() {
   const realNow = gameNow();
   const realDur = (realNow - state.annStartReal) / 1000;
   const gameDur = state.annGameElapsed || (state.playTime - state.annStartGame);
-  const rate = realDur > 0 && isFinite(gained) ? (gained / realDur) * 60 : 0; // Sp/分
+  // Sp/分（double 缓存口径）：gained 超 double 时为 Infinity，log 口径在下方 pushAnnHistory 计算
+  const rate = realDur > 0 && isFinite(gained) ? (gained / realDur) * 60 : 0;
   if (!inDistortMode) {
     // log 域加法：gained 或现有 sp/totalSp 任一超 double（含缓存 Infinity）时也不污染存档
     const sumOK = isFinite(gained)
@@ -1892,10 +1893,17 @@ function doAnnihilation() {
     if (state.annFastest === 0 || realDur < state.annFastest) state.annFastest = realDur;
   }
   // 历史记录
+  // 历史记录：sp/rate 存 log 权威（spLog/rateLog，可超 double），显示层由 log 驱动。
+  // 注意 rate 的 log 分支须判 rate>0（rate=0 时 log10(0)=-Inf → JSON null）；
+  // gained=Infinity（rate=0/Infinity）时用 spGainLog()+log10(60/realDur) 口径
+  const histSpLog = isFinite(gained) ? Math.log10(gained) : spGainLog();
+  const histRateLog = (rate > 0 && isFinite(rate)) ? Math.log10(rate) : histSpLog + Math.log10(60 / Math.max(realDur, 1e-9));
   pushAnnHistory({
     label: inDistortMode ? `扭曲·${dUniverse.name}` : `第 ${fmtAnnNum(state.annihilations + 1)} 次`,
     distort: inDistortMode ? dUniverse.id : "",
     sp: gained, realDur, gameDur, rate, at: realNow,
+    spLog: histSpLog,
+    rateLog: histRateLog,
   });
   // SVPU2 虚幻湮灭：每次获得的湮灭次数 ×2^svpu2（如 3 级则每次 +8 次而非 +1）。
   // 注意：进入扭曲宇宙（forceAnnihilationReset）也计一次湮灭次数——「进入=湮灭」是有意设计
@@ -2019,7 +2027,14 @@ function forceAnnihilationReset(gained) {
     if (bestRate > state.annBestRate) state.annBestRate = bestRate;
     if (state.annFastest === 0 || realDur < state.annFastest) state.annFastest = realDur;
   }
-  pushAnnHistory({ label: `第 ${fmtAnnNum(state.annihilations + 1)} 次`, distort: "", sp: gained, realDur, gameDur, rate, at: realNow });
+  const histSpLog = isFinite(gained) ? Math.log10(gained) : spGainLog();
+  const histRateLog = (rate > 0 && isFinite(rate)) ? Math.log10(rate) : histSpLog + Math.log10(60 / Math.max(realDur, 1e-9));
+  pushAnnHistory({
+    label: `第 ${fmtAnnNum(state.annihilations + 1)} 次`, distort: "",
+    sp: gained, realDur, gameDur, rate, at: realNow,
+    spLog: histSpLog,
+    rateLog: histRateLog,
+  });
   state.annihilations += annSpMult();
   applyAnnihilationResetBody(realNow);
   setAutosaveStatus(gained > 0 ? `湮灭完成：获得 ${fmtNum(gained, gained > 0 ? Math.log10(gained) : NLOG)} 奇点` : "湮灭完成");
@@ -4249,12 +4264,17 @@ function renderStats() {
         : fmtTime(r.gameDur);
       label.textContent = `${r.label} · ${fmtTime(r.realDur)}（真实）/ ${durText}（游戏）`;
       const val = document.createElement("span"); val.className = "ah-val";
-      // sp/rate 可能是历史遗留的 Infinity（JSON 存为 null）。注意 isFinite(null)===true
-      // 的陷阱：null 会走 fmt(null)="0"——须用 fmtLog 直接显示有效的 log 值
-      const spLog = (r.sp > 0 && isFinite(r.sp)) ? Math.log10(r.sp) : (isFinite(r.sp) ? NLOG : Math.log10(1.79e308));
-      const rateLog = (r.rate > 0 && isFinite(r.rate)) ? Math.log10(r.rate) : (isFinite(r.rate) ? NLOG : Math.log10(1.79e308));
-      const spText = (spLog > NLOG + 1) ? fmtLog(spLog) : fmt(r.sp);
-      const rateText = (rateLog > NLOG + 1) ? fmtLog(rateLog) : fmt(r.rate);
+      // sp/rate 显示完全由 log 值驱动（新记录存 spLog/rateLog 权威，可超 double）：
+      // 优先 log 权威；旧记录无此字段时从 sp/rate 重建（非有限值按拐点口径归位）。
+      // 统一 fmtLog 显示，规避 isFinite(null)===true 走 fmt(null)="0" 的陷阱
+      const spLog = (r.spLog !== undefined && typeof r.spLog === "number" && isFinite(r.spLog)) ? r.spLog
+        : (r.sp > 0 && isFinite(r.sp)) ? Math.log10(r.sp)
+        : (isFinite(r.sp) ? ((r.sp > 0) ? Math.log10(r.sp) : NLOG) : Math.log10(1.79e308));
+      const rateLog = (r.rateLog !== undefined && typeof r.rateLog === "number" && isFinite(r.rateLog)) ? r.rateLog
+        : (r.rate > 0 && isFinite(r.rate)) ? Math.log10(r.rate)
+        : (isFinite(r.rate) ? ((r.rate > 0) ? Math.log10(r.rate) : NLOG) : Math.log10(1.79e308));
+      const spText = (spLog > NLOG + 1) ? fmtLog(spLog) : "0";
+      const rateText = (rateLog > NLOG + 1) ? fmtLog(rateLog) : "0";
       val.textContent = `${spText} Sp · ${rateText} Sp/分`;
       row.append(label, val);
       hList.appendChild(row);
