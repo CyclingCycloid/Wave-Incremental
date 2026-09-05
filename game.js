@@ -4186,13 +4186,14 @@ function renderStats() {
   document.getElementById("stat-ann-time").textContent =
     state.annihilations >= 1 ? `${fmtTime(annReal, true)} / ${fmtTimeLog(annGame, state.annGameElapsedLog)}` : "— / —";
   document.getElementById("stat-ann-total-sp").textContent = fmtNum(state.totalSp, getLogTotalSp());
-  // bestSp 走 annBestSpLog 权威（封顶后仍可超 double）；bestRate 无 log 权威，
-  // Infinity/null（历史遗留）按拐点口径归位，正常超大有限值走 fmtNum
+  // bestSp/bestRate 都走 log 权威显示（超 double 的值 fmtNum 双参会失效）：double 缓存
+  // 仅在 log 权威无有效值时作参考
   const bestSpLog = (state.annBestSpLog !== undefined && typeof state.annBestSpLog === "number" && isFinite(state.annBestSpLog) && state.annBestSpLog > NLOG + 1)
     ? state.annBestSpLog : NLOG;
-  const bestRateLog = (state.annBestRate > 0 && isFinite(state.annBestRate)) ? Math.log10(state.annBestRate) : (isFinite(state.annBestRate) ? NLOG : Math.log10(1.79e308));
-  document.getElementById("stat-ann-best-sp").textContent = fmtNum(state.annBestSp, bestSpLog) + " Sp";
-  document.getElementById("stat-ann-best-rate").textContent = fmtNum(state.annBestRate, bestRateLog) + " Sp/分";
+  const bestRateLog = (state.annBestRateLog !== undefined && typeof state.annBestRateLog === "number" && isFinite(state.annBestRateLog) && state.annBestRateLog > NLOG + 1)
+    ? state.annBestRateLog : ((state.annBestRate > 0 && isFinite(state.annBestRate)) ? Math.log10(state.annBestRate) : NLOG);
+  document.getElementById("stat-ann-best-sp").textContent = (bestSpLog > NLOG + 1 ? fmtLog(bestSpLog) : fmt(state.annBestSp)) + " Sp";
+  document.getElementById("stat-ann-best-rate").textContent = (bestRateLog > NLOG + 1 ? fmtLog(bestRateLog) : fmt(state.annBestRate)) + " Sp/分";
   document.getElementById("stat-ann-fastest").textContent = state.annFastest > 0 ? fmtTime(state.annFastest) : "—";
   document.getElementById("stat-ann-count").textContent = fmt(effAnnihilations());
   document.getElementById("stat-ann-tp").textContent = fmtNum(Math.pow(10, Math.min(effectiveCapLog(), 308)), effectiveCapLog()) + " K";
@@ -4248,10 +4249,13 @@ function renderStats() {
         : fmtTime(r.gameDur);
       label.textContent = `${r.label} · ${fmtTime(r.realDur)}（真实）/ ${durText}（游戏）`;
       const val = document.createElement("span"); val.className = "ah-val";
-      // sp/rate 可能是历史遗留的 Infinity（JSON 存为 null）：走 log 域显示，非有限值按软上限拐点口径
+      // sp/rate 可能是历史遗留的 Infinity（JSON 存为 null）。注意 isFinite(null)===true
+      // 的陷阱：null 会走 fmt(null)="0"——须用 fmtLog 直接显示有效的 log 值
       const spLog = (r.sp > 0 && isFinite(r.sp)) ? Math.log10(r.sp) : (isFinite(r.sp) ? NLOG : Math.log10(1.79e308));
       const rateLog = (r.rate > 0 && isFinite(r.rate)) ? Math.log10(r.rate) : (isFinite(r.rate) ? NLOG : Math.log10(1.79e308));
-      val.textContent = `${fmtNum(r.sp, spLog)} Sp · ${fmtNum(r.rate, rateLog)} Sp/分`;
+      const spText = (spLog > NLOG + 1) ? fmtLog(spLog) : fmt(r.sp);
+      const rateText = (rateLog > NLOG + 1) ? fmtLog(rateLog) : fmt(r.rate);
+      val.textContent = `${spText} Sp · ${rateText} Sp/分`;
       row.append(label, val);
       hList.appendChild(row);
     }
@@ -4769,7 +4773,9 @@ function applyProduction(realDt) {
     if (dtOverDouble) {
       if (state.annGameElapsedLog === undefined || !isFinite(state.annGameElapsedLog)) state.annGameElapsedLog = NLOG;
       state.annGameElapsedLog = clampLog(logAddLogs(Math.max(state.annGameElapsedLog, NLOG), gameDtLog));
-    } else if (dt > 0) {
+    } else if (!dtOverDouble && dt > 0) {
+      // 注意：必须排除 dtOverDouble——此时 dt=MAX_VALUE 占位，log10(dt)=308.25
+      // 会把 log 权威反复覆盖成 308 量级（加速 e338 也恒显示 2.08e303d 的根因）
       state.annGameElapsedLog = clampLog(logAddLogs(Math.max(state.annGameElapsedLog ?? NLOG, NLOG), Math.log10(dt)));
     }
   }
