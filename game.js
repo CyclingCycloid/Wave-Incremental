@@ -3955,11 +3955,10 @@ function autoAnnTick() {
   if (state.annihilations < 1 || !state.autoOn.ann || !state.autoAnn) return;
   if (inDistort("narrow")) return;
   if (state.distortActive) {
-    // 扭曲宇宙：达标时自动完成（由 tick 触发 doAnnihilation 完成该宇宙）
-    // 但需要固定 1s CD 防抖（简洁等低阈值宇宙会正反馈触发→完成→回主宇宙→连环湮灭→再次进入→循环）。
-    // 注意：此处不适用 autoAnnCD()（VPU5 取消 CD / A42 缩减等），扭曲内的 1s 防抖是
-    // 防正反馈循环的最小保护，为有意设计
-    if (annihilationReady() && gameNow() - state.lastAutoAnnAt >= 1000 && doAnnihilation()) state.lastAutoAnnAt = gameNow();
+    // 扭曲宇宙：达标即自动湮灭该宇宙（无 CD——「能湮灭时尽快湮灭」为承诺行为）。
+    // 防正反馈说明：湮灭后回到主宇宙，主宇宙侧的 autoAnnCD 与 Sp 阈值仍生效，
+    // 自动化不会自动再进入扭曲宇宙，故不会无 CD 连环
+    if (annihilationReady()) doAnnihilation();
     return;
   }
   if (auOwned("au22") && state.autoAnnMode === "time") {
@@ -5051,7 +5050,7 @@ function applyTestModeUIGlobal() {
   if (clearBtn) clearBtn.classList.toggle("hidden", !state.testMode);
   if (forceAnnBtn) forceAnnBtn.classList.toggle("hidden", !state.testMode);
   if (verEl) verEl.textContent = state.testMode
-    ? "v0.5.1 The Void Update（测试）"
+    ? "v0.6.0.0 The Superstring Update（测试）"
     : "v0.5.1 The Void Update";
 }
 
