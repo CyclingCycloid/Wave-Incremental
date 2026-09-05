@@ -627,11 +627,11 @@ function temperatureCap() {
   const logCap = temperatureCapLog();
   return logCap > 308 ? Infinity : Math.pow(10, logCap);
 }
-// AU42 虚幻凝聚：基于虚粒子数量增加奇点获取 ×(1+VP)^0.3（返回 log10；
+// AU42 虚幻凝聚：基于虚粒子数量增加奇点获取 ×(1+VP)^0.35（返回 log10；
 // log 域计算：VP 缓存为 Infinity（log 权威仍有限）时不产生 Infinity/LOG_CAP 污染）
 function vpSpMultLog() {
   if (!auOwned("au42")) return 0;
-  return 0.3 * logAddLogs(0, getLogVP());
+  return 0.35 * logAddLogs(0, getLogVP());
 }
 // Sp 获取基础值的 log10（log 域全链路，温度超 double 也不产生 Infinity）。
 // 三段连续：T<1e50 为 1~10 线性（1 Sp @ T_P0）；1e50≤T<1e100 为 lg(T)/5（10~20）；
