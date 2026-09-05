@@ -71,6 +71,31 @@ function defaultState() {
     svu1VfLog: NLOG,       // SVU1：累计投入的 VF（log10）
     svu1Filling: false,    // SVU1：填充开关（开启时每真实秒投入现有资源 1%）
     svu2Level: 0,          // SVU2 能标偏移等级（虚空外增长，不清零不重置）
+
+    // 卷缩层（v0.6.0.0 测试：第三重置层；SS=超弦 / Ins=灵感 / CM=卡拉比-丘流形）
+    compactions: 0,        // 卷缩次数
+    ss: 0,                 // 超弦（double 缓存）
+    logDss: NLOG,          // log10(超弦) 权威（零哨兵 NLOG）
+    totalSS: 0,            // 总超弦获取（double 缓存）
+    logDtotalSS: NLOG,     // log10(总超弦) 权威
+    bestSS: 0,             // 最好单次超弦获取（double 缓存）
+    logBestSS: NLOG,       // 最好单次超弦获取的 log10 权威
+    bestSSRate: 0,         // 最佳 SS/分（double 缓存）
+    logBestSSRate: NLOG,   // 最佳 SS/分 的 log10 权威
+    ins: 0,                // 灵感（double 缓存）
+    logDins: NLOG,         // log10(灵感) 权威
+    totalIns: 0,           // 总灵感（double 缓存）
+    logDtotalIns: NLOG,    // log10(总灵感) 权威
+    insFromF: 0, insFromSp: 0, insFromSS: 0, // 各途径已购灵感次数（决定下一次价格）
+    cm: 0,                 // 卡拉比-丘流形（double 缓存；后台小数计算，显示取整）
+    logCM: NLOG,           // log10(CM) 权威
+    tp: 0,                 // 未转换的拓扑节点（可转换为点/边/面；卷缩重置保留）
+    tpV: 0, tpE: 0, tpF: 0, // 已转换的点 V / 边 E / 面 F（各消耗 1 TP，可退回）
+    theoryNodes: {},       // 理论树已购节点（id→1，如 "01"）
+    compStartReal: 0,      // 本次卷缩开始（真实时间戳 ms）
+    compGameElapsed: 0,    // 本次卷缩的游戏时长（double 缓存，超 double 封顶 MAX_VALUE）
+    compGameElapsedLog: NLOG, // 本次卷缩游戏时长的 log10 权威
+    compFastest: 0,        // 最快卷缩时间（真实秒，0=无记录）
     au: {},                                 // 奇点单次升级已购标记（id→1）
     testBreakRules: false, // 测试按钮：临时打破规则（不获 Sp，v0.4.3 移除）
     testMode: false,       // 测试模式：开发者预览开关（隔离未发布的开发内容，如未来的新重置层）
@@ -398,9 +423,27 @@ function distortGainExp() {
   if (t <= 1) return 1;
   return Math.max(0, 1 - 0.1 * (t - 1));
 }
+// ---------- 卷缩层对物理公式的影响（v0.6.0.0 测试）----------
+// CM（卡拉比-丘流形）的两个效果：
+// ① 波速获取 ×(1+CM)^(1/2)；② 频率公式变为 F = U/L^e（把隐藏维度卷缩进来，改变宏观物理）
+// e = 1 + lg(1 + lg(1+CM)/3)/10；CM=0 时 e=1，与原公式逐位一致（零回归）
+function cmLg1() { return lg1FromLog(getLogCM()); } // lg(CM+1)（CM=0 时为 0）
+// 效果①的 log10：lg((1+CM)^0.5) = 0.5·lg(CM+1)
+function cmGainMultLog() { return clampLog(0.5 * cmLg1()); }
+// 效果②：波长效果指数 e
+function wavelengthExp() {
+  const c = cmLg1();
+  return 1 + Math.log10(1 + c / 3) / 10;
+}
+// Hz/s 的 log10（log10(gain/L^e)，膨胀宇宙的波长倍率计入指数底数）——
+// 累计频率、获取显示与 S19 判定共用的唯一实现
+function gainPerLLog(gLog) {
+  return clampLog(gLog - wavelengthExp() * (getLogL10() + distortLModLog()));
+}
 function FLog() {
-  // log 域：getLogU10 权威（U 超 1e308 时仍有限），永不返回 Infinity
-  return clampLog(getLogU10() - getLogL10() - distortLModLog());
+  // log 域：getLogU10 权威（U 超 1e308 时仍有限），永不返回 Infinity；
+  // 卷缩后波长带指数 e：F = U/(L·膨胀倍率)^e（e=1 时与原式逐位一致）
+  return clampLog(getLogU10() - wavelengthExp() * (getLogL10() + distortLModLog()));
 }
 function F() {
   const logF = FLog();
@@ -730,6 +773,11 @@ function gainRate() {
       g = s * Math.pow(Math.abs(g), e);
     }
   }
+  // 卷缩（CM 效果①）：波速获取 ×(1+CM)^(1/2)
+  {
+    const cmGl = cmGainMultLog();
+    if (cmGl > 0) g *= Math.pow(10, Math.min(cmGl, 309)); // 超 double 时置 Infinity → tick 自动退 log 域
+  }
   return g;
 }
 // gainRate 的 log10 版本（完整乘法链在 log 域，永不溢出）。
@@ -784,6 +832,8 @@ function gainRateLog() {
   // 虚空共振（SVU1）：虚空内波速获取速率整体幂次（幂在 log 域 = 乘指数）；
   // 虚空泡沫第三效果（里程碑 2）：全局整体幂次
   log *= svu1GainExp() * vfGainExp();
+  // 卷缩（CM 效果①）：波速获取 ×(1+CM)^(1/2)（乘在幂次之后，与 double 路径顺序一致）
+  log += cmGainMultLog();
   // 超级软上限（仅虚空内）：获取超过 1e20000 的部分变为原来的 0.5 次方——
   // SVU1 幂次加成过强会让获取远超外部；20000 处连续（输入=输出）。
   // double 路径（gainRate）最高 1e308，不会触及此阈值，无需处理
@@ -825,8 +875,11 @@ function timeRateLog() {
   if (state.ruaBoostUntil && gameNow() < state.ruaBoostUntil) log += Math.log10(Math.max(state.ruaBoostMult, 1e-300));
   return clampLog(log);
 }
-// A25 奖励：每次重置后初始波速 100 m/s（否则 10）
-function resetU() { return state.ach.normal.includes("A25") ? 100 : 10; }
+// A25 奖励：每次重置后初始波速 100 m/s；A55 卷缩奖励：1e3 m/s（否则 10）
+function resetU() {
+  if (state.ach.normal.includes("A55")) return 1000;
+  return state.ach.normal.includes("A25") ? 100 : 10;
+}
 // 升级价格（下一次购买）
 // 通胀宇宙：所有升级的价格变为原来的平方
 function costOf(c) { return inDistort("inflation") ? c * c : c; }
@@ -1142,6 +1195,33 @@ function migrateState() {
   if (state.svu1VfLog === undefined || !isFinite(state.svu1VfLog)) state.svu1VfLog = NLOG;
   if (state.svu1Filling === undefined) state.svu1Filling = false;
   if (state.svu2Level === undefined) state.svu2Level = 0;
+  // v0.6.0.0：卷缩层字段回填（Object.assign 已补默认，此处处理 null/非有限与缓存恢复）
+  if (state.compactions === undefined || !isFinite(state.compactions)) state.compactions = 0;
+  if (state.logDss === undefined || !isFinite(state.logDss)) state.logDss = NLOG;
+  if (state.logDtotalSS === undefined || !isFinite(state.logDtotalSS)) state.logDtotalSS = NLOG;
+  if (state.logBestSS === undefined || !isFinite(state.logBestSS)) state.logBestSS = NLOG;
+  if (state.logBestSSRate === undefined || !isFinite(state.logBestSSRate)) state.logBestSSRate = NLOG;
+  if (state.logDins === undefined || !isFinite(state.logDins)) state.logDins = NLOG;
+  if (state.logDtotalIns === undefined || !isFinite(state.logDtotalIns)) state.logDtotalIns = NLOG;
+  if (state.logCM === undefined || !isFinite(state.logCM)) state.logCM = NLOG;
+  if (state.insFromF === undefined || !isFinite(state.insFromF)) state.insFromF = 0;
+  if (state.insFromSp === undefined || !isFinite(state.insFromSp)) state.insFromSp = 0;
+  if (state.insFromSS === undefined || !isFinite(state.insFromSS)) state.insFromSS = 0;
+  if (state.tp === undefined || !isFinite(state.tp)) state.tp = 0;
+  if (state.tpV === undefined || !isFinite(state.tpV)) state.tpV = 0;
+  if (state.tpE === undefined || !isFinite(state.tpE)) state.tpE = 0;
+  if (state.tpF === undefined || !isFinite(state.tpF)) state.tpF = 0;
+  if (state.theoryNodes === undefined || typeof state.theoryNodes !== "object" || Array.isArray(state.theoryNodes)) state.theoryNodes = {};
+  if (state.compGameElapsedLog === undefined || !isFinite(state.compGameElapsedLog)) {
+    state.compGameElapsedLog = (state.compGameElapsed > 0 && isFinite(state.compGameElapsed)) ? Math.log10(state.compGameElapsed) : NLOG;
+  }
+  if (state.compFastest === null || state.compFastest === undefined || !isFinite(state.compFastest) || state.compFastest < 0) state.compFastest = 0;
+  if (state.ss === null || state.ss === undefined) state.ss = fromLog(getLogSS());
+  if (state.totalSS === null || state.totalSS === undefined) state.totalSS = fromLog(getLogTotalSS());
+  if (state.ins === null || state.ins === undefined) state.ins = fromLog(getLogIns());
+  if (state.totalIns === null || state.totalIns === undefined) state.totalIns = fromLog(getLogTotalIns());
+  if (state.cm === null || state.cm === undefined) state.cm = fromLog(getLogCM());
+  if (state.compStartReal === undefined || !isFinite(state.compStartReal)) state.compStartReal = 0;
   if (state.up3LastF === null || state.up3LastF === undefined) {
     const lp = getLogUp3LastF();
     state.up3LastF = (lp <= NLOG + 1) ? 0 : fromLog(lp);
@@ -1151,7 +1231,8 @@ function migrateState() {
   // 需连续不湮灭挂机十余小时才会触及）。检测即修复：U 重置为湮灭初值，
   // 派生统计跟随，Sp/声子等资源清为对应零值。
   const SANITY_MAX = 1e12;
-  const polluted = [state.logU10, state.logL10, state.logTotalF, state.logMaxF, state.logMaxU, state.logDsp, state.logDtotal, state.logDph, state.logUp3LastF, state.logVP, state.logBhMass]
+  const polluted = [state.logU10, state.logL10, state.logTotalF, state.logMaxF, state.logMaxU, state.logDsp, state.logDtotal, state.logDph, state.logUp3LastF, state.logVP, state.logBhMass,
+    state.logDss, state.logDtotalSS, state.logBestSS, state.logBestSSRate, state.logDins, state.logDtotalIns, state.logCM, state.compGameElapsedLog]
     .some(v => v !== undefined && v !== null && isFinite(v) && Math.abs(v) >= SANITY_MAX);
   if (polluted) {
     setU(resetU());
@@ -1361,7 +1442,7 @@ function checkS6() {
 }
 
 // ---------- Tabs ----------
-const DEFAULT_SUBTAB = { wave: "main", stats: "stats-data", annihilation: "ann-sp" };
+const DEFAULT_SUBTAB = { wave: "main", stats: "stats-data", annihilation: "ann-sp", compact: "comp-ms" };
 let lastSubtab = {}; // 记录每个主标签上次停留的子标签页
 function switchTab(name) {
   if (simActive) return; // 离线模拟中不触碰 DOM/存档
@@ -1378,6 +1459,7 @@ function switchTab(name) {
   if (name === "achievements") updateAchievementsUI();
   if (name === "annihilation") { updateSpUI(); updateDistortUI(); updateBlackholeUI(); updateVoidUI(); }
   if (name === "automation") updateAutomationUI();
+  if (name === "compact") updateCompactUI();
 }
 function switchSubtab(name) {
   if (simActive) return; // 离线模拟中不触碰 DOM/存档
@@ -1393,6 +1475,7 @@ function switchSubtab(name) {
   if (name === "ann-distort") updateDistortUI();
   if (name === "ann-blackhole") updateBlackholeUI();
   if (name === "ann-void") updateVoidUI();
+  if (name === "comp-ms" || name === "comp-dim" || name === "comp-theory") updateCompactUI();
 }
 
 // ---------- Purchase ----------
@@ -2232,6 +2315,8 @@ function applyHelpVisibility() {
   document.getElementById("help-vpu-extra").classList.toggle("hidden", !state.ach.normal.includes("A45"));
   document.getElementById("help-svpu-extra").classList.toggle("hidden", !vpuOwned("vpu5"));
   document.getElementById("help-void").classList.toggle("hidden", !state.ach.normal.includes("A52"));
+  // 卷缩章节：测试模式下首次卷缩后显示
+  document.getElementById("help-compact").classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
   document.getElementById("stat-ann-group").classList.toggle("hidden", state.annihilations < 1);
   document.getElementById("subtab-stats-challenge").classList.toggle("hidden", state.annihilations < 20);
 }
@@ -2441,6 +2526,11 @@ function updateVoidUI() {
     voidSvuEls.fillBtn.textContent = state.svu1Filling ? "停止填充" : "开始填充";
     voidSvuEls.fillBtn.disabled = !m1;
   }
+  // 进入虚空门槛：总奇点 ≥ 1e50（卷缩重置后需重新达成；此前 A52 达成即已满足，无回归）
+  const voidGateOK = getLogTotalSp() >= 50;
+  const enterBtn2 = document.getElementById("void-enter-btn");
+  enterBtn2.textContent = voidGateOK ? "进入虚空" : "需达到1e50总奇点";
+  enterBtn2.title = voidGateOK ? "" : "卷缩重置后，需要重新达到 1e50 总奇点才能进入虚空";
   if (state.voidActive) {
     const fLog = FLog();
     const vfLog = voidVFLog(fLog);
@@ -2452,8 +2542,8 @@ function updateVoidUI() {
   } else {
     stats.textContent = vfLine;
     for (const id in voidRuleBtns) voidRuleBtns[id].classList.toggle("selected", voidSelection.includes(id));
-    // 进入按钮按已选削弱数量启用（选择状态由按钮 click 维护）
-    document.getElementById("void-enter-btn").disabled = voidSelection.length === 0;
+    // 进入按钮按已选削弱数量启用（选择状态由按钮 click 维护）；门槛未达时禁用
+    document.getElementById("void-enter-btn").disabled = voidSelection.length === 0 || !voidGateOK;
   }
 }
 // SAU1/SAU3 的实际等级上限：单圈重整（VPU1）后取消
@@ -2762,6 +2852,8 @@ function vfVPMultLog() {
 // 进入虚空：湮灭重置后应用选中的削弱集合
 function enterVoid(ids) {
   if (!state.ach.normal.includes("A52")) return;
+  // 卷缩后总奇点归零：需重新达到 1e50 总奇点才能进入虚空（按钮同步显示要求）
+  if (getLogTotalSp() < 50) return;
   if (state.voidActive || state.distortActive) return;
   const list = (ids || []).filter(id => DISTORT_UNIVERSES.some(u => u.id === id));
   if (!list.length) return;
@@ -3131,6 +3223,481 @@ function tickBlackhole(dt) {
         setVPLog(logAddLogs(getLogVP(), addLog));
       }
     }
+  }
+}
+
+// ---------- 卷缩层（v0.6.0.0 测试：第三重置层）----------
+// A55 解锁按钮，首次卷缩解锁「卷缩」主选项卡（里程碑/维度/理论树三个子页）。
+// SS=超弦（卷缩货币，橙色）、Ins=灵感（理论树货币）、CM=卡拉比-丘流形（维度折叠器产出）。
+// 全部数值采用「log10 权威 + double 缓存」双表示；CM 后台小数计算、显示取整。
+// 卷缩重置此前所有内容（统计-通用 与 统计-挑战 保留）；湮灭不重置卷缩层内容。
+
+const COMPACT_SS_GAIN_FIRST = 1; // 第一次卷缩固定获得 1 SS（后续卷缩的获取公式待定；第二次暂不开放）
+
+// ---------- SS / Ins / CM 资源双表示（仿 VP 模式，零哨兵 NLOG）----------
+function getLogSS() {
+  if (state.logDss !== undefined && isFinite(state.logDss)) return clampLog(state.logDss);
+  return state.ss > 0 ? clampLog(Math.log10(state.ss)) : NLOG;
+}
+function setSS(v) {
+  state.ss = v;
+  if (v > 0 && isFinite(v)) state.logDss = clampLog(Math.log10(v));
+  else if (v <= 0) state.logDss = NLOG;
+}
+function setSSLog(lg) {
+  state.logDss = clampLog(lg);
+  state.ss = (lg <= NLOG + 1) ? 0 : (lg > 308 ? Infinity : Math.pow(10, lg));
+}
+function addSSLog(addLog) { setSSLog(logAddLogs(getLogSS(), addLog)); }
+function subSSLog(costLog) {
+  const r = logAddSigned(getLogSS(), 1, costLog, -1);
+  if (r.sign < 0) setSS(0); else setSSLog(r.log);
+}
+function getLogTotalSS() {
+  if (state.logDtotalSS !== undefined && isFinite(state.logDtotalSS)) return clampLog(state.logDtotalSS);
+  return state.totalSS > 0 ? clampLog(Math.log10(state.totalSS)) : NLOG;
+}
+function addTotalSSLog(addLog) {
+  const nLog = logAddLogs(getLogTotalSS(), addLog);
+  state.logDtotalSS = nLog;
+  state.totalSS = nLog <= NLOG + 1 ? 0 : (nLog > 308 ? Infinity : Math.pow(10, nLog));
+}
+function getLogIns() {
+  if (state.logDins !== undefined && isFinite(state.logDins)) return clampLog(state.logDins);
+  return state.ins > 0 ? clampLog(Math.log10(state.ins)) : NLOG;
+}
+function setIns(v) {
+  state.ins = v;
+  if (v > 0 && isFinite(v)) state.logDins = clampLog(Math.log10(v));
+  else if (v <= 0) state.logDins = NLOG;
+}
+function setInsLog(lg) {
+  state.logDins = clampLog(lg);
+  state.ins = (lg <= NLOG + 1) ? 0 : (lg > 308 ? Infinity : Math.pow(10, lg));
+}
+function addInsLog(addLog) { setInsLog(logAddLogs(getLogIns(), addLog)); }
+function subInsLog(costLog) {
+  const r = logAddSigned(getLogIns(), 1, costLog, -1);
+  if (r.sign < 0) setIns(0); else setInsLog(r.log);
+}
+function getLogTotalIns() {
+  if (state.logDtotalIns !== undefined && isFinite(state.logDtotalIns)) return clampLog(state.logDtotalIns);
+  return state.totalIns > 0 ? clampLog(Math.log10(state.totalIns)) : NLOG;
+}
+function addTotalInsLog(addLog) {
+  const nLog = logAddLogs(getLogTotalIns(), addLog);
+  state.logDtotalIns = nLog;
+  state.totalIns = nLog <= NLOG + 1 ? 0 : (nLog > 308 ? Infinity : Math.pow(10, nLog));
+}
+function getLogCM() {
+  if (state.logCM !== undefined && isFinite(state.logCM)) return clampLog(state.logCM);
+  return state.cm > 0 ? clampLog(Math.log10(state.cm)) : NLOG;
+}
+function setCMLog(lg) {
+  state.logCM = clampLog(lg);
+  state.cm = (lg <= NLOG + 1) ? 0 : (lg > 308 ? Infinity : Math.pow(10, lg));
+}
+// 可负担性（价格以 log10 给出；double 范围内走 cmpGE 零回归，之外退 log 域比较）
+function spAffordLog(costLog) {
+  return costLog < 290 ? cmpGE(state.sp, Math.pow(10, costLog), getLogSp(), costLog) : getLogSp() >= costLog;
+}
+function ssAffordLog(costLog) {
+  return costLog < 290 ? cmpGE(state.ss, Math.pow(10, costLog), getLogSS(), costLog) : getLogSS() >= costLog;
+}
+
+// ---------- 维度折叠器（CM 产出：TP² × 3^√(3·b₁·b₂) 每真实秒）----------
+// 拓扑节点 TP（SS 购买，第 n 个 floor(1.5^n)）可转换为点 V/边 E/面 F（各消耗 1 TP，可退回）。
+// 贝蒂数：b₁ = max(0, E−V+1)；b₂ = max(0, min(F, ⌊2E/3⌋)−E+V)。
+// TP² 按**总节点数**（含已转换的 V/E/F）计；CM 后台小数计算、显示取整；卷缩重置 CM（配置保留）。
+function tpTotal() { return state.tp + state.tpV + state.tpE + state.tpF; }
+function betti1() { return Math.max(0, state.tpE - state.tpV + 1); }
+function betti2() { return Math.max(0, Math.min(state.tpF, Math.floor(2 * state.tpE / 3)) - state.tpE + state.tpV); }
+// 基础 CM 获取速率的 log10（TP=0 时为 NLOG 零哨兵）
+function cmRateLog() {
+  const n = tpTotal();
+  if (n <= 0) return NLOG;
+  const sLog = Math.sqrt(3 * betti1() * betti2()) * Math.log10(3);
+  return clampLog(2 * Math.log10(n) + sLog);
+}
+// 理论树节点 01「最小作用量原理」：折叠器受严重削弱的时间倍率加成——
+// 折叠器时间乘数 = max((1+lg(1+Speed))/2, Speed^0.005)（未购买时乘数为 1：不受游戏速度影响）
+function cmTimeMultLog() {
+  if (!theoryOwned("01")) return 0;
+  const trLog = timeRateLog();
+  const x = logAddLogs(0, trLog); // lg(1+Speed)
+  const la = Math.log10(Math.max(1 + x, 1e-300)) - Math.log10(2); // lg((1+x)/2)
+  const lb = 0.005 * trLog; // lg(Speed^0.005)
+  return clampLog(Math.max(la, lb));
+}
+// 折叠器 tick：CM 按真实时间累积（挂 applyProduction，离线模拟共用）。
+// 初始不受游戏速度影响；节点 01 后乘上严重削弱的时间倍率（真实 dt × 乘数）
+function cmTick(realDt) {
+  if (state.compactions < 1 || !state.testMode) return;
+  if (tpTotal() <= 0) return;
+  const rateLog = cmRateLog();
+  if (rateLog <= NLOG + 1) return;
+  const dtLog = Math.log10(Math.max(realDt, 1e-300)) + cmTimeMultLog();
+  setCMLog(logAddLogs(getLogCM(), rateLog + dtLog));
+}
+// 购买拓扑节点：第 n 个花费 floor(1.5^n) SS（n 从 1 起）
+function tpNextCostValue() {
+  const n = state.tp + 1;
+  const lg = n * Math.log10(1.5);
+  return lg < 15 ? Math.floor(Math.pow(1.5, n)) : null; // null：小数位已无意义，走 log 口径
+}
+function buyTP() {
+  const v = tpNextCostValue();
+  const n = state.tp + 1;
+  const cLog = clampLog(n * Math.log10(1.5));
+  if (v !== null) {
+    if (cmpLT(state.ss, v, getLogSS(), Math.log10(Math.max(v, 1)))) return;
+    subSSLog(Math.log10(Math.max(v, 1)));
+  } else {
+    if (!ssAffordLog(cLog)) return;
+    subSSLog(cLog);
+  }
+  state.tp++;
+}
+// 转换 / 退回：kind 为 "V"/"E"/"F"，dir=+1 消耗 1 TP 转换，dir=-1 退回 1 TP
+function convertTP(kind, dir) {
+  const key = "tp" + kind;
+  if (dir > 0) {
+    if (state.tp < 1) return;
+    state.tp--; state[key]++;
+  } else {
+    if (state[key] < 1) return;
+    state[key]--; state.tp++;
+  }
+}
+
+// ---------- 理论树（MN 编号：M=层数、N=层内从左往右序号；任意父节点已购即可购买）----------
+const THEORY_NODES = [
+  { id: "01", name: "最小作用量原理", parents: [], cost: 1,
+    desc: "维度折叠器受严重削弱的时间倍率加成" },
+  { id: "11", name: "经典场论", parents: ["01"], placeholder: true },
+  { id: "12", name: "质点力学", parents: ["01"], placeholder: true },
+  { id: "21", name: "电磁学", parents: ["11"], placeholder: true },
+  { id: "22", name: "刚体力学", parents: ["12"], placeholder: true },
+  { id: "23", name: "分析力学", parents: ["12"], placeholder: true },
+  { id: "31", name: "电动力学", parents: ["21"], placeholder: true },
+  { id: "32", name: "几何光学", parents: ["22", "23"], placeholder: true },
+  { id: "41", name: "波动光学", parents: ["31", "32"], placeholder: true },
+];
+function theoryOwned(id) { return !!state.theoryNodes[id]; }
+function theoryAvailable(def) {
+  if (theoryOwned(def.id) || def.placeholder) return false;
+  return def.parents.length === 0 || def.parents.some(p => theoryOwned(p));
+}
+// 灵感（Ins）购买价格（第 n 次，n=已购次数+1）：F：10^(25000n)；Sp：10^(200(n-1))；SS：2^(n-1)
+function insCostLogF() { return clampLog(25000 * (state.insFromF + 1)); }
+function insCostLogSp() { return clampLog(200 * state.insFromSp); }          // 首次 10^0 = 1 Sp
+function insCostLogSS() { return clampLog(state.insFromSS * Math.log10(2)); } // 首次 2^0 = 1 SS
+// 购买灵感：src 为 "F"/"Sp"/"SS"（F 途径沿用既有约定：价格以 F 计，支付扣 U−cost·L）
+function buyIns(src) {
+  if (src === "F") {
+    const cLog = insCostLogF();
+    if (cmpLT(F(), Math.pow(10, Math.min(cLog, 308)), FLog(), cLog)) return;
+    subULog(cLog);
+  } else if (src === "Sp") {
+    const cLog = insCostLogSp();
+    if (!spAffordLog(cLog)) return;
+    subSpLog(cLog);
+  } else {
+    if (state.compactions < 1) return; // SS 途径需拥有维度折叠器
+    const cLog = insCostLogSS();
+    if (!ssAffordLog(cLog)) return;
+    subSSLog(cLog);
+  }
+  state["insFrom" + src]++;
+  addInsLog(0);        // 每次 +1 Ins（log10(1)=0）
+  addTotalInsLog(0);
+  setAutosaveStatus("获得 1 灵感（" + src + " 途径）");
+}
+function buyTheoryNode(id) {
+  const def = THEORY_NODES.find(n => n.id === id);
+  if (!def || def.placeholder || theoryOwned(id) || !theoryAvailable(def)) return;
+  const cLog = Math.log10(Math.max(def.cost, 1));
+  if (getLogIns() < cLog) return;
+  subInsLog(cLog);
+  state.theoryNodes[id] = 1;
+  setAutosaveStatus("理论解锁：" + def.name);
+}
+
+// ---------- 卷缩重置 ----------
+// 卷缩里程碑 1「卷缩一次」：保持湮灭选项卡的可见性；卷缩后初始拥有 3 次湮灭次数
+//（等效于带着 1-3 次湮灭里程碑重开：声子解锁、单次波动/声子升级与两项自动化直接生效）
+function compMilestone1() { return state.compactions >= 1; }
+const COMP_MILESTONES = [
+  { n: 1, title: "卷缩一次", need: 1,
+    desc: "进行一次卷缩重置",
+    reward: "保持湮灭选项卡的可见性；卷缩后初始拥有 3 次湮灭次数",
+    check: () => state.compactions >= 1,
+    prog: () => `进度：卷缩次数 ${Math.min(state.compactions, 1)} / 1` },
+];
+// 卷缩条件：VP ≥ 1e36、完成 A54（所有扭曲生效的虚空）、Sp ≥ 1.79e308（Sp 软上限拐点）
+function canCompactify() {
+  return state.testMode
+    && state.ach.normal.includes("A55")
+    && !state.voidActive
+    && state.compactions === 0 // 第二次卷缩暂不开放（按钮显示「测试中，暂不开放」）
+    && getLogVP() >= 36
+    && state.voidBestRules >= 8
+    && getLogSp() >= SP_SOFTCAP_PIVOT_LOG;
+}
+// 卷缩重置：获得超弦并重置此前所有内容（统计-通用 与 统计-挑战 保留）
+function compactify() {
+  if (!canCompactify()) return;
+  if (!confirm("确定要进行卷缩重置吗？\n这将重置几乎所有内容（统计-通用与统计-挑战保留），并获得超弦（SS）。")) return;
+  const realNow = gameNow();
+  const realDur = state.compStartReal > 0 ? Math.max((realNow - state.compStartReal) / 1000, 0) : 0;
+  // 统计：最快卷缩（真实秒）、最好单次 SS、最佳 SS/分（真实分口径，与湮灭一致，log 权威）
+  if (state.compFastest === 0 || realDur < state.compFastest) state.compFastest = realDur;
+  const gained = COMPACT_SS_GAIN_FIRST;
+  const gLog = Math.log10(Math.max(gained, 1e-300));
+  state.logBestSS = Math.max(state.logBestSS ?? NLOG, gLog);
+  state.bestSS = Math.pow(10, Math.min(state.logBestSS, 308));
+  const rateLog = clampLog(gLog + Math.log10(60 / Math.max(realDur, 1e-9)));
+  state.logBestSSRate = Math.max(state.logBestSSRate ?? NLOG, rateLog);
+  state.bestSSRate = Math.max(state.bestSSRate || 0, Math.pow(10, Math.min(rateLog, 308)));
+  addSSLog(gLog);
+  addTotalSSLog(gLog);
+  state.compactions++;
+  // —— 波动 / 声子（全量重置；卷缩里程碑 1 给予的保留项在下方按 3 次湮灭补发）——
+  setU(resetU()); state.L = 1; state.logL10 = 0;
+  state.up1 = 0; state.up2 = 0; state.up3 = 0; state.up3LastF = 0; state.logUp3LastF = NLOG;
+  state.meta1 = 0;
+  setPhonons(0); state.phOn = false; state.phUnlocked = 0;
+  state.pg1 = 0; state.pg2 = 0; state.pg3 = 0;
+  state.phFluct = 0; state.phCoupling = 0;
+  // —— 湮灭层 ——
+  setSp(0); setTotalSp(0);
+  state.spu1 = 0;
+  state.sau1 = 0; state.sau2 = 0; state.sau3 = 0; state.sau4 = 0;
+  state.au = {};            // AU 与 VPU（vpu_* 存于 au）一并清除
+  state.vpuCondMet = [];    // VPU 解锁 latch：「仅当出现比湮灭更高层次的重置时才清除」——卷缩即该重置
+  state.annihilations = compMilestone1() ? 3 : 0;
+  if (compMilestone1()) {
+    state.phUnlocked = 1; state.meta1 = 1; state.phFluct = 1; state.phCoupling = 1;
+    state.autoWaveUpg = 1; state.autoPhononUpg = 1;
+  }
+  state.autoUp3 = 0; state.autoAnn = 0;
+  state.autoOn = { wave: false, phonon: false, up3: false, ann: false };
+  state.autoAnnCDLvl = 0;
+  state.batchLvl = 0; state.batchMax = 2;
+  state.lastAutoUp3At = 0; state.lastAutoAnnAt = 0;
+  state.annBestSp = 0; state.annBestSpLog = NLOG;
+  state.annBestRate = 0; state.annBestRateLog = NLOG;
+  state.annFastest = 0; state.annHistory = [];
+  // —— 扭曲（挑战统计 distortBest/distortTotal 保留）——
+  state.distortActive = ""; state.distortDone = []; state.distortMult = 1;
+  state.lastPurchaseAt = 0; state.narrowPurchases = 0;
+  state.rulesBroken = false; state.testBreakRules = false;
+  state.zeroGainSince = 0; state.capReachedAt = 0;
+  // —— 黑洞 ——
+  setBhMass(1); state.bhState = "accrete"; setVP(0);
+  state.sbu1 = 0; state.sbu2 = 0; state.sbu3 = 0;
+  state.svpu1 = 0; state.svpu2 = 0; state.svpu3 = 0; state.svpu4 = 0; state.svpu5 = 0;
+  // —— 虚空：可进入性重置（总 Sp 归零后需重新达到 1e50 才能进入）；VF/SVU/里程碑保留 ——
+  state.voidActive = false; state.voidRules = [];
+  // —— 卷缩层自身：CM 重置（TP/V/E/F 配置、SS/Ins/理论树保留）——
+  setCMLog(NLOG);
+  // —— 计时 ——
+  state.annStartReal = realNow;
+  state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG;
+  state.compStartReal = realNow; state.compGameElapsed = 0; state.compGameElapsedLog = NLOG;
+  updateDispAnchor();
+  applyPhononVisibility();
+  applyAnnihilationVisibility();
+  applyCompactVisibility();
+  updateCompactButton();
+  checkAchievements();
+  switchTab("wave");
+  switchSubtab("main");
+  saveGame();
+  renderAll();
+  setAutosaveStatus(`卷缩完成：获得 ${fmtNum(gained, gLog)} 超弦（SS）`);
+}
+
+// ---------- 卷缩层 UI ----------
+let compactBuilt = false;
+let compMsEls = [];
+let compactEls = {};
+function buildCompactOnce() {
+  if (compactBuilt) return;
+  // 里程碑格子（仿虚空里程碑：一行一格，亮橙主题）
+  const msGrid = document.getElementById("comp-milestone-list");
+  msGrid.innerHTML = "";
+  compMsEls = [];
+  for (const def of COMP_MILESTONES) {
+    const cell = document.createElement("div");
+    cell.className = "comp-ms-cell";
+    const head = document.createElement("div"); head.className = "comp-ms-head";
+    const title = document.createElement("span"); title.textContent = `里程碑 ${def.n} · ${def.title}`;
+    const status = document.createElement("span"); status.className = "comp-ms-status";
+    head.append(title, status);
+    const desc = document.createElement("div"); desc.className = "sau-desc"; desc.textContent = def.desc;
+    const prog = document.createElement("div"); prog.className = "comp-ms-prog";
+    const reward = document.createElement("div"); reward.className = "sau-desc"; reward.textContent = "奖励：" + def.reward;
+    cell.append(head, desc, prog, reward);
+    msGrid.appendChild(cell);
+    compMsEls.push({ cell, statusEl: status, progEl: prog });
+  }
+  // 拓扑节点购买
+  document.getElementById("comp-tp-buy").addEventListener("click", buyTP);
+  // 几何转换按钮（点/边/面 各一对 −/+）
+  const geoRow = document.getElementById("comp-geo-row");
+  geoRow.innerHTML = "";
+  compactEls.geo = {};
+  for (const [key, label] of [["V", "点"], ["E", "边"], ["F", "面"]]) {
+    const box = document.createElement("div"); box.className = "comp-geo-box";
+    const nm = document.createElement("div"); nm.className = "comp-geo-name"; nm.textContent = `${label}（${key}）`;
+    const row = document.createElement("div"); row.className = "comp-geo-btns";
+    const dec = document.createElement("button"); dec.className = "comp-btn small"; dec.textContent = "−";
+    const cnt = document.createElement("span"); cnt.className = "comp-geo-count";
+    const inc = document.createElement("button"); inc.className = "comp-btn small"; inc.textContent = "+";
+    dec.addEventListener("click", () => convertTP(key, -1));
+    inc.addEventListener("click", () => convertTP(key, +1));
+    row.append(dec, cnt, inc);
+    box.append(nm, row);
+    geoRow.appendChild(box);
+    compactEls.geo[key] = cnt;
+  }
+  // 灵感购买按钮（F / Sp / SS 三途径，价格各自独立累计）
+  const insRow = document.getElementById("comp-ins-buy-row");
+  insRow.innerHTML = "";
+  compactEls.ins = {};
+  for (const src of ["F", "Sp", "SS"]) {
+    const b = document.createElement("button");
+    b.className = "comp-btn";
+    b.addEventListener("click", () => buyIns(src));
+    insRow.appendChild(b);
+    compactEls.ins[src] = b;
+  }
+  // 理论树（按层分行；节点盒，父连线为竖线桩）
+  const tree = document.getElementById("comp-theory-tree");
+  tree.innerHTML = "";
+  compactEls.nodes = {};
+  const layers = {};
+  for (const def of THEORY_NODES) (layers[def.id[0]] = layers[def.id[0]] || []).push(def);
+  for (const lk of Object.keys(layers).sort()) {
+    const rowEl = document.createElement("div"); rowEl.className = "theory-layer";
+    for (const def of layers[lk]) {
+      const node = document.createElement("div");
+      node.className = "tn-node" + (def.parents.length === 0 ? " root" : "");
+      const idl = document.createElement("div"); idl.className = "tn-id"; idl.textContent = "节点 " + def.id;
+      const nm = document.createElement("div"); nm.className = "tn-name"; nm.textContent = def.name;
+      const st = document.createElement("div"); st.className = "tn-state";
+      node.append(idl, nm, st);
+      if (!def.placeholder) node.addEventListener("click", () => { buyTheoryNode(def.id); updateCompactUI(); });
+      rowEl.appendChild(node);
+      compactEls.nodes[def.id] = { node, st };
+    }
+    tree.appendChild(rowEl);
+  }
+  compactBuilt = true;
+}
+function updateCompactUI() {
+  if (simActive) return;
+  if (!state.testMode || state.compactions < 1) return;
+  buildCompactOnce();
+  // 里程碑
+  for (let i = 0; i < COMP_MILESTONES.length; i++) {
+    const def = COMP_MILESTONES[i], el = compMsEls[i];
+    if (!el) continue;
+    const done = def.check();
+    el.cell.classList.toggle("done", done);
+    el.statusEl.textContent = done ? "✓ 已完成" : "进行中";
+    el.progEl.textContent = def.prog();
+  }
+  // 维度折叠器：CM 值（显示 floor，后台小数）与产量
+  const cmLog = getLogCM();
+  const cmShow = cmLog <= NLOG + 1 ? 0 : (cmLog > 308 ? Infinity : Math.floor(Math.pow(10, cmLog)));
+  document.getElementById("comp-cm-value").textContent = fmtNum(cmShow, cmLog);
+  const rateLog = cmRateLog();
+  const rateTxt = rateLog <= NLOG + 1 ? "0" : fmtNum(Math.pow(10, Math.min(rateLog, 308)), rateLog);
+  document.getElementById("comp-cm-rate").textContent =
+    `每秒 +${rateTxt}（真实时间${theoryOwned("01") ? "，受削弱的时间倍率加成" : "，不受游戏速度影响"}）`;
+  document.getElementById("comp-cm-effects").textContent =
+    `效果① 波速获取 ×(1+CM)^(1/2)：当前 ×${cmGainMultLog() > -0.001 ? fmtLog(cmGainMultLog()) : "1"}\n`
+    + `效果② 频率公式 F = U / L^e，e = ${wavelengthExp().toFixed(4)}`;
+  // 拓扑节点
+  const tpCostV = tpNextCostValue();
+  const tpCostTxt = tpCostV !== null ? `${fmtInt(tpCostV)} SS` : `${fmtLog(state.tp + 1 ? clampLog((state.tp + 1) * Math.log10(1.5)) : 0)} SS`;
+  const tpBuy = document.getElementById("comp-tp-buy");
+  tpBuy.textContent = `购买拓扑节点（花费 ${tpCostTxt}）`;
+  tpBuy.disabled = tpCostV !== null
+    ? cmpLT(state.ss, tpCostV, getLogSS(), Math.log10(Math.max(tpCostV, 1)))
+    : !ssAffordLog(clampLog((state.tp + 1) * Math.log10(1.5)));
+  document.getElementById("comp-tp-line").textContent =
+    `拓扑节点：${tpTotal()}（可用 ${state.tp} ｜ 点 ${state.tpV} · 边 ${state.tpE} · 面 ${state.tpF}）`;
+  // 贝蒂数与 CM 公式
+  document.getElementById("comp-betti-line").textContent =
+    `b₁ = max(0, E−V+1) = ${betti1()}　　b₂ = max(0, min(F, ⌊2E/3⌋)−E+V) = ${betti2()}`;
+  document.getElementById("comp-formula-line").textContent =
+    `基础 CM 获取：TP² × 3^√(3·b₁·b₂) = ${rateTxt} / 秒`;
+  // 灵感与三途径价格
+  document.getElementById("comp-ins-line").textContent =
+    `灵感（Ins）：${fmtNum(state.ins, getLogIns())}（总获取 ${fmtNum(state.totalIns, getLogTotalIns())}）`;
+  const insDefs = [
+    ["F", `以 F 购买（花费 ${fmtLog(insCostLogF())} Hz）`, cmpLT(F(), Math.pow(10, Math.min(insCostLogF(), 308)), FLog(), insCostLogF())],
+    ["Sp", `以 Sp 购买（花费 ${fmtLog(insCostLogSp())} Sp）`, !spAffordLog(insCostLogSp())],
+    ["SS", `以 SS 购买（花费 ${fmtLog(insCostLogSS())} SS）`, !ssAffordLog(insCostLogSS())],
+  ];
+  for (const [src, txt, cant] of insDefs) {
+    const b = compactEls.ins[src];
+    if (!b) continue;
+    b.textContent = txt;
+    b.disabled = cant;
+  }
+  // 理论树节点状态
+  for (const def of THEORY_NODES) {
+    const el = compactEls.nodes[def.id];
+    if (!el) continue;
+    const owned = theoryOwned(def.id);
+    el.node.classList.toggle("bought", owned);
+    el.node.classList.toggle("available", theoryAvailable(def));
+    el.node.classList.toggle("locked", !owned && !theoryAvailable(def));
+    if (owned) {
+      el.st.textContent = def.id === "01"
+        ? `已解锁（折叠器时间乘数 ×${fmtLog(cmTimeMultLog())}）` : "已解锁";
+    } else if (def.placeholder) {
+      el.st.textContent = theoryAvailable({ ...def, placeholder: false })
+        ? "占位 · 未实装" : "需先解锁上级节点";
+    } else {
+      el.st.textContent = `花费 ${def.cost} 灵感解锁`;
+    }
+  }
+}
+// 卷缩层可见性：主选项卡与全局栏超弦显示（首次卷缩后、且测试模式下）
+function applyCompactVisibility() {
+  if (simActive) return;
+  const show = state.testMode && state.compactions >= 1;
+  document.getElementById("tab-compact").classList.toggle("hidden", !show);
+  document.getElementById("ss-display").classList.toggle("hidden", !show);
+  if (!show && !document.getElementById("page-compact").classList.contains("hidden")) {
+    switchTab("wave"); // 已不满足可见性（如退出测试模式）时退回波动页
+  }
+}
+// 顶栏卷缩按钮（湮灭按钮下方，橙色，形式与湮灭按钮一致）
+function updateCompactButton() {
+  const btn = document.getElementById("compactify-btn");
+  if (!btn) return;
+  const show = state.testMode && state.ach.normal.includes("A55");
+  btn.classList.toggle("hidden", !show);
+  if (!show) return;
+  const ready = getLogVP() >= 36 && state.voidBestRules >= 8 && getLogSp() >= SP_SOFTCAP_PIVOT_LOG;
+  if (state.compactions >= 1) {
+    btn.classList.remove("compact-ready");
+    btn.disabled = true;
+    btn.textContent = "卷缩（测试中，暂不开放）";
+  } else if (!ready) {
+    btn.classList.remove("compact-ready");
+    btn.disabled = true;
+    btn.textContent = "需要 1e36 VP、1.79e308 Sp、完成 A54";
+  } else {
+    btn.classList.add("compact-ready");
+    btn.disabled = false;
+    btn.innerHTML = "你的波动已经足以撕开维度的裂隙<br>突破这个维度的极限";
   }
 }
 
@@ -4112,11 +4679,13 @@ function renderFast() {
   // 哨兵感知：U=0（零哨兵 NLOG）时 F 无意义，fLog 保持 NLOG（显示为 0）——
   // 直接相减会产生 NLOG-logL10 哨兵噪声，被显示层渲染成 e-9999999xx
   const uLogD = extrapolatedULog();
+  const wExp = wavelengthExp();
   if (uLogD <= NLOG + 1) {
     fLog = NLOG;
     f = 0;
-  } else if (ml3 > 0) {
-    fLog = clampLog(uLogD - getLogL10() - ml3);
+  } else if (ml3 > 0 || wExp !== 1) {
+    // 卷缩后波长带指数（F = U/L^e）或膨胀宇宙：一律走 log 域
+    fLog = clampLog(uLogD - wExp * (getLogL10() + ml3));
     f = fLog > 308 ? Infinity : (fLog < -308 ? 0 : Math.pow(10, fLog));
   } else {
     fLog = clampLog(uLogD - getLogL10());
@@ -4127,9 +4696,10 @@ function renderFast() {
   // Hz/s 显示：膨胀宇宙需除以含倍率的有效波长（log 域防溢出）
   {
     const grD = gainRateLog(); // 单次调用：符号与数值同源（定向宇宙符号为确定性时间窗）
+    // Hz/s = gain/L^e（e 为卷缩波长指数，e=1 时与原式一致；膨胀宇宙的波长倍率计入）
     const gLog = grD.log <= NLOG + 1
       ? NLOG
-      : clampLog(grD.log + timeRateLog() - getLogL10() - distortLModLog());
+      : gainPerLLog(grD.log + timeRateLog());
     const gainHz = gLog > 308 ? Infinity : (gLog < -308 ? 0 : Math.pow(10, gLog));
     // 定向宇宙负增益必须带 "-"（历史上只输出了 "+"，负值显示成无符号正值）
     document.getElementById("freq-gain").textContent =
@@ -4150,6 +4720,10 @@ function renderFast() {
     trEl.textContent = "当前游戏速率：×" + fmtNum(timeRate(), timeRateLog());
   } else {
     trEl.classList.add("hidden");
+  }
+  // 超弦显示（卷缩层：首次卷缩后、测试模式下；显隐由 applyCompactVisibility 管理）
+  if (state.testMode && state.compactions >= 1) {
+    document.getElementById("ss-value").textContent = fmtNum(state.ss, getLogSS());
   }
   // 狭窄宇宙：剩余购买次数
   const nwEl = document.getElementById("narrow-display");
@@ -4215,6 +4789,26 @@ function renderStats() {
   document.getElementById("stat-ann-count").textContent = fmt(effAnnihilations());
   document.getElementById("stat-ann-tp").textContent = fmtNum(Math.pow(10, Math.min(effectiveCapLog(), 308)), effectiveCapLog()) + " K";
   document.getElementById("stat-ann-distort").textContent = `${state.distortDone.length} / ${DISTORT_UNIVERSES.length}`;
+  // 卷缩统计（v0.6.0.0 测试，位于通用组；统计-通用不随卷缩重置）
+  const compGroup = document.getElementById("stat-comp-group");
+  if (compGroup) {
+    compGroup.classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
+    if (state.testMode && state.compactions >= 1) {
+      const compReal = state.compStartReal > 0 ? (Date.now() - state.compStartReal) / 1000 : 0;
+      document.getElementById("stat-comp-time").textContent =
+        `${fmtTime(compReal, true)} / ${fmtTimeLog(state.compGameElapsed, state.compGameElapsedLog)}`;
+      document.getElementById("stat-total-ss").textContent = fmtNum(state.totalSS, getLogTotalSS()) + " SS";
+      document.getElementById("stat-compactions").textContent = fmt(state.compactions);
+      document.getElementById("stat-total-ins").textContent = fmtNum(state.totalIns, getLogTotalIns());
+      const bssLog = (state.logBestSS > NLOG + 1) ? state.logBestSS
+        : ((state.bestSS > 0 && isFinite(state.bestSS)) ? Math.log10(state.bestSS) : NLOG);
+      document.getElementById("stat-best-ss").textContent = (bssLog > NLOG + 1 ? fmtLog(bssLog) : "0") + " SS";
+      document.getElementById("stat-comp-fastest").textContent = state.compFastest > 0 ? fmtTime(state.compFastest) : "—";
+      const bsrLog = (state.logBestSSRate > NLOG + 1) ? state.logBestSSRate
+        : ((state.bestSSRate > 0 && isFinite(state.bestSSRate)) ? Math.log10(state.bestSSRate) : NLOG);
+      document.getElementById("stat-best-ss-rate").textContent = (bsrLog > NLOG + 1 ? fmtLog(bsrLog) : "0") + " SS/分";
+    }
+  }
   // 挑战选项卡：各扭曲宇宙最佳完成时间与总完成时间
   const chList = document.getElementById('challenge-list');
   if (chList) {
@@ -4341,7 +4935,7 @@ const NORMAL_ACH = [
   { id: "A52", name: "超载", desc: "达到 1e50 Sp", star: true, reward: "解锁“虚空”选项卡", check: () => getLogTotalSp() >= 50 },
   { id: "A53", name: "融合", desc: "完成至少两种扭曲的虚空", star: true, reward: "up1 获得免费等级 1（重置不清零）", check: () => state.voidBestRules >= 2 },
   { id: "A54", name: "混沌", desc: "完成所有扭曲生效的虚空", check: () => state.voidBestRules >= 8 },
-  { id: "A55", name: "卷缩", desc: "达到 1.79e308 奇点", check: () => getLogSp() >= SP_SOFTCAP_PIVOT_LOG },
+  { id: "A55", name: "卷缩", desc: "达到 1.79e308 奇点", star: true, reward: "解锁下一个重置层：卷缩（测试中）；任何重置后初始波速为 1e3 m/s", check: () => getLogSp() >= SP_SOFTCAP_PIVOT_LOG },
 ];
 const ACH_PER_ROW = 5;
 // 已定义行数；之后整行为未解锁 ???
@@ -4645,6 +5239,7 @@ function runOfflineSimulation(cappedSec) {
   const res = {
     uLog0: getLogU10(), ph0: getLogPhonons(), m0: getLogBhMass(), vp0: getLogVP(),
     sp0: getLogSp(), phAbs0: state.phonons, ann0: state.annihilations, simmed: false,
+    cm0: getLogCM(),
   };
   // 模拟期间 gameNow() = Date.now() + offset，自动化写入的时间戳（lastAutoAnnAt 等）
   // 会带上虚拟偏移；模拟结束后须把这些字段平移回现实时间线，否则 CD 计时
@@ -4678,6 +5273,7 @@ function runOfflineSimulation(cappedSec) {
   res.sp1 = getLogSp();
   res.phAbs1 = state.phonons;
   res.ann1 = state.annihilations;
+  res.cm1 = getLogCM();
   return res;
 }
 // 模拟期间可能被虚拟时钟写入的时间戳字段
@@ -4746,6 +5342,9 @@ function showOfflineModal(raw, capped, res) {
   if (annD >= 1) lines.push("湮灭 +" + fmt(Math.floor(annD)) + " 次");
   const spD = offlineLogDiff(res.sp0, res.sp1);
   if (spD > 1e-4) lines.push("奇点 +" + (spD < 308 ? fmt(Math.pow(10, spD)) : fmtLog(spD)));
+  // 卡拉比-丘流形（卷缩层离线产出；显示 floor 与页面口径一致）
+  const cmD = offlineLogDiff(res.cm0, res.cm1);
+  if (cmD > 1e-4) lines.push("卡拉比-丘流形 +" + (cmD < 15 ? fmt(Math.floor(Math.pow(10, cmD))) : fmtLog(cmD)));
   if (lines.length <= 1) return; // 无实质收益（如生产为 0 挂机）不弹
   document.getElementById("offline-text").textContent = lines.join("\n");
   document.getElementById("offline-overlay").classList.remove("hidden");
@@ -4802,6 +5401,20 @@ function applyProduction(realDt) {
     }
   }
 
+  // 本次卷缩的游戏时长独立累计（与 annGameElapsed 同款：double 缓存封顶 MAX_VALUE，
+  // log 权威持续累积用于显示；统计-通用的「本次卷缩所花费时间」读取）
+  if (state.compactions >= 1) {
+    state.compGameElapsed = dtOverDouble
+      ? Number.MAX_VALUE
+      : (state.compGameElapsed || 0) + dt;
+    if (dtOverDouble) {
+      if (state.compGameElapsedLog === undefined || !isFinite(state.compGameElapsedLog)) state.compGameElapsedLog = NLOG;
+      state.compGameElapsedLog = clampLog(logAddLogs(Math.max(state.compGameElapsedLog, NLOG), gameDtLog));
+    } else if (dt > 0) {
+      state.compGameElapsedLog = clampLog(logAddLogs(Math.max(state.compGameElapsedLog ?? NLOG, NLOG), Math.log10(dt)));
+    }
+  }
+
   // 波速生产（double 链不溢出时走原路径，零回归；饱和时退 log 域累积）
   const g = gainRate();
   const gFinite = isFinite(g) && Math.abs(g) < LOG_FALLBACK;
@@ -4827,11 +5440,12 @@ function applyProduction(realDt) {
     // 定向宇宙：波速硬下限 0
     if (inDistort("directed") && state.U < 0) setU(0);
 
-    // 累计频率 F 增量 = (g/L)·dt；扭曲宇宙与虚空中的产生不计入通用统计
+    // 累计频率 F 增量 = (g/L^e)·dt（e 为卷缩波长指数）；扭曲宇宙与虚空中的产生不计入通用统计
     if (!state.distortActive && !state.voidActive) {
-      const gOverLLog = (gFinite ? Math.log10(Math.max(Math.abs(g), 1e-300)) : gainRateLog().log) + gameDtLog - getLogL10();
+      const wE = wavelengthExp();
+      const gOverLLog = gainPerLLog((gFinite ? Math.log10(Math.max(Math.abs(g), 1e-300)) : gainRateLog().log) + gameDtLog);
       if (gFinite && uFinite && isFinite(state.totalFGained) && state.totalFGained < LOG_FALLBACK && Math.abs(state.totalFGained + gd / Math.max(state.L, 1e-300)) < LOG_FALLBACK) {
-        state.totalFGained += (g / state.L) * dt;
+        state.totalFGained += (wE === 1 ? (g / state.L) : (g / Math.pow(state.L, wE))) * dt;
         state.logTotalF = state.totalFGained > 0 ? Math.log10(state.totalFGained) : NLOG;
       } else {
         // log 域：logTotalF 与 gOverLLog·sign 累积（带符号）
@@ -4873,6 +5487,10 @@ function applyProduction(realDt) {
 
   // 黑洞 tick：吸积/脉冲用真实时间（不受时间倍率影响），扭曲状态只给加成（无 tick 效果）
   tickBlackhole(realDt);
+
+  // 卷缩层：维度折叠器产出 CM（真实时间；节点 01 后受削弱的时间倍率加成）。
+  // 挂在 applyProduction 内 → 离线模拟自动兼容
+  cmTick(realDt);
 }
 
 function tick() {
@@ -4932,7 +5550,7 @@ function tick() {
   // S19：滚木 —— 生产为 0 Hz/s 超过 10 分钟（连续）。
   // log 域判定：state.L 下溢为 0 时真实生产仍可能为正（波长 log 权威有限），double 乘除会误判为 0
   {
-    const gainLog = gainRateLog().log + timeRateLog() - getLogL10();
+    const gainLog = gainPerLLog(gainRateLog().log + timeRateLog());
     const zero = gainLog < -30; // 对应原 |gain| < 1e-30（gainRate=0 时 log=NLOG 同样命中）
     if (zero) {
       if (!state.zeroGainSince) state.zeroGainSince = Date.now();
@@ -4975,6 +5593,8 @@ function tick() {
   renderWave();
   if (state.phUnlocked) updatePhononUI();
   applyAnnihilationVisibility();
+  applyCompactVisibility();
+  updateCompactButton();
   runAutomation();
   if (state.annihilations >= 1) {
     updateSpUI();
@@ -4983,6 +5603,7 @@ function tick() {
     if (bhUnlocked()) updateBlackholeUI();
     if (state.ach.normal.includes("A52")) updateVoidUI();
   }
+  if (state.testMode && state.compactions >= 1) updateCompactUI();
   if (!document.getElementById("page-stats").classList.contains("hidden")) renderStats();
   if (!document.getElementById("page-achievements").classList.contains("hidden")) updateAchievementsUI();
 }
@@ -5132,7 +5753,7 @@ function applyTestModeUIGlobal() {
   if (clearBtn) clearBtn.classList.toggle("hidden", !state.testMode);
   if (forceAnnBtn) forceAnnBtn.classList.toggle("hidden", !state.testMode);
   if (verEl) verEl.textContent = state.testMode
-    ? "v0.6.0.0 The Superstring Update（测试）"
+    ? "v0.6.0.0 The Compactification Update（测试）"
     : "v0.5.1 The Void Update";
 }
 
@@ -5399,6 +6020,11 @@ function setupUI() {
     }
     doAnnihilation();
   });
+  // 卷缩按钮（顶栏湮灭按钮下方；A55 + 测试模式下显示，条件满足时可点击）
+  document.getElementById("compactify-btn").addEventListener("click", () => {
+    if (state.compactions >= 1) return; // 第二次卷缩暂不开放
+    compactify();
+  });
   // S20：version control —— 查看 changelog
   const clLink = document.querySelector(".changelog-link");
   if (clLink) clLink.addEventListener("click", () => {
@@ -5428,6 +6054,13 @@ function init() {
   applyTestModeUIGlobal(); // 刷新后同步测试模式 UI（按钮文案/工具显隐/顶栏版本）——缺失会导致刷新后看起来退出测试
   applyPhononVisibility();
   applyAnnihilationVisibility();
+  // 卷缩层：本次卷缩真实时间基缺失时补发（老档/异常档兜底），并同步可见性与按钮
+  if (state.testMode && state.compactions >= 1 && !state.compStartReal) {
+    state.compStartReal = gameNow();
+    state.compGameElapsed = 0; state.compGameElapsedLog = NLOG;
+  }
+  applyCompactVisibility();
+  updateCompactButton();
   if (state.annihilations >= 1 && !state.annStartReal) {
     state.annStartReal = gameNow();
     state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG;

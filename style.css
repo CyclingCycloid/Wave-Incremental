@@ -9,6 +9,9 @@
   --purple-dim: #6d3fd4;
   --darkred: #b03030;
   --black: #2a2a2a; /* 黑洞代表色：黑主题下用深灰（纯黑不可见），白主题下用近黑 */
+  --orange: #ff8c1a;      /* 卷缩层代表色（v0.6.0.0 测试） */
+  --orange-bright: #ffb347;
+  --orange-dim: #b3611a;
 }
 body[data-theme="white"] { --black: #1a1a1a; }
 
@@ -640,3 +643,81 @@ body[data-theme="white"] #bh-canvas { box-shadow: 0 0 0 2px #888, 0 2px 8px rgba
 .bh-vpu-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .bh-vpu-grid .sau-btn { min-height: 88px; padding: 8px 6px; }
 .bh-vpu-grid .sau-btn .sau-desc { font-size: 10px; min-height: 36px; }
+
+/* ===== 卷缩层（v0.6.0.0 测试，橙色主题）===== */
+.orange-text { color: var(--orange); }
+/* 顶栏卷缩按钮：形式与湮灭按钮一致，橙色；条件满足时亮橙+呼吸光效 */
+.compactify-btn { color: var(--orange); border-color: var(--orange); }
+.compactify-btn:hover:not(:disabled) { background: rgba(255,140,26,0.12); }
+.compactify-btn.compact-ready {
+  color: var(--orange-bright); border-color: var(--orange-bright);
+  animation: compact-pulse 2s ease-in-out infinite alternate;
+}
+@keyframes compact-pulse {
+  from { box-shadow: 0 0 6px rgba(255,140,26,0.3); }
+  to { box-shadow: 0 0 18px rgba(255,140,26,0.65); }
+}
+/* 全局栏超弦（形式同奇点，橙色） */
+.gr-ss { color: var(--orange); }
+/* 卷缩主选项卡与子选项卡 */
+.tab.compact-tab.active { color: var(--orange); border-color: var(--orange); }
+#page-compact .subtab.active { color: var(--orange); border-color: var(--orange); }
+.compact-title { color: var(--orange); font-size: 16px; margin-bottom: 10px; }
+.comp-btn {
+  background: var(--bg-panel); border: 1px solid var(--orange-dim); color: var(--orange);
+  border-radius: 6px; padding: 6px 14px; cursor: pointer; font-size: 13px; transition: all 0.15s;
+}
+.comp-btn:hover:not(:disabled) { background: rgba(255,140,26,0.12); }
+.comp-btn:disabled { opacity: 0.45; cursor: default; }
+.comp-btn.small { padding: 2px 12px; font-size: 14px; }
+/* 里程碑（仿虚空里程碑格子：一行一格，亮橙虚线框、完成后发光） */
+.comp-ms-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.comp-ms-cell {
+  border: 1px dashed var(--orange-dim); border-radius: 8px; text-align: center;
+  padding: 12px 10px; font-size: 13px; color: var(--text-dim); background: rgba(255,140,26,0.04);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.comp-ms-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; font-weight: 600; font-size: 14px; color: var(--orange); }
+.comp-ms-status { font-size: 11px; font-weight: 400; color: var(--text-dim); }
+.comp-ms-prog { font-family: var(--font-num); font-size: 12px; color: var(--text); }
+.comp-ms-cell.done {
+  border-style: solid; border-color: var(--orange-bright);
+  box-shadow: 0 0 10px rgba(255,140,26,0.35);
+}
+.comp-ms-cell.done .comp-ms-status, .comp-ms-cell.done .comp-ms-prog { color: var(--orange-bright); }
+/* 维度折叠器 */
+.comp-section { margin: 14px 0; }
+.comp-section h3 { font-size: 14px; margin-bottom: 6px; }
+.comp-cm-value { font-size: 18px; font-weight: 700; color: var(--orange); font-family: var(--font-num); }
+.comp-cm-rate { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+.comp-cm-effects { font-size: 13px; margin-top: 8px; white-space: pre-line; }
+.comp-tp-line, .comp-betti-line, .comp-formula-line, .comp-ins-line {
+  font-family: var(--font-num); font-size: 13px; margin: 6px 0;
+}
+.comp-geo-row { display: flex; gap: 18px; flex-wrap: wrap; margin: 8px 0; }
+.comp-geo-box { text-align: center; }
+.comp-geo-name { font-size: 13px; margin-bottom: 4px; }
+.comp-geo-btns { display: flex; align-items: center; gap: 6px; justify-content: center; }
+.comp-geo-count { font-family: var(--font-num); min-width: 2.5em; display: inline-block; }
+.comp-ins-buy-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 14px; }
+/* 理论树：按层分行，节点盒，父连线为竖线桩 */
+.theory-tree { display: flex; flex-direction: column; align-items: center; }
+.theory-layer { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; }
+.tn-node {
+  position: relative; width: 132px; margin-top: 16px; padding: 8px 6px; text-align: center;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; cursor: default;
+}
+.tn-node:not(.root)::before {
+  content: ""; position: absolute; top: -16px; left: 50%; width: 2px; height: 16px;
+  background: var(--border);
+}
+.tn-node .tn-id { font-family: var(--font-num); font-size: 10px; color: var(--text-dim); }
+.tn-node .tn-name { font-size: 13px; font-weight: 600; }
+.tn-node .tn-state { font-size: 11px; color: var(--text-dim); margin-top: 3px; white-space: pre-line; }
+.tn-node.available { border-color: var(--orange-dim); cursor: pointer; }
+.tn-node.available:hover { background: rgba(255,140,26,0.1); }
+.tn-node.bought { border-color: var(--orange); box-shadow: 0 0 8px rgba(255,140,26,0.35); }
+.tn-node.bought .tn-name { color: var(--orange); }
+.tn-node.locked { opacity: 0.55; }
+/* 统计-通用 内的卷缩数据（橙色数值） */
+.comp-stat-group .stat-value { color: var(--orange); }
