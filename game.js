@@ -4203,7 +4203,10 @@ function renderStats() {
       const label = document.createElement("span"); label.className = "ah-label";
       label.textContent = `${r.label} · ${fmtTime(r.realDur)}（真实）/ ${fmtTime(r.gameDur)}（游戏）`;
       const val = document.createElement("span"); val.className = "ah-val";
-      val.textContent = `${fmt(r.sp)} Sp · ${fmt(r.rate)} Sp/分`;
+      // sp/rate 可能是历史遗留的 Infinity（JSON 存为 null）：走 log 域显示，非有限值按软上限拐点口径
+      const spLog = (r.sp > 0 && isFinite(r.sp)) ? Math.log10(r.sp) : (isFinite(r.sp) ? NLOG : Math.log10(1.79e308));
+      const rateLog = (r.rate > 0 && isFinite(r.rate)) ? Math.log10(r.rate) : (isFinite(r.rate) ? NLOG : Math.log10(1.79e308));
+      val.textContent = `${fmtNum(r.sp, spLog)} Sp · ${fmtNum(r.rate, rateLog)} Sp/分`;
       row.append(label, val);
       hList.appendChild(row);
     }
