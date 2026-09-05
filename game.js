@@ -442,8 +442,11 @@ function temperatureCappedLog() {
     const capLog = temperatureCapLog(); // 主宇宙 T_p
     if (t > capLog) {
       const p = Math.pow(capLog / t, 1 / (effSvpu4() + 2)) / 2;
-      return clampLog(capLog + (t - capLog) * p);
+      t = clampLog(capLog + (t - capLog) * p);
     }
+    // 超级软上限（仅虚空内）：超过 1e20000 的部分指数 0.5——SVU1 加成过强会让温度
+    // 远超外部，20000 处连续（输入=输出）
+    if (t > 20000) t = 20000 + (t - 20000) * 0.5;
     return clampLog(t);
   }
   const capLog = effectiveCapLog();
