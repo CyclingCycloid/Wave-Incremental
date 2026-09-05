@@ -442,11 +442,8 @@ function temperatureCappedLog() {
     const capLog = temperatureCapLog(); // 主宇宙 T_p
     if (t > capLog) {
       const p = Math.pow(capLog / t, 1 / (effSvpu4() + 2)) / 2;
-      t = clampLog(capLog + (t - capLog) * p);
+      return clampLog(capLog + (t - capLog) * p);
     }
-    // 超级软上限（仅虚空内）：超过 1e20000 的部分指数 0.5——SVU1 加成过强会让温度
-    // 远超外部，20000 处连续（输入=输出）
-    if (t > 20000) t = 20000 + (t - 20000) * 0.5;
     return clampLog(t);
   }
   const capLog = effectiveCapLog();
@@ -783,6 +780,10 @@ function gainRateLog() {
   // 虚空共振（SVU1）：虚空内波速获取速率整体幂次（幂在 log 域 = 乘指数）；
   // 虚空泡沫第三效果（里程碑 2）：全局整体幂次
   log *= svu1GainExp() * vfGainExp();
+  // 超级软上限（仅虚空内）：获取超过 1e20000 的部分变为原来的 0.5 次方——
+  // SVU1 幂次加成过强会让获取远超外部；20000 处连续（输入=输出）。
+  // double 路径（gainRate）最高 1e308，不会触及此阈值，无需处理
+  if (state.voidActive && log > 20000) log = 20000 + Math.pow(log - 20000, 0.5);
   return { log: clampLog(log), sign };
 }
 // 获取速率的显示口径 log：gain 为 0（gainRateLog 返回 NLOG 哨兵）时保持 NLOG（语义零）。
