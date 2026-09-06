@@ -2127,6 +2127,7 @@ function doAnnihilation() {
 
 // 进入扭曲宇宙：立即进行一次湮灭重置（普通宇宙部分照常结算 Sp），然后应用该宇宙规则
 function enterDistort(id) {
+  if (state.voidActive) return; // 虚空挑战中：禁止进入扭曲宇宙（防双重挑战脏状态）
   // S16：硬核玩家 —— 已在一个扭曲宇宙中时点击另一个扭曲宇宙的进入
   if (state.distortActive && state.distortActive !== id && !state.ach.hidden.includes("S16")) {
     grantHidden("S16"); updateAchievementsUI();
@@ -5187,6 +5188,25 @@ function renderFast() {
     cdEl.textContent = "当前指数 k = " + cooldownExp().toFixed(2);
   } else {
     cdEl.classList.add("hidden");
+  }
+  // 挑战状态行（顶栏按钮下方）：主要游戏 / 扭曲宇宙（当前/目标温度）/ 虚空
+  {
+    const csEl = document.getElementById("challenge-status");
+    if (state.voidActive) {
+      csEl.textContent = "你现在处于虚空中";
+    } else if (state.distortActive) {
+      const u = DISTORT_UNIVERSES.find(x => x.id === state.distortActive);
+      if (u) {
+        const tLog = temperatureCappedLog();
+        const tTxt = tLog > NLOG + 1 ? fmtNum(Math.pow(10, Math.min(tLog, 308)), tLog) : "0";
+        const tpLog = Math.log10(u.tp);
+        csEl.textContent = `你现在处于${u.name}宇宙中（${tTxt}/${fmtNum(u.tp, tpLog)} K）`;
+      } else {
+        csEl.textContent = "你现在处于主要游戏中（没有激活的挑战）";
+      }
+    } else {
+      csEl.textContent = "你现在处于主要游戏中（没有激活的挑战）";
+    }
   }
   // 当前游戏速率（奇点下方）
   const trEl = document.getElementById("timerate-display");
