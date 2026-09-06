@@ -1103,10 +1103,10 @@ function migrateState() {
   else if (!state.batchResetDone) state.batchResetDone = 1;
   // v0.4.3 黑洞字段回填（旧档无 bhMass/bhState/sbu*）
   if (state.bhMass === undefined || state.bhMass === null) { state.bhMass = 1; state.logBhMass = 0; }
-  if (state.logBhMass === undefined || !isFinite(state.logBhMass)) state.logBhMass = state.bhMass > 0 ? Math.log10(state.bhMass) : NLOG;
+  if (state.logBhMass === undefined || !isFinite(state.logBhMass)) state.logBhMass = clampLog(Math.log10(Math.max(state.bhMass, 0)));
   if (!state.bhState) state.bhState = "accrete";
   if (state.virtualParticles === undefined || state.virtualParticles === null) { state.virtualParticles = 0; state.logVP = NLOG; }
-  if (state.logVP === undefined || !isFinite(state.logVP)) state.logVP = state.virtualParticles > 0 ? Math.log10(state.virtualParticles) : NLOG;
+  if (state.logVP === undefined || !isFinite(state.logVP)) state.logVP = clampLog(Math.log10(Math.max(state.virtualParticles, 0)));
   if (state.sbu1 === undefined) state.sbu1 = 0;
   if (state.sbu2 === undefined) state.sbu2 = 0;
   if (state.sbu3 === undefined) state.sbu3 = 0;
@@ -3274,13 +3274,13 @@ function tickBlackhole(dt) {
     }
     // 虚粒子获取：每秒速率 = floor(mult × (M^0.1 − 1))（整数速率），按 dt 连续累计。
     // floor 按「每秒速率」取整而非按 tick 取整，否则小速率会永远取 0。
+    // 速率 >1e15 时直接用 log 速率：10^vRateLog 会溢出为 Infinity，
+    // 再取对数变回 LOG_CAP 会把 logVP 打到 1e15 触发存档净化全清（大质量 M 下真实可达）
     const vRateLog = bhVPGainLog();
     if (vRateLog > NLOG + 1) {
-      const rate = vRateLog > 15 ? Math.pow(10, vRateLog) : Math.floor(Math.pow(10, vRateLog));
-      if (rate > 0) {
-        const addLog = clampLog(Math.log10(rate) + Math.log10(Math.max(dt, 1e-300)));
-        setVPLog(logAddLogs(getLogVP(), addLog));
-      }
+      const rateLog = vRateLog > 15 ? vRateLog : Math.log10(Math.max(Math.floor(Math.pow(10, vRateLog)), 1));
+      const addLog = clampLog(rateLog + Math.log10(Math.max(dt, 1e-300)));
+      setVPLog(logAddLogs(getLogVP(), addLog));
     }
   }
 }
