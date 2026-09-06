@@ -3453,7 +3453,7 @@ const THEORY_NODES = [
     desc: "维度折叠器受严重削弱的时间倍率加成" },
   { id: "11", name: "经典场论", parents: ["01"], cost: 2,
     desc: "湮灭次数加成奇点效果",
-    effect: () => "当前 ×" + (1 + Math.log10(state.annihilations + 1) / 30).toFixed(4) },
+    effect: () => "当前 ×" + (1 + Math.log10(state.annihilations + 1) / 80).toFixed(4) },
   { id: "12", name: "质点力学", parents: ["01"], cost: 2,
     desc: "略微削弱奇点获取的软上限",
     effect: () => "当前指数 0.12" },
@@ -3465,10 +3465,10 @@ const THEORY_NODES = [
   { id: "41", name: "波动光学", parents: ["31", "32"], placeholder: true },
 ];
 function theoryOwned(id) { return !!state.theoryNodes[id]; }
-// 理论树节点 11 经典场论：湮灭次数加成奇点效果 ×(1+lg(N+1)/30)（与 vpu2SingMult 同接入口径）
+// 理论树节点 11 经典场论：湮灭次数加成奇点效果 ×(1+lg(N+1)/80)（与 vpu2SingMult 同接入口径）
 function theory11MultLog() {
   if (!theoryOwned("11") || state.annihilations <= 0) return 0;
-  return clampLog(Math.log10(1 + Math.log10(state.annihilations + 1) / 30));
+  return clampLog(Math.log10(1 + Math.log10(state.annihilations + 1) / 80));
 }
 function theory11Mult() {
   const l = theory11MultLog();
