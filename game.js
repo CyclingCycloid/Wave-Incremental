@@ -26,8 +26,10 @@ function defaultState() {
     autoUp3: 0,            // 升级3自动化解锁（第8次湮灭）
     autoAnn: 0,            // 自动湮灭解锁（第10次湮灭）
     autoOn: { wave: false, phonon: false, up3: false, ann: false },
-    autoUp3Mult: 1.1,      // 升级3自动购买倍率阈值
-    autoAnnSp: 1,          // 自动湮灭 Sp 阈值
+    autoUp3Mult: 1.1,      // 升级3自动购买倍率阈值（double 缓存）
+    autoUp3MultLog: Math.log10(1.1), // 倍率阈值的 log10 权威（可输入超 double）
+    autoAnnSp: 1,          // 自动湮灭 Sp 阈值（double 缓存）
+    autoAnnSpLog: 0,       // Sp 阈值的 log10 权威（可输入超 double）
     annStartReal: 0,       // 本次湮灭开始（真实时间戳, ms）
     annStartGame: 0,       // 本次湮灭开始（游戏时间, s）
     annBestSp: 0,          // 最好单次奇点获取（double 缓存，≤1.79e308 量级）
@@ -1242,6 +1244,15 @@ function migrateState() {
   }
   if (state.compFastest === null || state.compFastest === undefined || !isFinite(state.compFastest) || state.compFastest < 0) state.compFastest = 0;
   if (!Array.isArray(state.compHistory)) state.compHistory = [];
+  // v0.5.1：自动化阈值的 log10 权威回填（支持输入超 double 的阈值）
+  if (state.autoUp3MultLog === undefined || !isFinite(state.autoUp3MultLog)) {
+    state.autoUp3MultLog = (typeof state.autoUp3Mult === "number" && state.autoUp3Mult > 0 && isFinite(state.autoUp3Mult))
+      ? Math.log10(state.autoUp3Mult) : Math.log10(1.1);
+  }
+  if (state.autoAnnSpLog === undefined || !isFinite(state.autoAnnSpLog)) {
+    state.autoAnnSpLog = (typeof state.autoAnnSp === "number" && state.autoAnnSp > 0 && isFinite(state.autoAnnSp))
+      ? Math.log10(state.autoAnnSp) : 0;
+  }
   if (state.ss === null || state.ss === undefined) state.ss = fromLog(getLogSS());
   if (state.totalSS === null || state.totalSS === undefined) state.totalSS = fromLog(getLogTotalSS());
   if (state.ins === null || state.ins === undefined) state.ins = fromLog(getLogIns());
@@ -4530,13 +4541,20 @@ function buildAutomationOnce() {
     const lock = document.createElement("div"); lock.className = "auto-lock";
     const input = document.createElement("input"); input.type = "text"; input.classList.add("hidden"); // text 以允许 AeB 格式
     input.addEventListener("change", () => {
-      const v = parseSciInput(input.value);
+      // 阈值以 log10 权威解析与存储（支持输入超 double 的数值，如 1e400）
+      const vLog = parseSciInputLog(input.value);
       if (def.key === "up3") {
-        if (!isNaN(v)) state.autoUp3Mult = v;
-        // S13：在升级3的自动化中填入小于 1 的数字
-        if (!state.ach.hidden.includes("S13") && !isNaN(v) && v < 1) { grantHidden("S13"); updateAchievementsUI(); }
+        if (!isNaN(vLog)) {
+          state.autoUp3MultLog = vLog;
+          state.autoUp3Mult = vLog <= NLOG + 1 ? 0 : (vLog > 308 ? Infinity : Math.pow(10, vLog));
+        }
+        // S13：在升级3的自动化中填入小于 1 的数字（vLog<0 即数值<1）
+        if (!state.ach.hidden.includes("S13") && !isNaN(vLog) && vLog < 0) { grantHidden("S13"); updateAchievementsUI(); }
       } else if (def.key === "ann") {
-        if (!isNaN(v)) state.autoAnnSp = v;
+        if (!isNaN(vLog)) {
+          state.autoAnnSpLog = vLog;
+          state.autoAnnSp = vLog <= NLOG + 1 ? 0 : (vLog > 308 ? Infinity : Math.pow(10, vLog));
+        }
       }
       saveGame();
     });
@@ -4619,6 +4637,25 @@ function parseSciInput(str) {
   if (!isFinite(v) || v < 0) return NaN;
   return v;
 }
+// 解析 AeB 输入为 log10（支持超 double 的指数，如 1e400；非法/负数返回 NaN，调用方保持原值）。
+// 先走 parseSciInput（覆盖全部既有合法输入，含边界行为零回归），其拒绝的超 double 值
+// 再用 mantissa/指数 分离解析
+function parseSciInputLog(str) {
+  if (typeof str !== "string") {
+    const v = parseFloat(str);
+    return (isFinite(v) && v >= 0) ? Math.log10(v) : NaN;
+  }
+  const v = parseSciInput(str);
+  if (!isNaN(v)) return v > 0 ? Math.log10(v) : (v === 0 ? -Infinity : NaN);
+  const s = str.trim().replace(/[eE]\+/, "e");
+  const m = s.match(/^(\d+(?:\.\d*)?|\.\d+)[eE]([+-]?\d+)$/);
+  if (!m) return NaN;
+  const mant = parseFloat(m[1]);
+  if (!(mant > 0) || !isFinite(mant)) return NaN;
+  const exp = parseInt(m[2], 10);
+  if (!isFinite(exp)) return NaN;
+  return clampLog(Math.log10(mant) + exp);
+}
 // 批量上限：初始 2，奇点升级每级翻倍；打破规则且 >128 时无限制（最大购买）
 function batchLimit() {
   if (state.rulesBroken && state.batchMax > 128) return Infinity;
@@ -4646,9 +4683,10 @@ function updateAutomationUI() {
       const modeOwned = r.def.key === "up3" ? auOwned("au21") : auOwned("au22");
       r.inputEl.classList.toggle("hidden", !unlocked || (modeOwned && isTimeMode));
       if (unlocked && !r.inputEl.classList.contains("hidden") && document.activeElement !== r.inputEl) {
-        // 数值以 AeB 字符串形式显示（如 1e12），小数原样显示
-        const v = r.def.input.value();
-        r.inputEl.value = (v >= 1e6 ? v.toExponential(6).replace("e+", "e").replace(/\.?0+e/, "e") : v);
+        // 数值以 AeB 字符串形式显示；阈值走 log10 权威，可显示超 double 的设定值（如 1e400）
+        r.inputEl.value = r.def.key === "up3"
+          ? fmtNum(state.autoUp3Mult, state.autoUp3MultLog)
+          : fmtNum(state.autoAnnSp, state.autoAnnSpLog);
       }
     }
     r.btn.textContent = state.autoOn[key] ? "开启中" : "已关闭";
@@ -4759,8 +4797,9 @@ function autoAnnTick() {
     if (gameNow() - state.lastAutoAnnAt >= state.autoAnnInterval * 1000 && annihilationReady()) {
       if (doAnnihilation()) state.lastAutoAnnAt = gameNow();
     }
-  } else if (gameNow() - state.lastAutoAnnAt >= autoAnnCD() && annihilationReady() && spGainExact() >= state.autoAnnSp) {
-    // Sp 模式：CD 防抖（基础 1s，A42 星标 200ms，A44 升级进一步缩减，最低 25ms）
+  } else if (gameNow() - state.lastAutoAnnAt >= autoAnnCD() && annihilationReady() && spGainLog() >= state.autoAnnSpLog) {
+    // Sp 模式：阈值以 log10 权威比较（可输入超 double 的阈值；spGainLog 与 spGainExact 同口径），
+    // CD 防抖（基础 1s，A42 星标 200ms，A44 升级进一步缩减，最低 25ms）
     if (doAnnihilation()) state.lastAutoAnnAt = gameNow();
   }
 }
@@ -4796,10 +4835,11 @@ function runAutomation() {
         if (buyUp3()) state.lastAutoUp3At = gameNow();
       }
     } else {
-      // 比例模式：在当前加成倍率达到设定值时购买升级3（log 域，防 mult 溢出）
+      // 比例模式：在当前加成倍率达到设定值时购买升级3（log 域，防 mult 溢出；
+      // 阈值以 log10 权威存储，可输入超 double 的倍率）
       const fLog = FLog();
       const multLog = getLogL10() + up3WavelengthFromFLog(fLog);
-      const autoMultLog = state.autoUp3Mult > 0 ? Math.log10(state.autoUp3Mult) : NLOG;
+      const autoMultLog = state.autoUp3MultLog;
       if (fLog > getLogUp3LastF() && multLog >= autoMultLog) buyUp3();
     }
   }
