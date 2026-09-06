@@ -669,8 +669,8 @@ const T_P0 = 1.4168e32; // 最初宇宙的普朗克温度
 // log10 版本（权威，永不溢出）：log10((1+totalSp)^exp)
 function planckMultLog() {
   if (inDistort("simple")) return 0; // 简洁宇宙：普朗克常数倍率始终为 1
-  const exp = hasDistortMilestone(1) ? 1.5 * daExpMult() : 1.5;
-  return clampLog(exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp)) + vpu2SingMultLog() + theory11MultLog());
+  const exp = planckExp();
+  return clampLog(exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp)) + vpu2SingMultLog());
 }
 function planckMult() {
   const l = planckMultLog();
@@ -679,8 +679,8 @@ function planckMult() {
 // 当前宇宙温度硬上限：t·(1+总Sp)^10
 // log10 版本（权威）：log10(T_P0) + exp·log10(1+totalSp)，含 250 软上限收敛
 function temperatureCapLog() {
-  const exp = hasDistortMilestone(1) ? 10 * daExpMult() : 10;
-  let logCap = Math.log10(T_P0) + exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp)) + vpu2SingMultLog() + theory11MultLog();
+  const exp = tempCapExp();
+  let logCap = Math.log10(T_P0) + exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp)) + vpu2SingMultLog();
   if (logCap > 250) logCap = (vpuOwned("vpu1") ? 212.5 + 0.15 * logCap : 225 + 0.1 * logCap); // 软上限：超 1e250 部分开十次方根（单圈重整后 0.15 次方）；截距各自校准使 1e250 拐点连续（212.5+0.15×250=225+0.1×250=250）
   return clampLog(logCap);
 }
@@ -766,7 +766,7 @@ function gainRate() {
   // 奇点：波速获取 ×= (1+总Sp)^2；1DA 后指数 ×daExpMult()
   // 简洁宇宙：第一个奇点效果平方根（指数 ÷2，即 ^2 → ^1）
   {
-    let exp = hasDistortMilestone(1) ? 2 * daExpMult() : 2;
+    let exp = waveGainExp();
     if (inDistort("simple")) exp /= 2;
     if (getLogTotalSp() > 250) {
       g *= Decimal.pow(10, getLogTotalSp() * exp).toNumber();
@@ -774,7 +774,6 @@ function gainRate() {
       g *= Math.pow(1 + state.totalSp, exp);
     }
     g *= vpu2SingMult(); // 量子狂潮：奇点效果额外乘数
-    g *= theory11Mult(); // 理论树节点 11 经典场论：湮灭次数加成奇点效果
   }
   // 定向：每刻独立 50% 概率取反（原版语义；符号随机而非固定，U 有 0 硬下限，
   // 长程为带反射壁的随机游走——正漂移保证进度推进，不会卡死）
@@ -830,12 +829,11 @@ function gainRateLog() {
   log += thermalMultLog();
   // 奇点：×(1+总Sp)^exp；1DA 后指数 ×daExpMult()；简洁：指数 ÷2
   {
-    let exp = hasDistortMilestone(1) ? 2 * daExpMult() : 2;
+    let exp = waveGainExp();
     if (inDistort("simple")) exp /= 2;
     log += exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp));
   }
   log += vpu2SingMultLog(); // 量子狂潮：奇点效果额外乘数
-  log += theory11MultLog(); // 理论树节点 11 经典场论：湮灭次数加成奇点效果
   // 定向：每刻独立 50% 概率取反（与 gainRate 同款原版语义）
   if (inDistort("directed") && Math.random() < 0.5) sign = -1;
   // 冷却：g^cooldownExp → log ×= cooldownExp（仅 g>0；g≤0 时原代码 max(0,g) 归零）
@@ -2819,7 +2817,8 @@ function bhTimeMult() {
 function spAccretionMult() {
   if (!auOwned("au43")) return 1;
   const sp1 = 1 + state.totalSp;
-  return Math.pow(Math.log10(sp1) + Math.pow(sp1, 0.01), 3);
+  // 理论树节点 11：湮灭次数加成奇点效果——第 4 效果（黑洞吸积）的指数同乘
+  return Math.pow(Math.log10(sp1) + Math.pow(sp1, 0.01), accretionExp());
 }
 // spAccretionMult 的 log10（log 域：totalSp 缓存 Infinity 时仍正确，不产生污染）
 function spAccretionMultLog() {
@@ -2827,8 +2826,8 @@ function spAccretionMultLog() {
   // l1 = lg(Sp+1) 的数值本身（totalSp=0 时为 0）
   const spLog = state.totalSp > 0 ? getLogTotalSp() : -Infinity;
   const l1 = spLog === -Infinity ? 0 : logAddLogs(0, spLog);
-  // lg( lg(Sp+1) + (Sp+1)^0.01 ) × 3
-  return 3 * logAddLogs(Math.log10(Math.max(l1, 1e-300)), 0.01 * l1);
+  // lg( lg(Sp+1) + (Sp+1)^0.01 ) × 指数；理论树节点 11：第 4 效果（黑洞吸积）的指数同乘
+  return clampLog(accretionExp() * logAddLogs(Math.log10(Math.max(l1, 1e-300)), 0.01 * l1));
 }
 // 吸积状态：质量获取速率 log10(dM/dt)。M^0.75 × (F/1e200)^0.01 × accretionMult
 // → log = massExp*logM + 0.01*(FLog-200) + accretionMult；massExp 受 SVPU1 加成，
@@ -3453,7 +3452,7 @@ const THEORY_NODES = [
     desc: "维度折叠器受严重削弱的时间倍率加成" },
   { id: "11", name: "经典场论", parents: ["01"], cost: 2,
     desc: "湮灭次数加成奇点效果",
-    effect: () => "当前 ×" + (1 + Math.log10(state.annihilations + 1) / 80).toFixed(4) },
+    effect: () => "当前指数乘数 ×" + theory11Exp().toFixed(4) },
   { id: "12", name: "质点力学", parents: ["01"], cost: 2,
     desc: "略微削弱奇点获取的软上限",
     effect: () => "当前指数 0.12" },
@@ -3465,15 +3464,17 @@ const THEORY_NODES = [
   { id: "41", name: "波动光学", parents: ["31", "32"], placeholder: true },
 ];
 function theoryOwned(id) { return !!state.theoryNodes[id]; }
-// 理论树节点 11 经典场论：湮灭次数加成奇点效果 ×(1+lg(N+1)/80)（与 vpu2SingMult 同接入口径）
-function theory11MultLog() {
-  if (!theoryOwned("11") || state.annihilations <= 0) return 0;
-  return clampLog(Math.log10(1 + Math.log10(state.annihilations + 1) / 80));
+// 理论树节点 11 经典场论：湮灭次数加成奇点效果——乘在四个奇点效果的**指数**上
+//（与 1DA 的 daExpMult 同类实现）：波速获取、普朗克常数、普朗克温度上限、黑洞吸积效率
+function theory11Exp() {
+  if (!theoryOwned("11") || state.annihilations <= 0) return 1;
+  return 1 + Math.log10(state.annihilations + 1) / 80;
 }
-function theory11Mult() {
-  const l = theory11MultLog();
-  return l > 308 ? Infinity : Math.pow(10, l);
-}
+// 四个奇点效果的指数（总 Sp 缩放项的指数，均受 1DA 与节点 11 加成）
+function waveGainExp() { return 2 * daExpMult() * theory11Exp(); }   // 波速获取 ×(1+Sp)^exp
+function planckExp() { return 1.5 * daExpMult() * theory11Exp(); }   // 普朗克常数 ×(1+Sp)^exp
+function tempCapExp() { return 10 * daExpMult() * theory11Exp(); }   // 普朗克温度上限 ×(1+Sp)^exp
+function accretionExp() { return 3 * theory11Exp(); }                // 黑洞吸积效率（AU43）^exp
 function theoryAvailable(def) {
   if (theoryOwned(def.id) || def.placeholder) return false;
   return def.parents.length === 0 || def.parents.some(p => theoryOwned(p));
@@ -4662,7 +4663,7 @@ function updateSpUI() {
   const panel = document.getElementById("sp-bonus-panel");
   const rows = [
     ["总奇点 (Sp)", fmtNum(state.totalSp, getLogTotalSp())],
-    ["波速获取倍率", "×" + fmtNum(hasDistortMilestone(1) ? Decimal.pow(1 + state.totalSp, 2 * daExpMult()).toNumber() : Math.pow(1 + state.totalSp, 2), 2 * daExpMult() * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp)))],
+    ["波速获取倍率", "×" + fmtNum(hasDistortMilestone(1) ? Decimal.pow(1 + state.totalSp, waveGainExp()).toNumber() : Math.pow(1 + state.totalSp, 2), waveGainExp() * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp)))],
     ["普朗克常数倍率", "×" + fmtNum(planckMult(), planckMultLog())],
   ];
   if (auOwned("au43")) rows.push(["黑洞吸积效率倍率", "×" + fmtNum(spAccretionMult(), spAccretionMultLog())]);
@@ -4677,7 +4678,7 @@ function updateSpUI() {
   }
   // 温度上限软上限提示：原上限超 1e250 且未打破规则时显示（亮红）
   {
-    const expS = hasDistortMilestone(1) ? 10 * daExpMult() : 10;
+    const expS = hasDistortMilestone(1) ? tempCapExp() : 10;
     const rawLogCap = (getLogTotalSp() > 250 ? expS * getLogTotalSp() : expS * Math.log10(1 + state.totalSp)) + Math.log10(T_P0);
     if (rawLogCap > 250 && !state.rulesBroken) {
       const warn = document.createElement("div");
