@@ -223,7 +223,7 @@ const DISTORT_UNIVERSES = [
   },
   {
     id: "narrow", name: "狭窄",
-    desc: "你一共只能购买十次升级，禁用所有自动化",
+    desc: "你一共只能购买十次升级，购买类自动化禁用（自动湮灭可用）",
     tp: 1e170,
   },
   {
@@ -4746,7 +4746,7 @@ function autoBuyTimes(key) {
 function autoAnnTick() {
   if (state.voidActive) return; // 虚空挑战：禁用自动湮灭
   if (state.annihilations < 1 || !state.autoOn.ann || !state.autoAnn) return;
-  if (inDistort("narrow")) return;
+  // 狭窄宇宙不再禁用：达标即湮灭扭曲宇宙的承诺行为同样适用（购买类自动化仍禁用）
   if (state.distortActive) {
     // 扭曲宇宙：达标即自动湮灭该宇宙（无 CD——「能湮灭时尽快湮灭」为承诺行为）。
     // 防正反馈说明：湮灭后回到主宇宙，主宇宙侧的 autoAnnCD 与 Sp 阈值仍生效，
@@ -4774,21 +4774,22 @@ function autoAnnCD() {
 }
 function runAutomation() {
   if (state.annihilations < 1) return;
-  if (inDistort("narrow")) return; // 狭窄宇宙：禁用所有自动化
-  if (state.autoOn.wave && state.autoWaveUpg) {
+  // 狭窄宇宙：购买类自动化禁用（升级限购 10 次是挑战规则），自动湮灭照常工作
+  const narrow = inDistort("narrow");
+  if (!narrow && state.autoOn.wave && state.autoWaveUpg) {
     const n = autoBuyTimes("wave");
     // 防御：购买被宇宙规则拒绝或 spu1 免费但价格达标不变化时，不会因 n=∞ 死循环；
     // bulk=true 跳过逐次渲染与成就检查（tick 末尾统一执行）
     for (let i = 0; i < n; i++) { const lv = state.up1; if (cmpGE(F(), up1Cost(), FLog(), up1CostLog())) buyUp1(true); else break; if (state.up1 === lv) break; }
     for (let i = 0; i < n; i++) { const lv = state.up2; if (cmpGE(F(), up2Cost(), FLog(), up2CostLog())) buyUp2(true); else break; if (state.up2 === lv) break; }
   }
-  if (state.autoOn.phonon && state.autoPhononUpg && state.phUnlocked) {
+  if (!narrow && state.autoOn.phonon && state.autoPhononUpg && state.phUnlocked) {
     const n = autoBuyTimes("phonon");
     for (let i = 0; i < n; i++) { const lv = state.pg1; if (cmpGE(F(), pg1Cost(), FLog(), pg1CostLog())) buyPG1(true); else break; if (state.pg1 === lv) break; }
     for (let i = 0; i < n; i++) { const lv = state.pg2; if (cmpGE(state.phonons, pg2Cost(), getLogPhonons(), pg2CostLog())) buyPG2(true); else break; if (state.pg2 === lv) break; }
     for (let i = 0; i < n; i++) { const lv = state.pg3; if (state.pg3 < pg3Cap() && cmpGE(state.phonons, pg3Cost(), getLogPhonons(), pg3CostLog())) buyPG3(true); else break; if (state.pg3 === lv) break; }
   }
-  if (state.autoOn.up3 && state.autoUp3 && up3Card) {
+  if (!narrow && state.autoOn.up3 && state.autoUp3 && up3Card) {
     if (auOwned("au21") && state.autoUp3Mode === "time") {
       // 时间模式：距上次自动升级3超过设定秒数即触发（仍需 F 超过峰值，log 域比较）
       if (gameNow() - state.lastAutoUp3At >= state.autoUp3Interval * 1000 && FLog() > getLogUp3LastF()) {
