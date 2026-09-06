@@ -1372,6 +1372,12 @@ function hardReset() {
 
 // ---------- Save slots ----------
 function slotKey(i) { return SLOT_KEY_PREFIX + "_" + i; }
+// 槽内存档的波长指数 e（用该存档自己的 CM；无卷缩数据时为 1）
+function slotWavelengthExp(cmLog) {
+  if (cmLog === undefined || cmLog === null || !isFinite(cmLog) || cmLog <= NLOG + 1) return 1;
+  const c = cmLog <= 15 ? Math.log10(Math.pow(10, cmLog) + 1) : cmLog; // lg(CM+1)
+  return 1 + Math.log10(1 + c / 3) / 10;
+}
 function getSlotInfo(i) {
   try {
     const raw = localStorage.getItem(slotKey(i));
@@ -1382,7 +1388,11 @@ function getSlotInfo(i) {
       : (obj.U > 0 ? (isFinite(obj.U) ? Math.log10(obj.U) : 308) : 1);
     const lLog = (obj.logL10 !== undefined && isFinite(obj.logL10)) ? obj.logL10
       : (obj.L > 0 ? Math.log10(obj.L) : 0);
-    return { freqLog: clampLog(uLog - lLog), realTime: obj.realTime || obj.playTime || 0, empty: false };
+    // 预览频率使用该存档自己的维度折叠器指数（F = U/L^e，与加载后的实际频率一致）
+    const cmLog = (obj.logCM !== undefined && obj.logCM !== null && isFinite(obj.logCM) && obj.logCM > NLOG + 1)
+      ? obj.logCM
+      : (obj.cm > 0 && isFinite(obj.cm)) ? Math.log10(obj.cm) : NLOG;
+    return { freqLog: clampLog(uLog - slotWavelengthExp(cmLog) * lLog), realTime: obj.realTime || obj.playTime || 0, empty: false };
   } catch { return null; }
 }
 function saveToSlot(i) {
