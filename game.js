@@ -226,7 +226,7 @@ const DISTORT_UNIVERSES = [
   {
     id: "narrow", name: "狭窄",
     desc: "你一共只能购买十次升级，购买类自动化禁用（自动湮灭可用）",
-    tp: 1e170,
+    tp: 1e165,
   },
   {
     id: "simple", name: "简洁",
