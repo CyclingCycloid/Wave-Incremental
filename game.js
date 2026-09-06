@@ -3739,17 +3739,24 @@ function treeZoomAt(cx, cy, factor) {
   treeView.z = nz;
   treeApplyView();
 }
-// 拖动平移（pointer 事件，兼容触屏）+ 滚轮/按钮缩放
+// 拖动平移（pointer 事件，兼容触屏）+ 滚轮/按钮缩放。
+// 注意：pointerdown 时不能立刻 setPointerCapture——捕获会把后续指针事件重定向到视口，
+// click 事件不再落在节点上，导致节点无法点击购买；改为拖动超过阈值后才抢占捕获
 function setupTreePanZoom() {
   const vp = document.getElementById("tree-viewport");
   let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
   vp.addEventListener("pointerdown", (e) => {
-    dragging = true; sx = e.clientX; sy = e.clientY; ox = treeView.x; oy = treeView.y;
-    vp.classList.add("grabbing");
-    try { vp.setPointerCapture(e.pointerId); } catch {}
+    dragging = false; sx = e.clientX; sy = e.clientY; ox = treeView.x; oy = treeView.y;
   });
   vp.addEventListener("pointermove", (e) => {
-    if (!dragging) return;
+    if (e.buttons === 0) return; // 无按下的悬停移动
+    if (!dragging) {
+      // 拖动阈值 4px：未超过前不捕获，让 click 正常落到节点上
+      if (Math.abs(e.clientX - sx) < 4 && Math.abs(e.clientY - sy) < 4) return;
+      dragging = true;
+      try { vp.setPointerCapture(e.pointerId); } catch {}
+      vp.classList.add("grabbing");
+    }
     treeView.x = ox + (e.clientX - sx);
     treeView.y = oy + (e.clientY - sy);
     treeApplyView();
