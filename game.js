@@ -4317,6 +4317,37 @@ function buildAnnihilationOnce() {
   }
   spBuilt = true;
 }
+// AU 卡的「当前总效果」后缀（仅已购买的升级显示；AU13 沿用其原有内联显示分支）
+// 文本每 tick 随 updateSpUI 实时刷新，与 AU13「（当前底数 X）」同风格
+function auEffectSuffix(id) {
+  if (!auOwned(id)) return "";
+  switch (id) {
+    case "au11":
+      return "（当前指数 " + up1Exp().toFixed(3) + "）";
+    case "au12":
+      return "（当前免费等级 " + fmt(pg2Free()) + "）";
+    case "au14":
+      return "（当前声子获取 ×" + fmtNum(invLMult(), invLMultLog()) + "）";
+    case "au31":
+      return "（当前时间倍率 ×" + fmt(timeArrowMult()) + "）";
+    case "au33":
+      return "（当前时间倍率 ×" + fmt(absZeroMult()) + "）";
+    case "au34": {
+      // 当前生效的扭曲状态时间倍率（仅黑洞处于扭曲状态时 >1；AU34 效果 ^2 = 指数×2，与 bhTimeMult 口径一致）
+      if (!bhUnlocked() || state.bhState !== "distorl") return "（当前扭曲状态时间倍率 ×1）";
+      const el = clampLog(bhEffectLog() * 2);
+      const mLog = logAddLogs(0, el);
+      const m = mLog > 308 ? Infinity : Math.pow(10, mLog);
+      return "（当前扭曲状态时间倍率 ×" + fmtNum(m, mLog) + "）";
+    }
+    case "au41":
+      return "（当前奇点获取 ×" + fmt(phononSpMult()) + "）";
+    case "au42":
+      return "（当前奇点获取 ×" + fmtLog(vpSpMultLog()) + "）";
+    default:
+      return "";
+  }
+}
 function updateSpUI() {
   if (simActive) return; // 离线模拟中不触碰 DOM/存档
   if (state.annihilations < 1) return;
@@ -4416,7 +4447,7 @@ function updateSpUI() {
       r.descEl.textContent = r.u.desc + "（当前底数 " + up2Base().toFixed(3) + "）";
       if (r.nameEl) r.nameEl.textContent = r.u.name;
     } else {
-      r.descEl.textContent = r.u.desc;
+      r.descEl.textContent = r.u.desc + auEffectSuffix(id);
       if (r.nameEl) r.nameEl.textContent = r.u.name;
     }
     r.costEl.textContent = owned ? "已购买"
