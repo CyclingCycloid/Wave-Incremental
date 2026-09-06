@@ -3453,10 +3453,10 @@ const THEORY_NODES = [
     desc: "维度折叠器受严重削弱的时间倍率加成" },
   { id: "11", name: "经典场论", parents: ["01"], cost: 2,
     desc: "湮灭次数加成奇点效果",
-    effect: () => "×(1+lg(N+1)/80)：当前 ×" + (1 + Math.log10(state.annihilations + 1) / 80).toFixed(4) },
+    effect: () => "当前 ×" + (1 + Math.log10(state.annihilations + 1) / 30).toFixed(4) },
   { id: "12", name: "质点力学", parents: ["01"], cost: 2,
     desc: "略微削弱奇点获取的软上限",
-    effect: () => "软上限指数 0.15 → 0.12" },
+    effect: () => "当前指数 0.12" },
   { id: "21", name: "电磁学", parents: ["11"], placeholder: true },
   { id: "22", name: "刚体力学", parents: ["12"], placeholder: true },
   { id: "23", name: "分析力学", parents: ["12"], placeholder: true },
@@ -3465,10 +3465,10 @@ const THEORY_NODES = [
   { id: "41", name: "波动光学", parents: ["31", "32"], placeholder: true },
 ];
 function theoryOwned(id) { return !!state.theoryNodes[id]; }
-// 理论树节点 11 经典场论：湮灭次数加成奇点效果 ×(1+lg(N+1)/80)（与 vpu2SingMult 同接入口径）
+// 理论树节点 11 经典场论：湮灭次数加成奇点效果 ×(1+lg(N+1)/30)（与 vpu2SingMult 同接入口径）
 function theory11MultLog() {
   if (!theoryOwned("11") || state.annihilations <= 0) return 0;
-  return clampLog(Math.log10(1 + Math.log10(state.annihilations + 1) / 80));
+  return clampLog(Math.log10(1 + Math.log10(state.annihilations + 1) / 30));
 }
 function theory11Mult() {
   const l = theory11MultLog();
@@ -4048,7 +4048,8 @@ function updateCompactUI() {
     el.node.classList.toggle("locked", !owned && !theoryAvailable(def));
     let txt;
     if (owned) {
-      txt = def.id === "01" ? `${def.desc}\n当前乘数 ×${fmtLog(cmTimeMultLog())}` : (def.effect ? def.effect() : "已解锁");
+      // 购买后：提示文字（描述）保持不变 + 显示当前效果，不显示公式
+      txt = def.desc + "\n" + (def.id === "01" ? "当前乘数 ×" + fmtLog(cmTimeMultLog()) : (def.effect ? def.effect() : "已解锁"));
     } else if (def.placeholder) {
       txt = def.parents.some(p => theoryOwned(p)) ? "未实装\n（后续版本）" : "需先解锁\n上级节点";
     } else {
