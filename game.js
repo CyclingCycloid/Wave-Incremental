@@ -3514,7 +3514,7 @@ function buyTheoryNode(id) {
   setAutosaveStatus("理论解锁：" + def.name);
 }
 // ---------- 理论树导出/导入/预设（v0.6.0.0 测试）----------
-// 格式：层用「;」分隔、同层节点用「,」、末尾固定「0d」段。例：01;11;21,22;31,41;0d
+// 格式：层用「;」分隔、同层节点用「,」、末尾固定「0d」段。例：01;11;21,22;31;41;0d
 function exportTheoryTree() {
   const layers = ["", "", "", "", ""];
   for (const def of THEORY_NODES) {
@@ -3573,7 +3573,7 @@ function copyTheoryTreeToClipboard() {
   else fallback();
 }
 function doImportTheoryTree() {
-  const s = prompt("输入理论树（格式如 01;11;21,22;31,41;0d）");
+  const s = prompt("输入理论树（格式如 01;11;21,22;31;41;0d）");
   if (s === null) return;
   const ids = parseTheoryTree(s);
   if (!ids) { setAutosaveStatus("理论树格式有误，导入失败"); return; }
@@ -3600,7 +3600,7 @@ function saveTheoryPreset(i) {
   setAutosaveStatus("已保存当前理论树到预设 " + state.theoryPresets[i].name);
 }
 function importTheoryPreset(i) {
-  const s = prompt("输入理论树存入预设（格式如 01;11;21,22;31,41;0d）");
+  const s = prompt("输入理论树存入预设（格式如 01;11;21,22;31;41;0d）");
   if (s === null) return;
   const ids = parseTheoryTree(s);
   if (!ids) { setAutosaveStatus("理论树格式有误，导入失败"); return; }
