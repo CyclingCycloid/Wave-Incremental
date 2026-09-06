@@ -3858,15 +3858,16 @@ function buildCompactOnce() {
   });
   document.getElementById("theory-export-btn").addEventListener("click", copyTheoryTreeToClipboard);
   document.getElementById("theory-import-btn").addEventListener("click", doImportTheoryTree);
-  // 预设按钮（左键加载；右键菜单：加载/保存/导入/命名）
+  // 预设按钮（左键/右键均打开菜单：加载/保存/导入/命名——避免个别环境右键被拦截时无法操作）
   const prRow = document.getElementById("comp-ins-presets");
   prRow.innerHTML = "";
   compactEls.presets = [];
   for (let i = 0; i < 6; i++) {
     const b = document.createElement("button");
     b.className = "comp-btn small theory-preset-btn";
-    b.addEventListener("click", () => loadTheoryPreset(i));
-    b.addEventListener("contextmenu", (e) => { e.preventDefault(); showTheoryPresetMenu(i, e.clientX, e.clientY); });
+    const openMenu = (e) => { e.preventDefault(); showTheoryPresetMenu(i, e.clientX, e.clientY); };
+    b.addEventListener("click", openMenu);
+    b.addEventListener("contextmenu", openMenu);
     prRow.appendChild(b);
     compactEls.presets.push(b);
   }
