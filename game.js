@@ -94,6 +94,8 @@ function defaultState() {
     tp: 0,                 // 未转换的拓扑节点（可转换为点/边/面；卷缩重置保留）
     tpV: 0, tpE: 0, tpF: 0, // 已转换的点 V / 边 E / 面 F（各消耗 1 TP，可退回）
     theoryNodes: {},       // 理论树已购节点（id→1，如 "01"）
+    theoryRespec: false,   // 理论树重置开关：下次卷缩重置时清空已购理论并返还灵感
+    theoryPresets: [1, 2, 3, 4, 5, 6].map(n => ({ name: "PR" + n, tree: "" })), // 理论树预设（右键管理）
     compStartReal: 0,      // 本次卷缩开始（真实时间戳 ms）
     compGameElapsed: 0,    // 本次卷缩的游戏时长（double 缓存，超 double 封顶 MAX_VALUE）
     compGameElapsedLog: NLOG, // 本次卷缩游戏时长的 log10 权威
@@ -668,7 +670,7 @@ const T_P0 = 1.4168e32; // 最初宇宙的普朗克温度
 function planckMultLog() {
   if (inDistort("simple")) return 0; // 简洁宇宙：普朗克常数倍率始终为 1
   const exp = hasDistortMilestone(1) ? 1.5 * daExpMult() : 1.5;
-  return clampLog(exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp)) + vpu2SingMultLog());
+  return clampLog(exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp)) + vpu2SingMultLog() + theory11MultLog());
 }
 function planckMult() {
   const l = planckMultLog();
@@ -678,7 +680,7 @@ function planckMult() {
 // log10 版本（权威）：log10(T_P0) + exp·log10(1+totalSp)，含 250 软上限收敛
 function temperatureCapLog() {
   const exp = hasDistortMilestone(1) ? 10 * daExpMult() : 10;
-  let logCap = Math.log10(T_P0) + exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp)) + vpu2SingMultLog();
+  let logCap = Math.log10(T_P0) + exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp)) + vpu2SingMultLog() + theory11MultLog();
   if (logCap > 250) logCap = (vpuOwned("vpu1") ? 212.5 + 0.15 * logCap : 225 + 0.1 * logCap); // 软上限：超 1e250 部分开十次方根（单圈重整后 0.15 次方）；截距各自校准使 1e250 拐点连续（212.5+0.15×250=225+0.1×250=250）
   return clampLog(logCap);
 }
@@ -738,7 +740,9 @@ function spGainLog() {
 const SP_SOFTCAP_PIVOT_LOG = Math.log10(1.79e308); // ≈308.2529（A55 卷缩的判定阈值同源）
 function spSoftcapLog(spLog) {
   if (spLog <= SP_SOFTCAP_PIVOT_LOG) return spLog;
-  return SP_SOFTCAP_PIVOT_LOG + (spLog - SP_SOFTCAP_PIVOT_LOG) / Math.pow(spLog, 0.15);
+  // 理论树节点 12「质点力学」：略微削弱软上限（指数 0.15 → 0.12，超出部分保留更多）
+  const exp = theoryOwned("12") ? 0.12 : 0.15;
+  return SP_SOFTCAP_PIVOT_LOG + (spLog - SP_SOFTCAP_PIVOT_LOG) / Math.pow(spLog, exp);
 }
 // gainRate 的 log10 版本（完整乘法链在 log 域，永不溢出）
 function gainRate() {
@@ -770,6 +774,7 @@ function gainRate() {
       g *= Math.pow(1 + state.totalSp, exp);
     }
     g *= vpu2SingMult(); // 量子狂潮：奇点效果额外乘数
+    g *= theory11Mult(); // 理论树节点 11 经典场论：湮灭次数加成奇点效果
   }
   // 定向：每刻独立 50% 概率取反（原版语义；符号随机而非固定，U 有 0 硬下限，
   // 长程为带反射壁的随机游走——正漂移保证进度推进，不会卡死）
@@ -830,6 +835,7 @@ function gainRateLog() {
     log += exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp));
   }
   log += vpu2SingMultLog(); // 量子狂潮：奇点效果额外乘数
+  log += theory11MultLog(); // 理论树节点 11 经典场论：湮灭次数加成奇点效果
   // 定向：每刻独立 50% 概率取反（与 gainRate 同款原版语义）
   if (inDistort("directed") && Math.random() < 0.5) sign = -1;
   // 冷却：g^cooldownExp → log ×= cooldownExp（仅 g>0；g≤0 时原代码 max(0,g) 归零）
@@ -1239,6 +1245,18 @@ function migrateState() {
   if (state.tpE === undefined || !isFinite(state.tpE)) state.tpE = 0;
   if (state.tpF === undefined || !isFinite(state.tpF)) state.tpF = 0;
   if (state.theoryNodes === undefined || typeof state.theoryNodes !== "object" || Array.isArray(state.theoryNodes)) state.theoryNodes = {};
+  if (state.theoryRespec === undefined) state.theoryRespec = false;
+  if (!Array.isArray(state.theoryPresets)) state.theoryPresets = [];
+  while (state.theoryPresets.length < 6) state.theoryPresets.push({ name: "PR" + (state.theoryPresets.length + 1), tree: "" });
+  state.theoryPresets.length = 6;
+  for (let i = 0; i < 6; i++) {
+    const p = state.theoryPresets[i];
+    if (!p || typeof p !== "object") state.theoryPresets[i] = { name: "PR" + (i + 1), tree: "" };
+    else {
+      if (typeof p.name !== "string" || !/^[A-Za-z0-9]{1,5}$/.test(p.name)) p.name = "PR" + (i + 1);
+      if (typeof p.tree !== "string") p.tree = "";
+    }
+  }
   if (state.compGameElapsedLog === undefined || !isFinite(state.compGameElapsedLog)) {
     state.compGameElapsedLog = (state.compGameElapsed > 0 && isFinite(state.compGameElapsed)) ? Math.log10(state.compGameElapsed) : NLOG;
   }
@@ -3433,8 +3451,12 @@ function convertTP(kind, dir) {
 const THEORY_NODES = [
   { id: "01", name: "最小作用量原理", parents: [], cost: 1,
     desc: "维度折叠器受严重削弱的时间倍率加成" },
-  { id: "11", name: "经典场论", parents: ["01"], placeholder: true },
-  { id: "12", name: "质点力学", parents: ["01"], placeholder: true },
+  { id: "11", name: "经典场论", parents: ["01"], cost: 2,
+    desc: "湮灭次数加成奇点效果",
+    effect: () => "×(1+lg(N+1)/80)：当前 ×" + (1 + Math.log10(state.annihilations + 1) / 80).toFixed(4) },
+  { id: "12", name: "质点力学", parents: ["01"], cost: 2,
+    desc: "略微削弱奇点获取的软上限",
+    effect: () => "软上限指数 0.15 → 0.12" },
   { id: "21", name: "电磁学", parents: ["11"], placeholder: true },
   { id: "22", name: "刚体力学", parents: ["12"], placeholder: true },
   { id: "23", name: "分析力学", parents: ["12"], placeholder: true },
@@ -3443,6 +3465,15 @@ const THEORY_NODES = [
   { id: "41", name: "波动光学", parents: ["31", "32"], placeholder: true },
 ];
 function theoryOwned(id) { return !!state.theoryNodes[id]; }
+// 理论树节点 11 经典场论：湮灭次数加成奇点效果 ×(1+lg(N+1)/80)（与 vpu2SingMult 同接入口径）
+function theory11MultLog() {
+  if (!theoryOwned("11") || state.annihilations <= 0) return 0;
+  return clampLog(Math.log10(1 + Math.log10(state.annihilations + 1) / 80));
+}
+function theory11Mult() {
+  const l = theory11MultLog();
+  return l > 308 ? Infinity : Math.pow(10, l);
+}
 function theoryAvailable(def) {
   if (theoryOwned(def.id) || def.placeholder) return false;
   return def.parents.length === 0 || def.parents.some(p => theoryOwned(p));
@@ -3481,6 +3512,134 @@ function buyTheoryNode(id) {
   subInsLog(cLog);
   state.theoryNodes[id] = 1;
   setAutosaveStatus("理论解锁：" + def.name);
+}
+// ---------- 理论树导出/导入/预设（v0.6.0.0 测试）----------
+// 格式：层用「;」分隔、同层节点用「,」、末尾固定「0d」段。例：01;11;21,22;31,41;0d
+function exportTheoryTree() {
+  const layers = ["", "", "", "", ""];
+  for (const def of THEORY_NODES) {
+    if (theoryOwned(def.id)) {
+      const li = +def.id[0];
+      layers[li] = layers[li] ? layers[li] + "," + def.id : def.id;
+    }
+  }
+  return layers.join(";") + ";0d";
+}
+// 解析理论树字符串：返回按「从上往下、从左往右」排序的节点 id 数组；格式有误返回 null。
+// 格式：层用「;」分隔、同层节点用「,」、末尾固定「0d」段（如 01;11;21,22;31;41;0d）；
+// 末尾的空层可省略（0d 恒为最后一段）；每个节点的层号必须与其所在段位置一致
+function parseTheoryTree(str) {
+  if (typeof str !== "string") return null;
+  const segs = str.trim().split(";");
+  if (segs.length < 1 || segs.length > 6 || segs[segs.length - 1] !== "0d") return null;
+  const out = [];
+  for (let li = 0; li < segs.length - 1; li++) {
+    if (segs[li] === "") continue;
+    for (const tok of segs[li].split(",")) {
+      const def = THEORY_NODES.find(n => n.id === tok);
+      if (!def || +def.id[0] !== li) return null; // id 不存在或层号与位置不符
+      if (!out.includes(tok)) out.push(tok);
+    }
+  }
+  return out;
+}
+// 在已购基础上（不清退）按给定顺序尽可能购买：父节点规则与灵感限额逐个判定
+function importTheoryTreeList(ids) {
+  if (!Array.isArray(ids)) return 0;
+  let bought = 0;
+  for (const id of ids) {
+    const def = THEORY_NODES.find(n => n.id === id);
+    if (!def || theoryOwned(id) || !theoryAvailable(def)) continue;
+    const cLog = Math.log10(Math.max(def.cost, 1));
+    if (getLogIns() < cLog) continue;
+    subInsLog(cLog);
+    state.theoryNodes[id] = 1;
+    bought++;
+  }
+  return bought;
+}
+function copyTheoryTreeToClipboard() {
+  const str = exportTheoryTree();
+  const done = () => setAutosaveStatus("理论树已复制到剪贴板：" + str);
+  const fallback = () => {
+    const ta = document.createElement("textarea");
+    ta.value = str;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); done(); } catch (e) { setAutosaveStatus("复制失败：" + str); }
+    ta.remove();
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(str).then(done, fallback);
+  else fallback();
+}
+function doImportTheoryTree() {
+  const s = prompt("输入理论树（格式如 01;11;21,22;31,41;0d）");
+  if (s === null) return;
+  const ids = parseTheoryTree(s);
+  if (!ids) { setAutosaveStatus("理论树格式有误，导入失败"); return; }
+  const n = importTheoryTreeList(ids);
+  saveGame();
+  updateCompactUI();
+  setAutosaveStatus("已导入理论树：购买 " + n + " 个节点");
+}
+// 预设（6 槽）：加载=贪心购买槽内树；保存=当前树存入；导入=输入树存入槽位；命名=改名
+function loadTheoryPreset(i) {
+  const p = state.theoryPresets[i];
+  if (!p || !p.tree) { setAutosaveStatus("预设 " + (p ? p.name : "PR" + (i + 1)) + " 为空"); return; }
+  const ids = parseTheoryTree(p.tree);
+  if (!ids) { setAutosaveStatus("预设格式有误，加载失败"); return; }
+  const n = importTheoryTreeList(ids);
+  saveGame();
+  updateCompactUI();
+  setAutosaveStatus("已从预设 " + p.name + " 加载理论树：购买 " + n + " 个节点");
+}
+function saveTheoryPreset(i) {
+  state.theoryPresets[i].tree = exportTheoryTree();
+  saveGame();
+  updateCompactUI();
+  setAutosaveStatus("已保存当前理论树到预设 " + state.theoryPresets[i].name);
+}
+function importTheoryPreset(i) {
+  const s = prompt("输入理论树存入预设（格式如 01;11;21,22;31,41;0d）");
+  if (s === null) return;
+  const ids = parseTheoryTree(s);
+  if (!ids) { setAutosaveStatus("理论树格式有误，导入失败"); return; }
+  state.theoryPresets[i].tree = s.trim();
+  saveGame();
+  updateCompactUI();
+  setAutosaveStatus("已导入理论树到预设 " + state.theoryPresets[i].name);
+}
+function renameTheoryPreset(i) {
+  const n = prompt("输入预设名称（大小写字母与数字，最多 5 个字符）");
+  if (n === null) return;
+  if (!/^[A-Za-z0-9]{1,5}$/.test(n)) { setAutosaveStatus("名称非法（仅大小写字母与数字，≤5 字符）"); return; }
+  state.theoryPresets[i].name = n;
+  saveGame();
+  updateCompactUI();
+}
+function closeTheoryPresetMenu() {
+  const m = document.getElementById("theory-preset-menu");
+  if (m) m.remove();
+}
+function showTheoryPresetMenu(idx, x, y) {
+  closeTheoryPresetMenu();
+  const menu = document.createElement("div");
+  menu.id = "theory-preset-menu";
+  for (const [label, fn] of [
+    ["加载", () => loadTheoryPreset(idx)],
+    ["保存", () => saveTheoryPreset(idx)],
+    ["导入", () => importTheoryPreset(idx)],
+    ["命名", () => renameTheoryPreset(idx)],
+  ]) {
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.addEventListener("click", () => { closeTheoryPresetMenu(); fn(); });
+    menu.appendChild(b);
+  }
+  document.body.appendChild(menu);
+  menu.style.left = Math.min(x, (window.innerWidth || 800) - 96) + "px";
+  menu.style.top = Math.min(y, (window.innerHeight || 600) - 140) + "px";
+  setTimeout(() => document.addEventListener("click", closeTheoryPresetMenu, { once: true }), 0);
 }
 
 // ---------- 卷缩重置 ----------
@@ -3589,6 +3748,14 @@ function applyCompactionResetBody(realNow) {
   state.voidBestRules = 0;
   // —— 卷缩层自身：CM 重置（TP/V/E/F 配置、SS/Ins/理论树保留）——
   setCMLog(NLOG);
+  // 理论树：勾选「卷缩重置理论树」时清空已购节点并返还所耗灵感（AD 重置语义），随后解除开关
+  if (state.theoryRespec) {
+    let refund = 0;
+    for (const def of THEORY_NODES) if (theoryOwned(def.id)) refund += def.cost || 0;
+    if (refund > 0) addInsLog(Math.log10(refund));
+    state.theoryNodes = {};
+    state.theoryRespec = false;
+  }
   // —— 计时 ——
   state.annStartReal = realNow;
   state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG;
@@ -3670,6 +3837,27 @@ function buildCompactOnce() {
     b.addEventListener("click", () => buyIns(src));
     insCells.appendChild(b);
     compactEls.ins[src] = { btn: b, cost: s2 };
+  }
+  // 理论树工具排（重置开关 / 导出剪贴板 / 导入）
+  document.getElementById("theory-respec-btn").addEventListener("click", () => {
+    state.theoryRespec = !state.theoryRespec;
+    saveGame();
+    updateCompactUI();
+    setAutosaveStatus(state.theoryRespec ? "已勾选：下次卷缩重置时清空理论树并返还灵感" : "已取消卷缩重置理论树");
+  });
+  document.getElementById("theory-export-btn").addEventListener("click", copyTheoryTreeToClipboard);
+  document.getElementById("theory-import-btn").addEventListener("click", doImportTheoryTree);
+  // 预设按钮（左键加载；右键菜单：加载/保存/导入/命名）
+  const prRow = document.getElementById("comp-ins-presets");
+  prRow.innerHTML = "";
+  compactEls.presets = [];
+  for (let i = 0; i < 6; i++) {
+    const b = document.createElement("button");
+    b.className = "comp-btn small theory-preset-btn";
+    b.addEventListener("click", () => loadTheoryPreset(i));
+    b.addEventListener("contextmenu", (e) => { e.preventDefault(); showTheoryPresetMenu(i, e.clientX, e.clientY); });
+    prRow.appendChild(b);
+    compactEls.presets.push(b);
   }
   // 理论树（固定坐标世界 + SVG 连线 + 拖动/缩放；手机与桌面布局完全一致，只有缩放差异）
   const svg = document.getElementById("tree-lines");
@@ -3838,6 +4026,18 @@ function updateCompactUI() {
     el.cost.textContent = fmtLog(insCostLogs[src]) + insHint[src];
     el.btn.disabled = insCant[src];
   }
+  // 理论树工具：重置开关文案 + 预设按钮名
+  const respecBtn = document.getElementById("theory-respec-btn");
+  if (respecBtn) {
+    respecBtn.textContent = state.theoryRespec ? "卷缩重置理论树：开" : "卷缩重置理论树：关";
+    respecBtn.classList.toggle("compact-ready", state.theoryRespec);
+  }
+  if (compactEls.presets) {
+    for (let i = 0; i < 6; i++) {
+      const b = compactEls.presets[i];
+      if (b && state.theoryPresets[i]) b.textContent = state.theoryPresets[i].name || ("PR" + (i + 1));
+    }
+  }
   // 理论树节点状态（框内写效果文本）
   for (const def of THEORY_NODES) {
     const el = compactEls.nodes[def.id];
@@ -3848,7 +4048,7 @@ function updateCompactUI() {
     el.node.classList.toggle("locked", !owned && !theoryAvailable(def));
     let txt;
     if (owned) {
-      txt = def.id === "01" ? `${def.desc}\n当前乘数 ×${fmtLog(cmTimeMultLog())}` : "已解锁";
+      txt = def.id === "01" ? `${def.desc}\n当前乘数 ×${fmtLog(cmTimeMultLog())}` : (def.effect ? def.effect() : "已解锁");
     } else if (def.placeholder) {
       txt = def.parents.some(p => theoryOwned(p)) ? "未实装\n（后续版本）" : "需先解锁\n上级节点";
     } else {
