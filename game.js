@@ -1253,6 +1253,10 @@ function migrateState() {
     state.autoAnnSpLog = (typeof state.autoAnnSp === "number" && state.autoAnnSp > 0 && isFinite(state.autoAnnSp))
       ? Math.log10(state.autoAnnSp) : 0;
   }
+  // 阈值 double 缓存：超 double 的设定值经 JSON 序列化为 null，从 log 权威恢复
+  //（否则重载后输入框显示「—」，看起来像没有保存）
+  if (state.autoUp3Mult === null || state.autoUp3Mult === undefined) state.autoUp3Mult = fromLog(state.autoUp3MultLog);
+  if (state.autoAnnSp === null || state.autoAnnSp === undefined) state.autoAnnSp = fromLog(state.autoAnnSpLog);
   if (state.ss === null || state.ss === undefined) state.ss = fromLog(getLogSS());
   if (state.totalSS === null || state.totalSS === undefined) state.totalSS = fromLog(getLogTotalSS());
   if (state.ins === null || state.ins === undefined) state.ins = fromLog(getLogIns());
