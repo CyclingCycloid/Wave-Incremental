@@ -42,6 +42,8 @@ function defaultState() {
     annGameElapsedLog: NLOG, // 本次湮灭游戏时长的 log10 权威（时间倍率超 double 时持续累积）
     // 扭曲系统（v0.4.2.1 测试）
     distortActive: "",     // 当前所在扭曲宇宙 id（空=普通宇宙）
+    distortEnterAt: 0,     // 进入当前扭曲宇宙/虚空的时刻（ms；膨胀削弱的时间基。必须入存档：
+                           // 重载后模块变量归零会让 t≈1.8e9 s，波长×1e20^(t-1) 天文级膨胀、增益指数归 0，挑战报废）
     distortDone: [],       // 已湮灭的扭曲宇宙 id（每宇宙只计一次奖励）
     distortMult: 1,        // 湮灭扭曲宇宙给的 Sp 倍率（×2/个）
     distortFails: 0,       // S14：扭曲宇宙失败次数
@@ -215,7 +217,7 @@ const DISTORT_UNIVERSES = [
   },
   {
     id: "inflation", name: "滞涨",
-    desc: "前奇点资源不消耗被禁用，价格折算即刻生效且变得更强，声子升级价格平方，波速获取和温度开平方根",
+    desc: "前奇点资源不消耗被禁用，价格折算即刻生效且变得更强，声子升级价格平方，波速获取、温度与升级3效果开平方根",
     tp: 1e100,
   },
   {
@@ -412,14 +414,7 @@ function cmpLT(a, b, aLog, bLog) { return !cmpGE(a, b, aLog, bLog); }
 // ---------- 派生物理量 ----------
 // L 的双表示：logL10 权威（永不下溢），L 为 double 缓存（极端小时可能下溢为 0）
 function getLogL10() { return (state.logL10 !== undefined && isFinite(state.logL10)) ? state.logL10 : Math.log10(state.L || 1e-300); }
-// F = U / L（定向宇宙：波速取绝对值；膨胀宇宙：波长乘以膨胀倍率）
-function distortLMod() {
-  if (!inDistort("expand")) return 1;
-  const t = (gameNow() - distortEnterAt) / 1000;
-  if (t <= 1) return 1;
-  return Math.pow(1e20, t - 1); // 进入 1 秒后，每秒波长 ×1e20
-}
-// 波长倍率的 log10（代数式，避免 double 溢出）
+// 膨胀宇宙的波长倍率：log10（代数式，避免 double 溢出）。倍率 = 1e20^(t-1)，t 为进入后秒数
 function distortLModLog() {
   if (!inDistort("expand")) return 0;
   const t = (gameNow() - distortEnterAt) / 1000;
@@ -1133,6 +1128,16 @@ function migrateState() {
     state.voidActive = false;
     state.voidRules = [];
   }
+  // 扭曲/虚空进入时刻恢复：膨胀削弱的时间基（模块变量 distortEnterAt）不入存档的话，
+  // 重载后归零会让 t=gameNow()/1000≈1.8e9 → 波长×1e20^(t-1) 天文级膨胀、增益指数归 0，
+  // 该次挑战报废。有记录用记录；旧档无记录则从现在重新计时（尽力恢复）。
+  // 虚空同样依赖该时间基（enterVoid 设置），含膨胀削弱时一并恢复。
+  if (state.distortActive || (state.voidActive && state.voidRules.includes("expand"))) {
+    distortEnterAt = (state.distortEnterAt > 0) ? state.distortEnterAt : Date.now();
+    state.distortEnterAt = distortEnterAt;
+  } else {
+    distortEnterAt = 0;
+  }
   // 修复离线模拟虚拟时钟污染的存量坏档：时间戳落在未来会使 CD 计时（now - 时间戳）
   // 为负、自动湮灭/自动升级3卡死直至现实时间追上（最长 8h）；归位为当前时刻立即恢复。
   // annFastest 为负（realDur 为负时被错误刷新）同样归零
@@ -1347,6 +1352,7 @@ function hardReset() {
   if (!confirm("再次确认：所有进度与成就都将丢失。继续？")) return;
   localStorage.removeItem(SAVE_KEY);
   state = defaultState();
+  lastSubtab = {}; // 子标签记忆随档清空：否则重开后点湮灭标签可能落到已锁定的空白子页
   applyTheme("black");
   applyNotation("scientific");
   saveGame();
@@ -1366,7 +1372,18 @@ function getSlotInfo(i) {
       : (obj.U > 0 ? (isFinite(obj.U) ? Math.log10(obj.U) : 308) : 1);
     const lLog = (obj.logL10 !== undefined && isFinite(obj.logL10)) ? obj.logL10
       : (obj.L > 0 ? Math.log10(obj.L) : 0);
-    return { freqLog: clampLog(uLog - lLog), realTime: obj.realTime || obj.playTime || 0, empty: false };
+    // F = U/(L·膨胀倍率)^e：e 取存档的波长指数（CM 效果②；无 CM 时 e=1 与原式一致）；
+    // 膨胀宇宙/含膨胀削弱的虚空按存档时刻（lastTick）折算波长倍率
+    const cmLog = (obj.logCM !== undefined && isFinite(obj.logCM)) ? obj.logCM : NLOG;
+    const e = 1 + Math.log10(1 + lg1FromLog(cmLog) / 3) / 10;
+    let dl = 0;
+    const expanding = obj.distortActive === "expand"
+      || (obj.voidActive && Array.isArray(obj.voidRules) && obj.voidRules.includes("expand"));
+    if (expanding && obj.distortEnterAt > 0 && obj.lastTick > obj.distortEnterAt) {
+      const t = (obj.lastTick - obj.distortEnterAt) / 1000;
+      if (t > 1) dl = 20 * (t - 1);
+    }
+    return { freqLog: clampLog(uLog - e * (lLog + dl)), realTime: obj.realTime || obj.playTime || 0, empty: false };
   } catch { return null; }
 }
 function saveToSlot(i) {
@@ -1384,6 +1401,7 @@ function loadFromSlot(i) {
     if (!raw) { setAutosaveStatus("该槽为空"); return; }
     const obj = decodeSave(raw);
     state = Object.assign(defaultState(), obj);
+    lastSubtab = {}; // 换档后子标签记忆失效：新档未解锁的子页不应被跳转
     state.settings = Object.assign({ theme: "black", notation: "scientific", decimals: 3, uiFps: 33, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true }, obj.settings || {});
     state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
     migrateState();
@@ -1956,8 +1974,10 @@ function hasDistortMilestone(n) { return distortDA() >= n; }
 const LOG_T_P0 = Math.log10(T_P0);
 function annihilationReady() {
   // log 域比较：用**有效温度**（滞涨为平方根后的温度，其余宇宙等于 raw）与目标比较；
-  // 打破规则时无上限，直接用 raw。
-  const tLog = state.rulesBroken || state.testBreakRules ? temperatureLog() : temperatureCappedLog();
+  // 打破规则/测试开关只在主宇宙用 raw（无上限）——与 temperatureCappedLog 的守卫一致。
+  // 扭曲宇宙仍是硬上限：若在此用 raw，滞涨的平方根会被绕过（目标温度等效减半）
+  const tLog = (state.rulesBroken || state.testBreakRules) && !state.distortActive
+    ? temperatureLog() : temperatureCappedLog();
   // 扭曲宇宙：目标是该宇宙自己的普朗克温度（未知宇宙 id 视为不在扭曲中）
   if (state.distortActive) {
     const u = DISTORT_UNIVERSES.find(x => x.id === state.distortActive);
@@ -2044,7 +2064,9 @@ function doAnnihilation() {
   // 重置（几乎全部）。累计频率与统计极值（通用统计）不重置。
   setU(resetU()); state.L = 1; state.logL10 = 0;
   state.up1 = 0; state.up2 = 0; state.up3 = 0; state.up3LastF = 0; state.logUp3LastF = NLOG;
-  if (!auOwned("au24")) setPhonons(0); // AU24 量子涟漪：湮灭保留声子
+  // AU24 量子涟漪：湮灭保留声子（进出扭曲宇宙除外——完成扭曲也是「出」，
+  // 否则简洁宇宙的「声子恒 1」会被带回主宇宙）
+  if (!auOwned("au24") || inDistortMode) setPhonons(0);
   state.pg1 = 0; state.pg2 = 0; state.pg3 = 0; // 发生器重复升级等级总是重置
   if (!hasMilestone(1)) state.phUnlocked = 0;
   if (!hasMilestone(2)) state.meta1 = 0;
@@ -2119,6 +2141,7 @@ function enterDistort(id) {
   setPhonons(0);
   state.distortActive = id;
   distortEnterAt = gameNow();
+  state.distortEnterAt = distortEnterAt; // 膨胀削弱的时间基入存档（防重载报废）
   if (id === "simple") setPhonons(1); // 简洁宇宙：声子恒 1
   if (id === "narrow") state.narrowPurchases = 0; // 狭窄宇宙：进入时购买次数强制重置（防残留）
   startCooldownRamp(); // 冷却宇宙：进入时视为已完全生效（k=0.75）
@@ -2232,6 +2255,7 @@ function retryDistort() {
   // 再次进入
   state.distortActive = id;
   distortEnterAt = gameNow();
+  state.distortEnterAt = distortEnterAt; // 膨胀削弱的时间基入存档（防重载报废）
   startCooldownRamp(); // 冷却宇宙：进入时视为已完全生效（k=0.75）
   state.annStartReal = gameNow();
   state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG;
@@ -2668,9 +2692,17 @@ function buySAU(id) {
   updateSpUI();
   setAutosaveStatus("已购买奇点升级：" + u.name);
 }
+// AU 第 4 组的解锁条件（显示与购买入口共用同一判定，防绕过按钮禁用直接购买）
+function au4UnlockedFor(id) {
+  if (id === "au42") return hasDistortMilestone(6);
+  if (id === "au43") return hasDistortMilestone(7);
+  if (id === "au44") return hasDistortMilestone(7) && state.rulesBroken;
+  return hasDistortMilestone(4);
+}
 function buyAU(id) {
   const u = AU_DEFS.flat().find(x => x.id === id);
   if (!u || auOwned(id)) return;
+  if (id.startsWith("au4") && !au4UnlockedFor(id)) return; // 与按钮显示同一门槛（4/6/7DA、打破规则）
   if (cmpLT(state.sp, u.cost, getLogSp(), Math.log10(u.cost))) return;
   subSpLog(Math.log10(u.cost));
   state.au[id] = 1;
@@ -2928,6 +2960,7 @@ function enterVoid(ids) {
   }
   state.narrowPurchases = 0; // 狭窄削弱：进入时购买次数清零
   distortEnterAt = gameNow(); // 膨胀削弱的时间基
+  state.distortEnterAt = distortEnterAt; // 入存档：虚空内重载同样不能让膨胀时间基报废
   startCooldownRamp(); // 冷却削弱：进入时视为已完全生效（k=0.75）
   state.annStartReal = gameNow();
   state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG;
@@ -3274,12 +3307,14 @@ function tickBlackhole(dt) {
     }
     // 虚粒子获取：每秒速率 = floor(mult × (M^0.1 − 1))（整数速率），按 dt 连续累计。
     // floor 按「每秒速率」取整而非按 tick 取整，否则小速率会永远取 0。
+    // 全程 log 域：vRateLog 超 double（VF 加成本身可到 ~300，M>1e80 即可越界）时
+    // Math.pow(10,·)=Infinity → clampLog=LOG_CAP 会把虚粒子顶到 10^1e15，
+    // 下次加载即触发 migrateState 存档净化（全资源清空）——跳过 double 直接用 log
     const vRateLog = bhVPGainLog();
     if (vRateLog > NLOG + 1) {
-      const rate = vRateLog > 15 ? Math.pow(10, vRateLog) : Math.floor(Math.pow(10, vRateLog));
-      if (rate > 0) {
-        const addLog = clampLog(Math.log10(rate) + Math.log10(Math.max(dt, 1e-300)));
-        setVPLog(logAddLogs(getLogVP(), addLog));
+      const rateLog = vRateLog > 15 ? vRateLog : Math.log10(Math.floor(Math.pow(10, vRateLog)));
+      if (rateLog > NLOG + 1) {
+        setVPLog(logAddLogs(getLogVP(), clampLog(rateLog + Math.log10(Math.max(dt, 1e-300)))));
       }
     }
   }
@@ -4393,8 +4428,7 @@ function updateSpUI() {
     r.btn.classList.toggle("affordable", afford);
   }
   // AU 单次升级（第 4 组 4DA 前显示 ???，解锁后显示真实内容）
-  // AU42 需 6DA、AU43 需 7DA、AU44 需打破多元宇宙规则；其余 au4* 需 4DA
-  const au4Unlocked = hasDistortMilestone(4);
+  // AU42 需 6DA、AU43 需 7DA、AU44 需打破多元宇宙规则；其余 au4* 需 4DA（判定与 buyAU 共用）
   for (const id in auRefs) {
     const r = auRefs[id];
     r.btn.classList.toggle("hidden", !sauUnlocked);
@@ -4403,11 +4437,7 @@ function updateSpUI() {
     const afford = spAfford(r.u.cost);
     const isAu4 = id.startsWith("au4");
     // 未解锁时名字显示？？？、描述显示解锁条件
-    const au42Unlocked = hasDistortMilestone(6);
-    const au43Unlocked = hasDistortMilestone(7);
-    // AU44：7DA 前始终隐藏（？？？？？），7DA 后以「打破多元宇宙的规则」解锁
-    const au44Unlocked = hasDistortMilestone(7) && state.rulesBroken;
-    const thisUnlocked = !isAu4 ? true : (id === "au42" ? au42Unlocked : id === "au43" ? au43Unlocked : id === "au44" ? au44Unlocked : au4Unlocked);
+    const thisUnlocked = !isAu4 || au4UnlockedFor(id);
     if (isAu4 && !thisUnlocked) {
       r.descEl.textContent = id === "au42" ? "（6DA 解锁）" : id === "au43" ? "（7DA 解锁）" : id === "au44" ? "（打破多元宇宙的规则解锁）" : "（4DA 解锁）";
       if (r.nameEl) r.nameEl.textContent = "？？？";
@@ -5806,9 +5836,11 @@ function tick() {
   }
   // S19：滚木 —— 生产为 0 Hz/s 超过 10 分钟（连续）。
   // log 域判定：state.L 下溢为 0 时真实生产仍可能为正（波长 log 权威有限），double 乘除会误判为 0
+  // 门槛：新档 up1=0/未湮灭时增益恒为 0，直接挂机 10 分钟就会白拿该成就——
+  // 只在「已有产出能力」（买过升级1或湮灭过）后才开始计时
   {
     const gainLog = gainPerLLog(gainRateLog().log + timeRateLog());
-    const zero = gainLog < -30; // 对应原 |gain| < 1e-30（gainRate=0 时 log=NLOG 同样命中）
+    const zero = gainLog < -30 && (state.up1 >= 1 || state.annihilations >= 1); // 对应原 |gain| < 1e-30（gainRate=0 时 log=NLOG 同样命中）
     if (zero) {
       if (!state.zeroGainSince) state.zeroGainSince = Date.now();
       else if (!state.ach.hidden.includes("S19") && Date.now() - state.zeroGainSince >= 600000) grantHidden("S19");
@@ -6108,6 +6140,7 @@ function setupUI() {
       }
       const obj = decodeSave(str);
       state = Object.assign(defaultState(), obj);
+      lastSubtab = {}; // 换档后子标签记忆失效：新档未解锁的子页不应被跳转
       state.settings = Object.assign({ theme: "black", notation: "scientific", decimals: 3, uiFps: 33, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true }, obj.settings || {});
       state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
       migrateState();
