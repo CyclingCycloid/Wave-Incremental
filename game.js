@@ -5490,7 +5490,7 @@ function bulkBuyPG2(maxN) {
   if (narrowBlocked()) return 0;
   if (inDistort("narrow")) maxN = Math.min(maxN, Math.max(0, 10 - state.narrowPurchases));
   const slope = inDistort("inflation") ? Math.log10(2) * 2 : Math.log10(2); // 每级 ×2
-  const k = bulkBuyGeneric(pg2CostLog(), slope, maxN, getLogPhonons(), 0,
+  const k = bulkBuyGeneric(pg2CostLog(), slope, maxN, getLogPhonons(),
     (sumLog) => { if (!upgradesFree()) subPhononsLog(sumLog); });
   if (k > 0) {
     if (inDistort("narrow")) state.narrowPurchases += k - 1;
@@ -5506,7 +5506,7 @@ function bulkBuyPG3(maxN) {
   if (inDistort("narrow")) maxN = Math.min(maxN, Math.max(0, 10 - state.narrowPurchases));
   maxN = Math.min(maxN, pg3Cap() - state.pg3);
   const slope = inDistort("inflation") ? 2 : 1; // 每级 ×10
-  const k = bulkBuyGeneric(pg3CostLog(), slope, maxN, getLogPhonons(), 0,
+  const k = bulkBuyGeneric(pg3CostLog(), slope, maxN, getLogPhonons(),
     (sumLog) => { if (!upgradesFree()) subPhononsLog(sumLog); });
   if (k > 0) {
     if (inDistort("narrow")) state.narrowPurchases += k - 1;
