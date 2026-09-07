@@ -3706,7 +3706,7 @@ const COMP_MILESTONES = [
   { n: 8, reward: "卷缩后「简洁」为已完成状态，并自动打破多元宇宙的规则" },
   { n: 10, reward: "卷缩保持「临界湮灭」「对偶原理」的购买" },
   { n: 12, reward: "卷缩保持「单圈重整」「量子狂潮」的购买；卷缩后初始拥有 1e6 虚空泡沫（VF）" },
-  { n: 14, reward: "卷缩不再重置虚空里程碑；解锁自动湮灭新类型「持有倍率」（获取量达到当前持有奇点的指定倍数时湮灭）" },
+  { n: 14, reward: "卷缩不再重置虚空里程碑（保持最佳虚空扭曲生效数——全扭曲虚空条件此后自动满足）；解锁自动湮灭新类型「持有倍率」（获取量达到当前持有奇点的指定倍数时湮灭）" },
   { n: 16, reward: "卷缩不再重置虚空升级；解锁可重复奇点升级自动购买器（自动化页）" },
   { n: 18, reward: "卷缩不再重置虚空泡沫；解锁黑洞升级自动购买器（自动化页）" },
   { n: 20, reward: "升级3不再重置升级1的等级；解锁虚粒子升级自动购买器（自动化页）" },
@@ -3912,7 +3912,7 @@ function buildCompactOnce() {
   for (const def of COMP_MILESTONES) {
     const cell = document.createElement("div");
     cell.className = "milestone comp-milestone";
-    const label = document.createElement("span"); label.className = "comp-ms-label"; label.textContent = `里程碑 ${def.n}`;
+    const label = document.createElement("span"); label.className = "comp-ms-label"; label.textContent = `${def.n}次卷缩`;
     const main = document.createElement("div"); main.className = "comp-ms-main";
     const reward = document.createElement("span"); reward.className = "comp-ms-reward"; reward.textContent = def.reward;
     const status = document.createElement("span"); status.className = "comp-ms-status";
@@ -4200,7 +4200,7 @@ function updateCompactButton() {
   if (!ready) {
     btn.classList.remove("compact-ready");
     btn.disabled = true;
-    btn.textContent = "需要 1e36 VP、1.79e308 Sp、完成 A54";
+    btn.textContent = "需要 1e36 VP、1.79e308 Sp、完成全扭曲虚空";
   } else if (state.compactions === 0) {
     // 首次卷缩：剧情文案（固定 1 SS）
     btn.classList.add("compact-ready");
