@@ -2461,7 +2461,7 @@ function totalEffectText(id) {
     case "sbu1": {
       // 事件视界总等级含量子狂潮免费等级（与 bhAccretionGainLog 的扣费口径一致）
       const total = n("sbu1") + vpu2FreeLevel();
-      return { text: `总效果：吸积效率 ×${fmt(Math.pow(2, total))}` + (vpu2FreeLevel() > 0 ? `（含免费 +${fmt(vpu2FreeLevel())}）` : ""), capped: false };
+      return { text: `总效果：吸积效率 ×${fmt(Math.pow(2, total))}`, capped: false };
     }
     case "sbu2": {
       const eff = sbu2Eff();
