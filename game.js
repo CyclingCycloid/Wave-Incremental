@@ -3707,7 +3707,7 @@ function compMilestone1() { return compMilestone(1); }
 const COMP_MILESTONES = [
   { n: 1, reward: "保持湮灭选项卡的可见性；卷缩后初始拥有 3 次湮灭次数" },
   { n: 2, reward: "卷缩后初始拥有 10 次湮灭次数，「奇点之前的升级不再消耗资源」视为已购买" },
-  { n: 3, reward: "卷缩后初始拥有 20 次湮灭次数和 100 奇点" },
+  { n: 3, reward: "卷缩后初始拥有 20 次湮灭次数和 100 奇点；初始批量购买 8 级，自动湮灭 CD 降至上限 25ms" },
   { n: 4, reward: "卷缩后「定向」「冷却」「刚性」为已完成状态" },
   { n: 5, reward: "保持已购的单次奇点升级（AU1n/2n/3n 无条件保留；AU4n 在新纪元解锁条件满足时保留——第 6 次起保留 AU41，第 7 次起 AU42/43，第 8 次起 AU44）" },
   { n: 6, reward: "卷缩后「狭窄」「膨胀」为已完成状态" },
@@ -3816,8 +3816,9 @@ function applyCompactionResetBody(realNow) {
   if (compMilestone(3)) { setSp(100); setTotalSp(100); } // 初始 100 奇点
   state.autoUp3 = 0; state.autoAnn = 0;
   state.autoOn = defaultAutoOn();
-  state.autoAnnCDLvl = 0;
-  state.batchLvl = 0; state.batchMax = 2;
+  state.autoAnnCDLvl = compMilestone(3) ? 6 : 0; // 里程碑 3：湮灭自动化 CD 直接打到 25ms 下限
+  state.batchLvl = compMilestone(3) ? 8 : 0; // 里程碑 3：初始批量购买 8 级（上限 512）
+  state.batchMax = compMilestone(3) ? 512 : 2;
   state.lastAutoUp3At = 0; state.lastAutoAnnAt = 0;
   state.annBestSp = 0; state.annBestSpLog = NLOG;
   state.annBestRate = 0; state.annBestRateLog = NLOG;
