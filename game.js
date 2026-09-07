@@ -3811,6 +3811,7 @@ function applyCompactionResetBody(realNow) {
     state.phUnlocked = 1; state.meta1 = 1; state.phFluct = 1; state.phCoupling = 1;
     state.autoWaveUpg = 1; state.autoPhononUpg = 1;
   }
+  if (compMilestone(2)) state.phOn = true; // 第二次卷缩起：声子发生器自动打开
   if (compMilestone(2)) state.spu1 = 1; // 「奇点之前的升级不再消耗资源」视为已购买
   if (compMilestone(3)) { setSp(100); setTotalSp(100); } // 初始 100 奇点
   state.autoUp3 = 0; state.autoAnn = 0;
