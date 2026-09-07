@@ -2444,7 +2444,7 @@ function totalEffectText(id) {
     case "sau1": {
       // 有效级别 = floor(3*(10+(n-10)^0.7))/3，与 pg3Cap 的软上限公式同源（含量子狂潮免费等级）
       const eff = Math.floor(3 * (10 + Math.pow(Math.max(n("sau1") + vpu2FreeLevel() - 10, 0), 0.7))) / 3;
-      return { text: `总效果：声子升级3上限 +${pg3Cap() - 20}` + (vpu2FreeLevel() > 0 ? `（含免费 +${fmt(vpu2FreeLevel())}）` : ""), capped: cappedSau("sau1"), eff };
+      return { text: `总效果：声子升级3上限 +${pg3Cap() - 20}`, capped: cappedSau("sau1"), eff };
     }
     case "sau2": {
       const eff = effLevel(n("sau2"), 10, 1 / 3);
@@ -2454,7 +2454,7 @@ function totalEffectText(id) {
       // 热涨落指数本底 0.2 不计入显示：只显示升级加成部分（+0.015/级，单圈重整后 +0.018/级）
       const eff = effLevel(n("sau3") + vpu2FreeLevel(), 10, 1 / 3);
       const per = vpuOwned("vpu1") ? 0.018 : 0.015;
-      return { text: `总效果：热涨落效果指数 +${(per * eff).toFixed(3)}` + (vpu2FreeLevel() > 0 ? `（含免费 +${fmt(vpu2FreeLevel())}）` : ""), capped: cappedSau("sau3"), eff };
+      return { text: `总效果：热涨落效果指数 +${(per * eff).toFixed(3)}`, capped: cappedSau("sau3"), eff };
     }
     case "sau4":
       return { text: `总效果：奇点获取 ×${fmt(Math.pow(2, n("sau4")))}`, capped: false };
