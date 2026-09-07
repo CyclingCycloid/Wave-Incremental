@@ -1048,6 +1048,15 @@ function fmtTimeLog(seconds, secondsLog) {
   if (dLog === null || dLog <= 4) return fmtTime(86400 * 1e4); // 兜底
   return (10 ** (dLog - Math.floor(dLog))).toFixed(3) + "e" + Math.floor(dLog) + "d";
 }
+// 整数资源显示（超弦/声子/CM 等永远为整数的量）：
+// 值 <1（花光后的浮点残差，如 1e-16）显示 0；1–999 显示不带小数的整数；≥1e3 走 e 记数（fmtLog）
+function fmtIntRes(doubleVal, logVal) {
+  const lg = (typeof logVal === "number" && isFinite(logVal) && logVal > NLOG + 1) ? logVal
+    : (doubleVal > 0 && isFinite(doubleVal)) ? Math.log10(doubleVal) : NLOG;
+  if (lg <= NLOG + 1 || lg < -1e-9) return "0"; // 零/浮点残差（0 < 值 < 1 只可能是舍入噪声）
+  if (lg < 3) return String(Math.floor(Math.pow(10, lg)));
+  return fmtLog(lg);
+}
 // 湮灭次数等大计数的显示：≥1e4 用科学计数法（如 3.00e4）
 function fmtAnnNum(n) {
   return n >= 1e4 ? n.toExponential(2).replace("e+", "e") : `${n}`;
@@ -1911,7 +1920,7 @@ function renderPhononFast() {
   // 显示必须用裁剪后的温度 log（temperatureCappedLog），传 raw 会在 T=Infinity 时
   // 显示未封顶的原始温度，看起来像温度超过了上限
   document.getElementById("ph-res-text").textContent =
-    `你拥有${fmtInt(state.phonons, getLogPhonons())}声子，温度为${fmtNum(T, temperatureCappedLog())} K`;
+    `你拥有${fmtIntRes(state.phonons, getLogPhonons())}声子，温度为${fmtNum(T, temperatureCappedLog())} K`;
   document.getElementById("ph-thermal").textContent =
     `热涨落把你的波速获取变为原来的${fmtNum(thermalMult(), thermalMultLog())}倍`;
   // 8DA 打破规则后：主宇宙普朗克温度为软上限，声子页显示红色提示行
@@ -4101,9 +4110,7 @@ function updateCompactUI() {
     el.statusEl.textContent = done ? "✓ 已完成" : `${Math.min(state.compactions, def.n)} / ${def.n}`;
   }
   // 维度折叠器：CM 值（显示 floor，后台小数）与产量
-  const cmLog = getLogCM();
-  const cmShow = cmLog <= NLOG + 1 ? 0 : (cmLog > 308 ? Infinity : Math.floor(Math.pow(10, cmLog)));
-  document.getElementById("comp-cm-value").textContent = fmtNum(cmShow, cmLog);
+  document.getElementById("comp-cm-value").textContent = fmtIntRes(state.cm, getLogCM());
   const rateLog = cmRateLog();
   // 每秒获取写最终值：基础产量 × 折叠器时间乘数（节点 01 的削弱加成等全部计入）
   const finalRateLog = rateLog <= NLOG + 1 ? NLOG : clampLog(rateLog + cmTimeMultLog());
@@ -5420,7 +5427,7 @@ function renderFast() {
   }
   // 超弦显示（卷缩层：首次卷缩后、测试模式下；显隐由 applyCompactVisibility 管理）
   if (state.testMode && state.compactions >= 1) {
-    document.getElementById("ss-value").textContent = fmtNum(state.ss, getLogSS());
+    document.getElementById("ss-value").textContent = fmtIntRes(state.ss, getLogSS());
   }
   // 狭窄宇宙：剩余购买次数
   const nwEl = document.getElementById("narrow-display");
