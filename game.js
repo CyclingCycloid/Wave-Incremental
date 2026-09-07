@@ -2495,7 +2495,7 @@ function totalEffectText(id) {
       // 有效级别 = floor(3*(10+(n-10)^指数))/3，与 pg3Cap 的软上限公式同源（含免费等级；节点 21 削弱软上限 0.7 → 0.8）
       const exp = theoryOwned("21") ? 0.715 : 0.7;
       const eff = Math.floor(3 * (10 + Math.pow(Math.max(n("sau1") + sau1FreeLevel() - 10, 0), exp))) / 3;
-      return { text: `总效果：声子升级3上限 +${pg3Cap() - 20}`, capped: cappedSau("sau1"), eff };
+      return { text: `总效果：声子升级3上限 +${Math.floor(pg3Cap() - 20)}`, capped: cappedSau("sau1"), eff };
     }
     case "sau2": {
       const eff = effLevel(n("sau2"), 10, 1 / 3);
