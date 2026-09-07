@@ -3706,7 +3706,7 @@ const COMP_MILESTONES = [
   { n: 8, reward: "卷缩后「简洁」为已完成状态，并自动打破多元宇宙的规则" },
   { n: 10, reward: "卷缩保持「临界湮灭」「对偶原理」的购买" },
   { n: 12, reward: "卷缩保持「单圈重整」「量子狂潮」的购买；卷缩后初始拥有 1e6 虚空泡沫（VF）" },
-  { n: 14, reward: "卷缩不再重置虚空里程碑（保持最佳虚空扭曲生效数——全扭曲虚空条件此后自动满足）；解锁自动湮灭新类型「持有倍率」（获取量达到当前持有奇点的指定倍数时湮灭）" },
+  { n: 14, reward: "卷缩不再重置虚空里程碑（保持最佳虚空扭曲生效数）；解锁自动湮灭新类型「持有倍率」（获取量达到当前持有奇点的指定倍数时湮灭）" },
   { n: 16, reward: "卷缩不再重置虚空升级；解锁可重复奇点升级自动购买器（自动化页）" },
   { n: 18, reward: "卷缩不再重置虚空泡沫；解锁黑洞升级自动购买器（自动化页）" },
   { n: 20, reward: "升级3不再重置升级1的等级；解锁虚粒子升级自动购买器（自动化页）" },
@@ -3722,11 +3722,11 @@ function canCompactify() {
     && state.voidBestRules >= 8
     && getLogSp() >= SP_SOFTCAP_PIVOT_LOG;
 }
-// 本次卷缩可获得的超弦（log10；公式 lg = ((lgVP−36)/30 + (lgSp−拐点)/300)/2，取整前）
+// SS 获取公式：SS = floor(((VP/1e36)^(1/30)×(Sp/1.79e308)^(1/300))^0.8)
 function compactSSGainLog() {
   const vp = getLogVP(), sp = getLogSp();
   if (vp < 36 || sp < SP_SOFTCAP_PIVOT_LOG) return NLOG;
-  return clampLog(((vp - 36) / 30 + (sp - SP_SOFTCAP_PIVOT_LOG) / 300) / 2);
+  return clampLog(((vp - 36) / 30 + (sp - SP_SOFTCAP_PIVOT_LOG) / 300) * 0.8);
 }
 function compactSSGain() {
   const lg = compactSSGainLog();
