@@ -2858,12 +2858,16 @@ function bhEffectLog() {
   return clampLog(exp * mLog);
 }
 // 黑洞对时间速率的加成（仅扭曲状态）的 log10：×(1 + bhEffect)；AU34 引力扭曲：扭曲状态效果额外 ^2。
-// 非扭曲状态为 0（倍率 1）——单一实现供 timeRateLog/时间倍率显示/黑洞页共用
-function bhTimeMultLog() {
-  if (!bhUnlocked() || state.bhState !== "distorl") return 0;
+// 扭曲效果预览（bhTimeMultPreviewLog）供黑洞页三状态常显；实际应用仍仅扭曲状态（bhTimeMultLog 门控）
+function bhTimeMultPreviewLog() {
+  if (!bhUnlocked()) return 0;
   let el = bhEffectLog();
   if (auOwned("au34")) el = clampLog(el * 2);
   return el > 0 ? clampLog(logAddLogs(0, el)) : 0;
+}
+function bhTimeMultLog() {
+  if (!bhUnlocked() || state.bhState !== "distorl") return 0;
+  return bhTimeMultPreviewLog();
 }
 function bhTimeMult() {
   const l = bhTimeMultLog();
@@ -4412,7 +4416,7 @@ function bhAnimLoop() {
       `<div class="bh-stat-row"><span>黑洞质量</span><span>${fmtNum(state.bhMass, getLogBhMass())} M☉</span></div>` +
       `<div class="bh-stat-row"><span>虚粒子</span><span>${fmtInt(state.virtualParticles, getLogVP())}</span></div>` +
       `<div class="bh-stat-row"><span>当前状态</span><span>${stNames[state.bhState] || "—"}</span></div>` +
-      `<div class="bh-stat-row"><span>扭曲效果</span><span>×${fmtNum(bhTimeMult(), bhTimeMultLog())}</span></div>` +
+      `<div class="bh-stat-row"><span>扭曲效果</span><span>×${fmtNum(bhTimeMultPreviewLog() > 0 ? Math.pow(10, Math.min(bhTimeMultPreviewLog(), 308)) : 1, bhTimeMultPreviewLog())}</span></div>` +
       (bhMassSoftcapped() ? `<div class="bh-softcap-note">黑洞质量获取超过 1e${bhMassSoftcapLog()} 的部分将受到软上限影响</div>` : "");
   }
   bhAnimRAF = requestAnimationFrame(bhAnimLoop);
