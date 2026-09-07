@@ -4412,7 +4412,7 @@ function bhAnimLoop() {
       `<div class="bh-stat-row"><span>黑洞质量</span><span>${fmtNum(state.bhMass, getLogBhMass())} M☉</span></div>` +
       `<div class="bh-stat-row"><span>虚粒子</span><span>${fmtInt(state.virtualParticles, getLogVP())}</span></div>` +
       `<div class="bh-stat-row"><span>当前状态</span><span>${stNames[state.bhState] || "—"}</span></div>` +
-      `<div class="bh-stat-row"><span>效果</span><span>×${fmtNum(bhTimeMult(), bhTimeMultLog())}</span></div>` +
+      `<div class="bh-stat-row"><span>扭曲效果</span><span>×${fmtNum(bhTimeMult(), bhTimeMultLog())}</span></div>` +
       (bhMassSoftcapped() ? `<div class="bh-softcap-note">黑洞质量获取超过 1e${bhMassSoftcapLog()} 的部分将受到软上限影响</div>` : "");
   }
   bhAnimRAF = requestAnimationFrame(bhAnimLoop);
