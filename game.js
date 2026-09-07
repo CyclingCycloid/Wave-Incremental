@@ -1026,7 +1026,9 @@ function fmtTime(seconds, precise) {
 const LOG_MAX_DOUBLE = Math.log10(Number.MAX_VALUE); // ≈308.2547
 function fmtTimeLog(seconds, secondsLog) {
   const lg = (typeof secondsLog === "number" && isFinite(secondsLog) && secondsLog > NLOG + 1) ? secondsLog : null;
-  if (lg !== null && lg > LOG_MAX_DOUBLE) {
+  // seconds === Number.MAX_VALUE（封顶哨兵）而 log 权威有效时也走 log 域——
+  // log 可能略低于 double 上限（trLog 刚过 308 且 realDt 小），此时缓存已是哨兵、log 才是真值
+  if (lg !== null && (lg > LOG_MAX_DOUBLE || seconds === Number.MAX_VALUE)) {
     const dLog = lg - Math.log10(86400);
     return (10 ** (dLog - Math.floor(dLog))).toFixed(3) + "e" + Math.floor(dLog) + "d";
   }
@@ -2056,10 +2058,14 @@ function doAnnihilation() {
   // gained=Infinity（rate=0/Infinity）时用 spGainLog()+log10(60/realDur) 口径
   const histSpLog = isFinite(gained) ? Math.log10(gained) : spGainLog();
   const histRateLog = (rate > 0 && isFinite(rate)) ? Math.log10(rate) : histSpLog + Math.log10(60 / Math.max(realDur, 1e-9));
+  // 游戏时长 log 权威（超 double 时 double 缓存被封顶，log 才是真值）
+  const gameDurLog = (state.annGameElapsedLog !== undefined && isFinite(state.annGameElapsedLog) && state.annGameElapsedLog > NLOG + 1)
+    ? state.annGameElapsedLog
+    : ((gameDur > 0 && isFinite(gameDur)) ? Math.log10(gameDur) : NLOG);
   pushAnnHistory({
     label: inDistortMode ? `扭曲·${dUniverse.name}` : `第 ${fmtAnnNum(state.annihilations + 1)} 次`,
     distort: inDistortMode ? dUniverse.id : "",
-    sp: gained, realDur, gameDur, rate, at: realNow,
+    sp: gained, realDur, gameDur, gameDurLog, rate, at: realNow,
     spLog: histSpLog,
     rateLog: histRateLog,
   });
@@ -2192,9 +2198,12 @@ function forceAnnihilationReset(gained, noCount) {
   }
   const histSpLog = isFinite(gained) ? Math.log10(gained) : spGainLog();
   const histRateLog = (rate > 0 && isFinite(rate)) ? Math.log10(rate) : histSpLog + Math.log10(60 / Math.max(realDur, 1e-9));
+  const gameDurLog = (state.annGameElapsedLog !== undefined && isFinite(state.annGameElapsedLog) && state.annGameElapsedLog > NLOG + 1)
+    ? state.annGameElapsedLog
+    : ((gameDur > 0 && isFinite(gameDur)) ? Math.log10(gameDur) : NLOG);
   pushAnnHistory({
     label: `第 ${fmtAnnNum(state.annihilations + 1)} 次`, distort: "",
-    sp: gained, realDur, gameDur, rate, at: realNow,
+    sp: gained, realDur, gameDur, gameDurLog, rate, at: realNow,
     spLog: histSpLog,
     rateLog: histRateLog,
   });
@@ -5358,11 +5367,9 @@ function renderStats() {
       const row = document.createElement("div");
       row.className = "ann-history-row" + (r.distort ? " distort-row" : "");
       const label = document.createElement("span"); label.className = "ah-label";
-      // gameDur 可能是 dtOverDouble 封顶的 MAX_VALUE：按 log(秒)−log(86400) 显示 eNd 天
-      const gdHuge = !(r.gameDur > 0 && isFinite(r.gameDur) && r.gameDur < 86400 * 1e4);
-      const durText = gdHuge
-        ? (() => { const dLog = Math.log10(Math.max(r.gameDur, 1e-300)) - Math.log10(86400); return (10 ** (dLog - Math.floor(dLog))).toFixed(3) + "e" + Math.floor(dLog) + "d"; })()
-        : fmtTime(r.gameDur);
+      // 游戏时长：新记录存 gameDurLog 权威（超 double 时 double 缓存被封顶不可用）；
+      // 旧记录无 gameDurLog 时回落旧行为（封顶条目只能显示 2.08e303d 近似，真值已不可恢复）
+      const durText = fmtTimeLog(r.gameDur, r.gameDurLog);
       label.textContent = `${r.label} · ${fmtTime(r.realDur)}（真实）/ ${durText}（游戏）`;
       const val = document.createElement("span"); val.className = "ah-val";
       // sp/rate 显示完全由 log 值驱动（新记录存 spLog/rateLog 权威，可超 double）：
