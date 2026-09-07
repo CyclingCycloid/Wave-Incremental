@@ -649,9 +649,16 @@ function up2Cost() {
 function up3WavelengthFromFLog(lf) {
   const e = up3Exp();
   if (!isFinite(lf)) return Infinity;
-  if (lf <= 100) return e * lf;
-  const scale = up3SoftcapScale(lf);
-  return e * 100 + e * scale * (lf - 100);
+  let w;
+  if (lf <= 100) w = e * lf;
+  else {
+    const scale = up3SoftcapScale(lf);
+    w = e * 100 + e * scale * (lf - 100);
+  }
+  // 二次软上限（v0.6.1）：缩减效果超过 1e100000（新波长 ≤ 1e-100000）的部分指数变为 0.8 次方
+  //（拐点处连续：w = 100000 时输入输出相等；实际购买与「下次重置」预览共用本函数）
+  if (w > 100000) w = 100000 + Math.pow(w - 100000, 0.8);
+  return w;
 }
 // 冷却宇宙：购买任何升级 → 波速获取量变为 A^k，k 在 15 秒内从 0 线性升到上限 0.75；
 // 期间再次购买则 k 重置为 0（获取量瞬间跌到 1）
