@@ -2857,13 +2857,17 @@ function bhEffectLog() {
   const exp = 0.2 + sbu2Eff() * 0.05;
   return clampLog(exp * mLog);
 }
-// 黑洞对时间速率的加成（仅扭曲状态）：×(1 + bhEffect)；AU34 引力扭曲：扭曲状态效果额外 ^2
-function bhTimeMult() {
-  if (!bhUnlocked() || state.bhState !== "distorl") return 1;
-  // AU34：扭曲状态效果 ^2（即 bhEffectLog × 2）
+// 黑洞对时间速率的加成（仅扭曲状态）的 log10：×(1 + bhEffect)；AU34 引力扭曲：扭曲状态效果额外 ^2。
+// 非扭曲状态为 0（倍率 1）——单一实现供 timeRateLog/时间倍率显示/黑洞页共用
+function bhTimeMultLog() {
+  if (!bhUnlocked() || state.bhState !== "distorl") return 0;
   let el = bhEffectLog();
   if (auOwned("au34")) el = clampLog(el * 2);
-  return el > 0 ? (1 + (el > 308 ? Infinity : Math.pow(10, el))) : 1;
+  return el > 0 ? clampLog(logAddLogs(0, el)) : 0;
+}
+function bhTimeMult() {
+  const l = bhTimeMultLog();
+  return l > 0 ? (l > 308 ? Infinity : Math.pow(10, l)) : 1;
 }
 // 吸积效率倍率（SBU1 事件视界 ×2/级；AU43 奇点塌缩额外 ×spAccretionMult）——以 log 形式接入 bhAccretionRateLog
 // AU43 奇点塌缩：黑洞吸积效率倍率 = (lg(Sp+1) + (Sp+1)^0.01)^3（double 版，显示用；
@@ -4408,7 +4412,7 @@ function bhAnimLoop() {
       `<div class="bh-stat-row"><span>黑洞质量</span><span>${fmtNum(state.bhMass, getLogBhMass())} M☉</span></div>` +
       `<div class="bh-stat-row"><span>虚粒子</span><span>${fmtInt(state.virtualParticles, getLogVP())}</span></div>` +
       `<div class="bh-stat-row"><span>当前状态</span><span>${stNames[state.bhState] || "—"}</span></div>` +
-      `<div class="bh-stat-row"><span>基础效果</span><span>×${fmtNum(bhEffect(), bhEffectLog())}</span></div>` +
+      `<div class="bh-stat-row"><span>效果</span><span>×${fmtNum(bhTimeMult(), bhTimeMultLog())}</span></div>` +
       (bhMassSoftcapped() ? `<div class="bh-softcap-note">黑洞质量获取超过 1e${bhMassSoftcapLog()} 的部分将受到软上限影响</div>` : "");
   }
   bhAnimRAF = requestAnimationFrame(bhAnimLoop);
@@ -4667,14 +4671,8 @@ function auEffectSuffix(id) {
       return "（当前时间倍率 ×" + fmt(timeArrowMult()) + "）";
     case "au33":
       return "（当前时间倍率 ×" + fmt(absZeroMult()) + "）";
-    case "au34": {
-      // 当前生效的扭曲状态时间倍率（仅黑洞处于扭曲状态时 >1；AU34 效果 ^2 = 指数×2，与 bhTimeMult 口径一致）
-      if (!bhUnlocked() || state.bhState !== "distorl") return "（当前扭曲状态时间倍率 ×1）";
-      const el = clampLog(bhEffectLog() * 2);
-      const mLog = logAddLogs(0, el);
-      const m = mLog > 308 ? Infinity : Math.pow(10, mLog);
-      return "（当前扭曲状态时间倍率 ×" + fmtNum(m, mLog) + "）";
-    }
+    case "au34":
+      return ""; // 效果总倍率已移至黑洞页「效果」行显示
     case "au41":
       return "（当前奇点获取 ×" + fmt(phononSpMult()) + "）";
     case "au42":
