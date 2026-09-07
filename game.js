@@ -5067,16 +5067,20 @@ function autoAnnCD() {
   cd = Math.max(25, cd / Math.pow(2, state.autoAnnCDLvl));
   return cd;
 }
+// 自动购买主要页升级1/2 的批量循环（runAutomation 与「升级3 购买后即时回购」共用）
+function autoBuyWaveLoop() {
+  const n = autoBuyTimes("wave");
+  // 防御：购买被宇宙规则拒绝或 spu1 免费但价格达标不变化时，不会因 n=∞ 死循环；
+  // bulk=true 跳过逐次渲染与成就检查（tick 末尾统一执行）
+  for (let i = 0; i < n; i++) { const lv = state.up1; if (cmpGE(F(), up1Cost(), FLog(), up1CostLog())) buyUp1(true); else break; if (state.up1 === lv) break; }
+  for (let i = 0; i < n; i++) { const lv = state.up2; if (cmpGE(F(), up2Cost(), FLog(), up2CostLog())) buyUp2(true); else break; if (state.up2 === lv) break; }
+}
 function runAutomation() {
   if (state.annihilations < 1) return;
   // 狭窄宇宙：购买类自动化禁用（升级限购 10 次是挑战规则），自动湮灭照常工作
   const narrow = inDistort("narrow");
   if (!narrow && state.autoOn.wave && state.autoWaveUpg) {
-    const n = autoBuyTimes("wave");
-    // 防御：购买被宇宙规则拒绝或 spu1 免费但价格达标不变化时，不会因 n=∞ 死循环；
-    // bulk=true 跳过逐次渲染与成就检查（tick 末尾统一执行）
-    for (let i = 0; i < n; i++) { const lv = state.up1; if (cmpGE(F(), up1Cost(), FLog(), up1CostLog())) buyUp1(true); else break; if (state.up1 === lv) break; }
-    for (let i = 0; i < n; i++) { const lv = state.up2; if (cmpGE(F(), up2Cost(), FLog(), up2CostLog())) buyUp2(true); else break; if (state.up2 === lv) break; }
+    autoBuyWaveLoop();
   }
   if (!narrow && state.autoOn.phonon && state.autoPhononUpg && state.phUnlocked) {
     const n = autoBuyTimes("phonon");
@@ -5085,10 +5089,13 @@ function runAutomation() {
     for (let i = 0; i < n; i++) { const lv = state.pg3; if (state.pg3 < pg3Cap() && cmpGE(state.phonons, pg3Cost(), getLogPhonons(), pg3CostLog())) buyPG3(true); else break; if (state.pg3 === lv) break; }
   }
   if (!narrow && state.autoOn.up3 && state.autoUp3 && up3Card) {
+    // up3 购买会清零 up1/up2 并重置 U：购买成功后在同一 tick 立即回购，
+    // 消除「本 tick 购买块已跑完 → 下个 tick 才买回」的获取归零死窗口（卡顿感来源）
+    const rebuyAfterUp3 = () => { if (!narrow && state.autoOn.wave && state.autoWaveUpg) autoBuyWaveLoop(); };
     if (auOwned("au21") && state.autoUp3Mode === "time") {
       // 时间模式：距上次自动升级3超过设定秒数即触发（仍需 F 超过峰值，log 域比较）
       if (gameNow() - state.lastAutoUp3At >= state.autoUp3Interval * 1000 && FLog() > getLogUp3LastF()) {
-        if (buyUp3()) state.lastAutoUp3At = gameNow();
+        if (buyUp3()) { state.lastAutoUp3At = gameNow(); rebuyAfterUp3(); }
       }
     } else {
       // 比例模式：在当前加成倍率达到设定值时购买升级3（log 域，防 mult 溢出；
@@ -5096,7 +5103,9 @@ function runAutomation() {
       const fLog = FLog();
       const multLog = getLogL10() + up3WavelengthFromFLog(fLog);
       const autoMultLog = state.autoUp3MultLog;
-      if (fLog > getLogUp3LastF() && multLog >= autoMultLog) buyUp3();
+      if (fLog > getLogUp3LastF() && multLog >= autoMultLog) {
+        if (buyUp3()) rebuyAfterUp3();
+      }
     }
   }
   autoAnnTick();
