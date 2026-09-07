@@ -2492,10 +2492,12 @@ function totalEffectText(id) {
   const cappedSau = (key) => n(key) > 10;
   switch (id) {
     case "sau1": {
-      // 有效级别 = floor(3*(10+(n-10)^指数))/3，与 pg3Cap 的软上限公式同源（含免费等级；节点 21 削弱软上限 0.7 → 0.8）
+      // 有效级别 = floor(per*(10+(n-10)^指数))/per，与 pg3Cap 的软上限公式同源（含免费等级；节点 21 削弱软上限 0.7 → 0.715）
       const exp = theoryOwned("21") ? 0.715 : 0.7;
-      const eff = Math.floor(3 * (10 + Math.pow(Math.max(n("sau1") + sau1FreeLevel() - 10, 0), exp))) / 3;
-      return { text: `总效果：声子升级3上限 +${Math.floor(pg3Cap() - 20)}`, capped: cappedSau("sau1"), eff };
+      const per = vpuOwned("vpu1") ? 3 : 2;
+      const n1 = n("sau1") + sau1FreeLevel();
+      const eff = Math.floor(per * (10 + Math.pow(Math.max(n1 - 10, 0), exp))) / per;
+      return { text: `总效果：声子升级3上限 +${Math.floor(pg3Cap() - 20)}`, capped: n1 > 10, eff };
     }
     case "sau2": {
       const eff = effLevel(n("sau2"), 10, 1 / 3);
@@ -2780,14 +2782,13 @@ function effLevel(n, softcap, power) {
 // SAU1：声子升级3上限（单圈重整后软上限：超出 20 基础的部分 = 30+floor(3*(n-10)^0.7)，
 // 即 n>10 时 pg3Cap = 50+floor(3*(n-10)^0.7)；未购 VPU1 时上限 10 级、每级 +2）
 function pg3Cap() {
-  // 量子狂潮与理论树节点 21 的免费等级计入（软上限前）；节点 21 削弱软上限（指数 0.7 → 0.715）
+  // 量子狂潮与理论树节点 21 的免费等级计入；节点 21 削弱软上限（指数 0.7 → 0.715）。
+  // 未购单圈重整时同样运用有效等级软上限（n1 > 10 的超出部分按 exp 次方缩减，每级增量按 +2/级）
   const n1 = state.sau1 + sau1FreeLevel();
   const exp = theoryOwned("21") ? 0.715 : 0.7;
-  if (vpuOwned("vpu1")) {
-    if (n1 <= 10) return 20 + 3 * n1;
-    return 50 + Math.floor(3 * Math.pow(n1 - 10, exp));
-  }
-  return 20 + 2 * n1;
+  const per = vpuOwned("vpu1") ? 3 : 2;
+  if (n1 <= 10) return 20 + per * n1;
+  return 20 + per * 10 + Math.floor(per * Math.pow(n1 - 10, exp));
 }
 // SAU2：奇点效果指数倍率（有效级别 = 10+(n-10)^(1/3)）
 function sauMult() {
