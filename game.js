@@ -1064,6 +1064,15 @@ function fmtIntRes(doubleVal, logVal) {
   if (lg < 3) return String(Math.floor(Math.pow(10, lg)));
   return fmtLog(lg);
 }
+// 整数货币显示（超弦/灵感等纯整数货币）：四舍五入（log 域加减残差 ±1ulp 不影响显示），
+// 值 <0.5（浮点残差）显示 0；≥1e3 走 e 记数（fmtLog）
+function fmtIntRound(doubleVal, logVal) {
+  const lg = (typeof logVal === "number" && isFinite(logVal) && logVal > NLOG + 1) ? logVal
+    : (doubleVal > 0 && isFinite(doubleVal)) ? Math.log10(doubleVal) : NLOG;
+  if (lg <= NLOG + 1 || lg < -0.5) return "0";
+  if (lg < 3) return String(Math.round(Math.pow(10, lg)));
+  return fmtLog(lg);
+}
 // 湮灭次数等大计数的显示：≥1e4 用科学计数法（如 3.00e4）
 function fmtAnnNum(n) {
   return n >= 1e4 ? n.toExponential(2).replace("e+", "e") : `${n}`;
@@ -3400,10 +3409,31 @@ function setSSLog(lg) {
   state.logDss = clampLog(lg);
   state.ss = (lg <= NLOG + 1) ? 0 : (lg > 308 ? Infinity : Math.pow(10, lg));
 }
-function addSSLog(addLog) { setSSLog(logAddLogs(getLogSS(), addLog)); }
+function addSSLog(addLog) { setSSLog(logAddLogs(getLogSS(), addLog)); snapSS(); }
 function subSSLog(costLog) {
   const r = logAddSigned(getLogSS(), 1, costLog, -1);
   if (r.sign < 0) setSS(0); else setSSLog(r.log);
+  snapSS();
+}
+// SS/灵感为纯整数货币：log 域加减的 ~1ulp 浮点残差在源头吸附回整数
+//（否则显示层 floor 会把 1.9999999999999998 显示成 1）
+function snapIntCurrency(v) {
+  const r = Math.round(v);
+  return (isFinite(r) && Math.abs(v - r) <= 1e-6 * Math.max(1, r)) ? r : v;
+}
+function snapSS() {
+  const r = snapIntCurrency(state.ss);
+  if (r !== state.ss) {
+    if (r > 0) { state.ss = r; state.logDss = clampLog(Math.log10(r)); }
+    else { state.ss = 0; state.logDss = NLOG; }
+  }
+}
+function snapIns() {
+  const r = snapIntCurrency(state.ins);
+  if (r !== state.ins) {
+    if (r > 0) { state.ins = r; state.logDins = clampLog(Math.log10(r)); }
+    else { state.ins = 0; state.logDins = NLOG; }
+  }
 }
 function getLogTotalSS() {
   if (state.logDtotalSS !== undefined && isFinite(state.logDtotalSS)) return clampLog(state.logDtotalSS);
@@ -3427,10 +3457,11 @@ function setInsLog(lg) {
   state.logDins = clampLog(lg);
   state.ins = (lg <= NLOG + 1) ? 0 : (lg > 308 ? Infinity : Math.pow(10, lg));
 }
-function addInsLog(addLog) { setInsLog(logAddLogs(getLogIns(), addLog)); }
+function addInsLog(addLog) { setInsLog(logAddLogs(getLogIns(), addLog)); snapIns(); }
 function subInsLog(costLog) {
   const r = logAddSigned(getLogIns(), 1, costLog, -1);
   if (r.sign < 0) setIns(0); else setInsLog(r.log);
+  snapIns();
 }
 function getLogTotalIns() {
   if (state.logDtotalIns !== undefined && isFinite(state.logDtotalIns)) return clampLog(state.logDtotalIns);
@@ -4173,7 +4204,7 @@ function updateCompactUI() {
     `拓扑节点：${tpTotal()}（可用 ${state.tp} ｜ 点 ${state.tpV} · 边 ${state.tpE} · 面 ${state.tpF}）`;
   // 灵感大框：总灵感（可用）+ 三途径格子
   document.getElementById("comp-ins-line").textContent =
-    `总灵感：${fmtNum(state.totalIns, getLogTotalIns())}（可用 ${fmtNum(state.ins, getLogIns())}）`;
+    `总灵感：${fmtIntRound(state.totalIns, getLogTotalIns())}（可用 ${fmtIntRound(state.ins, getLogIns())}）`;
   const insCant = {
     F: cmpLT(F(), Math.pow(10, Math.min(insCostLogF(), 308)), FLog(), insCostLogF()),
     Sp: !spAffordLog(insCostLogSp()),
@@ -5646,7 +5677,7 @@ function renderFast() {
   }
   // 超弦显示（卷缩层：首次卷缩后、测试模式下；显隐由 applyCompactVisibility 管理）
   if (state.testMode && state.compactions >= 1) {
-    document.getElementById("ss-value").textContent = fmtIntRes(state.ss, getLogSS());
+    document.getElementById("ss-value").textContent = fmtIntRound(state.ss, getLogSS());
   }
   // 狭窄宇宙：剩余购买次数
   const nwEl = document.getElementById("narrow-display");
