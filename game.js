@@ -2476,8 +2476,8 @@ function totalEffectText(id) {
   const cappedSau = (key) => n(key) > 10;
   switch (id) {
     case "sau1": {
-      // 有效级别 = floor(3*(10+(n-10)^0.7))/3，与 pg3Cap 的软上限公式同源（含量子狂潮免费等级）
-      const eff = Math.floor(3 * (10 + Math.pow(Math.max(n("sau1") + vpu2FreeLevel() - 10, 0), 0.7))) / 3;
+      // 有效级别 = floor(3*(10+(n-10)^0.7))/3，与 pg3Cap 的软上限公式同源（含量子狂潮与节点 21 免费等级）
+      const eff = Math.floor(3 * (10 + Math.pow(Math.max(n("sau1") + sau1FreeLevel() - 10, 0), 0.7))) / 3;
       return { text: `总效果：声子升级3上限 +${pg3Cap() - 20}`, capped: cappedSau("sau1"), eff };
     }
     case "sau2": {
@@ -2758,8 +2758,8 @@ function effLevel(n, softcap, power) {
 // SAU1：声子升级3上限（单圈重整后软上限：超出 20 基础的部分 = 30+floor(3*(n-10)^0.7)，
 // 即 n>10 时 pg3Cap = 50+floor(3*(n-10)^0.7)；未购 VPU1 时上限 10 级、每级 +2）
 function pg3Cap() {
-  // 量子狂潮免费等级计入（软上限前）
-  const n1 = state.sau1 + vpu2FreeLevel();
+  // 量子狂潮与理论树节点 21 的免费等级计入（软上限前）
+  const n1 = state.sau1 + sau1FreeLevel();
   if (vpuOwned("vpu1")) {
     if (n1 <= 10) return 20 + 3 * n1;
     return 50 + Math.floor(3 * Math.pow(n1 - 10, 0.7));
@@ -3518,7 +3518,9 @@ const THEORY_NODES = [
   { id: "12", name: "质点力学", parents: ["01"], cost: 2,
     desc: "略微削弱奇点获取的软上限",
     effect: () => "当前指数 0.12" },
-  { id: "21", name: "电磁学", parents: ["11"], placeholder: true },
+  { id: "21", name: "电磁学", parents: ["11"], cost: 6,
+    desc: "基于CM给予象限拓张免费等级",
+    effect: () => "当前 +" + fmt(theory21FreeLevel()) + " 免费等级" },
   { id: "22", name: "刚体力学", parents: ["12"], placeholder: true },
   { id: "23", name: "分析力学", parents: ["12"], placeholder: true },
   { id: "31", name: "电动力学", parents: ["21"], placeholder: true },
@@ -3526,6 +3528,13 @@ const THEORY_NODES = [
   { id: "41", name: "波动光学", parents: ["31", "32"], placeholder: true },
 ];
 function theoryOwned(id) { return !!state.theoryNodes[id]; }
+// 理论树节点 21 电磁学：基于 CM 给予象限拓张（SAU1）免费等级 lg(CM+1)×4
+function theory21FreeLevel() {
+  if (!theoryOwned("21")) return 0;
+  return Math.max(0, cmLg1()) * 4;
+}
+// 象限拓张（SAU1）的免费等级合计：量子狂潮 + 理论树节点 21（软上限前）
+function sau1FreeLevel() { return vpu2FreeLevel() + theory21FreeLevel(); }
 // 理论树节点 11 经典场论：湮灭次数加成奇点效果——乘在四个奇点效果的**指数**上
 //（与 1DA 的 daExpMult 同类实现）：波速获取、普朗克常数、普朗克温度上限、黑洞吸积效率
 function theory11Exp() {
@@ -4748,9 +4757,11 @@ function updateSpUI() {
     const c = Math.pow(10, cLog);
     const afford = !maxed && cmpGE(state.sp, c, getLogSp(), cLog);
     {
-      // 象限拓张/紫外灾难：量子狂潮免费等级以「+N 免费」并入显示（不影响价格与购买上限）
+      // 象限拓张/紫外灾难：免费等级以「+N 免费」并入显示（不影响价格与购买上限）；
+      // 象限拓张含理论树节点 21 的 CM 免费等级，紫外灾难仅量子狂潮
       const isSau13 = r.u.key === "sau1" || r.u.key === "sau3";
-      const free = (isSau13 && vpu2FreeLevel() > 0) ? " + " + fmt(vpu2FreeLevel()) + " 免费" : "";
+      const freeLvl = r.u.key === "sau1" ? sau1FreeLevel() : vpu2FreeLevel();
+      const free = (isSau13 && freeLvl > 0) ? " + " + fmt(freeLvl) + " 免费" : "";
       r.descEl.textContent = sauDesc(r.u) + (effMax !== Infinity ? "（" + state[r.u.key] + free + "/" + effMax + "）" : "（等级 " + state[r.u.key] + free + "）");
     }
     if (r.totalEl) renderTotalEffect(r.totalEl, r.u.id);
@@ -6493,7 +6504,7 @@ function applyTestModeUIGlobal() {
   const forceCompactBtn = document.getElementById("force-compact-btn");
   if (forceCompactBtn) forceCompactBtn.classList.toggle("hidden", !state.testMode);
   if (verEl) verEl.textContent = state.testMode
-    ? "v0.6.0.0 The Compactification Update（测试）"
+    ? "v0.6.1 The Compactification Update（测试）"
     : "v0.5.1 The Void Update";
 }
 
