@@ -2491,12 +2491,15 @@ function totalEffectText(id) {
       const per = vpuOwned("vpu1") ? 0.018 : 0.015;
       return { text: `总效果：热涨落效果指数 +${(per * eff).toFixed(3)}`, capped: cappedSau("sau3"), eff };
     }
-    case "sau4":
-      return { text: `总效果：奇点获取 ×${fmt(Math.pow(2, n("sau4")))}`, capped: false };
+    case "sau4": {
+      const lg = n("sau4") * Math.log10(2);
+      return { text: `总效果：奇点获取 ×${fmtNum(Math.pow(10, Math.min(lg, 308)), lg)}`, capped: false };
+    }
     case "sbu1": {
       // 事件视界总等级含量子狂潮免费等级（与 bhAccretionGainLog 的扣费口径一致）
       const total = n("sbu1") + vpu2FreeLevel();
-      return { text: `总效果：吸积效率 ×${fmt(Math.pow(2, total))}`, capped: false };
+      const lg = total * Math.log10(2);
+      return { text: `总效果：吸积效率 ×${fmtNum(Math.pow(10, Math.min(lg, 308)), lg)}`, capped: false };
     }
     case "sbu2": {
       const eff = sbu2Eff();
@@ -2510,8 +2513,10 @@ function totalEffectText(id) {
     }
     case "svpu1":
       return { text: `总效果：吸积质量指数 +${(0.03 * n("svpu1")).toFixed(2)}`, capped: false };
-    case "svpu2":
-      return { text: `总效果：湮灭次数 ×${fmt(Math.pow(2, n("svpu2")))}`, capped: false };
+    case "svpu2": {
+      const lg = n("svpu2") * Math.log10(2);
+      return { text: `总效果：湮灭次数 ×${fmtNum(Math.pow(10, Math.min(lg, 308)), lg)}`, capped: false };
+    }
     case "svpu3":
       return { text: `总效果：升级3软上限削弱 ÷${n("svpu3") + 1}`, capped: false };
     case "svpu4":
@@ -5242,13 +5247,12 @@ function autoAnnCD() {
   cd = Math.max(25, cd / Math.pow(2, state.autoAnnCDLvl));
   return cd;
 }
-// 自动购买主要页升级1/2 的批量循环（runAutomation 与「升级3 购买后即时回购」共用）
+// 自动购买主要页升级1/2 的批量购买（runAutomation 与「升级3 购买后即时回购」共用）。
+// 闭式精确计数：巨量可负担等级（lg F ≥ 1e5）下不再逐级迭代
 function autoBuyWaveLoop() {
   const n = autoBuyTimes("wave");
-  // 防御：购买被宇宙规则拒绝或 spu1 免费但价格达标不变化时，不会因 n=∞ 死循环；
-  // bulk=true 跳过逐次渲染与成就检查（tick 末尾统一执行）
-  for (let i = 0; i < n; i++) { const lv = state.up1; if (cmpGE(F(), up1Cost(), FLog(), up1CostLog())) buyUp1(true); else break; if (state.up1 === lv) break; }
-  for (let i = 0; i < n; i++) { const lv = state.up2; if (cmpGE(F(), up2Cost(), FLog(), up2CostLog())) buyUp2(true); else break; if (state.up2 === lv) break; }
+  bulkBuyUp1(n);
+  bulkBuyUp2(n);
 }
 // 卷缩里程碑解锁的自动购买器（循环购买至不可负担/达上限，等级未变即收敛）
 function autoBuySauLoop() {
@@ -5283,6 +5287,198 @@ function autoBuySvpuLoop() {
     if (before === state.svpu1 + "," + state.svpu2 + "," + state.svpu3 + "," + state.svpu4 + "," + state.svpu5) break;
   }
 }
+// ---------- 自动化批量购买：闭式精确计数（消除巨量等级下的逐级卡顿）----------
+// 背景：lg(F)≈1e6 时一次可负担的升级1约 330 万级，逐级循环每级一次价格/扣款计算会卡数秒。
+// 这些升级的价格是精确的分段指数（升级2 为 99 级后阶乘增长），可按段闭式求出可购级数，
+// 一次扣款、一次加级——结果与逐级购买一致，复杂度 O(1)/O(log)。
+// 等比价格（下一级价格 log c0、每级价格增量 log s）下，资源池 resLog 可购买的最大级数
+function bulkAffordableExp(c0, s, resLog) {
+  if (!(s > 0) || !(resLog > NLOG + 1) || !(c0 > NLOG + 1)) return 0;
+  if (resLog < c0) return 0;
+  return Math.floor((resLog - c0) / s) + 1;
+}
+// 等比级数价格和的 log10：Σ_{i=0..k-1} 10^(c0+i·s)（k ≥ 1；数值稳定：由末项与公比表出）
+function bulkGeomSumLog(c0, s, k) {
+  if (k <= 0) return NLOG;
+  if (k === 1) return clampLog(c0);
+  const r = Math.pow(10, -s);
+  const last = c0 + (k - 1) * s;
+  const frac = (1 - Math.pow(r, k)) / (1 - r);
+  return clampLog(last + Math.log10(Math.max(frac, 1e-300)));
+}
+// up1 价格 log（按 1 起的级数 n）——与 up1CostLog 同公式；softcap 旗标取当前 F（同一次批量内恒定）
+function up1CostLogAt(n) {
+  if (inDistort("inflation")) return clampLog(n * 2); // 通胀：价格 = 100^n
+  let l = Math.log10(5) + n * Math.log10(2) + (softcapped() ? Math.max(0, n - 332) * Math.log10(5) : 0);
+  return clampLog(l);
+}
+// up2 价格 log（按 1 起的级数 n）——与 up2CostLog 同公式（阶乘段用 lgamma10 闭式）
+function up2CostLogAt(n) {
+  const k2 = n - 1;
+  if (inDistort("inflation")) {
+    // 通胀：1e6 × ∏_{k=1..n-1} max(k²,100) = 1e6 × 100^min(m,10) × (m!/10!)²，m=n-1
+    const m = k2;
+    let lp = 6;
+    if (m <= 10) lp += 2 * m;
+    else lp += 20 + 2 * (lgamma10(m) - lgamma10(10));
+    return clampLog(lp);
+  }
+  if (k2 <= 98) return clampLog(costOfLog(n + 1));
+  let logP;
+  if (k2 <= 300) { logP = 100; for (let i = 100; i <= k2; i++) logP += Math.log10(i); }
+  else logP = 100 + lgamma10(k2) - lgamma10(99);
+  return clampLog(costOfLog(logP));
+}
+// 批量购买升级1：返回实际购买级数（0 = 不可购）。
+// 资源池随购买消耗而下降（F = U/L^e 随 U 抽水下降），故级数用「总花费(含最后一级)×Le ≤ 池」二分确定，
+// 与逐级购买的中断语义完全一致
+function bulkBuyUp1(maxN) {
+  if (inDistort("simple") || narrowBlocked()) return 0;
+  if (inDistort("narrow")) maxN = Math.min(maxN, Math.max(0, 10 - state.narrowPurchases));
+  if (maxN <= 0) return 0;
+  const resLog = FLog();
+  const n0 = state.up1 + 1;
+  const infl = inDistort("inflation");
+  const slope1 = infl ? 2 : Math.log10(2);
+  const slope2 = infl ? 2 : Math.log10(10);
+  const costAt = up1CostLogAt;
+  // m 级的总价格（log10）：普通一段等比和；软上限跨越 332 级时两段分别求和
+  const sumLog = (m) => {
+    if (m <= 0) return NLOG;
+    if (infl || !softcapped() || n0 + m - 1 <= 332) return bulkGeomSumLog(costAt(n0), slope1, m);
+    const k1 = 333 - n0;
+    return logAddLogs(bulkGeomSumLog(costAt(n0), slope1, k1), bulkGeomSumLog(costAt(333), slope2, m - k1));
+  };
+  // 购买 m 级的总花费×Le（含最后一级）——与逐级的停止条件逐位同源
+  const totalLog = (m) => logAddLogs(m <= 1 ? NLOG : sumLog(m - 1), clampLog(costAt(n0 + m - 1) + bulkPayLe()));
+  // 池恒定的闭式计数（上界）
+  let k0;
+  if (infl) k0 = bulkAffordableExp(costAt(n0), slope1, resLog);
+  else if (!softcapped()) k0 = bulkAffordableExp(costAt(n0), slope1, resLog);
+  else if (n0 > 332) k0 = bulkAffordableExp(costAt(n0), slope2, resLog);
+  else {
+    const k1 = bulkAffordableExp(costAt(n0), slope1, resLog);
+    k0 = (n0 + k1 <= 332) ? k1 : (333 - n0) + bulkAffordableExp(costAt(333), slope2, resLog);
+  }
+  let k = Math.min(k0, maxN);
+  if (k <= 0) return 0;
+  if (!upgradesFree()) {
+    // 二分：最大 m 使总花费×Le ≤ U（池 = U）
+    if (totalLog(1) > getLogU10()) return 0;
+    let l = 1, h = k;
+    while (l < h) {
+      const mid = Math.floor((l + h + 1) / 2);
+      if (totalLog(mid) <= getLogU10()) l = mid; else h = mid - 1;
+    }
+    k = l;
+    // 支付 = Σ价格 × Le：subULog 内部会再加 Le，故传入 sumLog + payLe
+    subULog(sumLog(k) + bulkPayLe());
+  }
+  if (inDistort("narrow")) state.narrowPurchases += k - 1;
+  markPurchase();
+  state.up1 += k;
+  return k;
+}
+// 支付的 log 偏移：从 U 支付的价格（以 F 计价）需乘有效波长 → lg(Le)；从池本身支付（声子）为 0
+function bulkPayLe() {
+  return wavelengthExp() * (getLogL10() + distortLModLog());
+}
+// 批量购买升级2：指数段闭式 + 阶乘段（lgamma10）——「总花费(含最后一级)×Le ≤ 池」二分
+function up2SumLog(n0, m) {
+  const kExpEnd = 99 - (n0 - 1); // 级数 ≤ 99 为等比段（×10/级）
+  if (m <= kExpEnd) return bulkGeomSumLog(up2CostLogAt(n0), Math.log10(10), m);
+  let sum = kExpEnd > 0 ? bulkGeomSumLog(up2CostLogAt(n0), Math.log10(10), kExpEnd) : NLOG;
+  const lastLog = up2CostLogAt(n0 + m - 1);
+  const prevLog = m >= 2 ? up2CostLogAt(n0 + m - 2) : NLOG;
+  const slope = Math.max(lastLog - (prevLog > NLOG + 1 ? prevLog : lastLog - 1), 1);
+  // 阶乘段和由末项主导：≤ 末项×1/(1−10^−末级斜率)（斜率 ≥1 → 上界因子 ≤1.12）
+  sum = logAddLogs(sum, clampLog(lastLog + Math.log10(1 / (1 - Math.pow(10, -slope)))));
+  return sum;
+}
+function bulkBuyUp2(maxN) {
+  if (inDistort("simple") || narrowBlocked()) return 0;
+  if (getUp1Eff() < 1 && !upgradesFree()) return 0;
+  if (inDistort("narrow")) maxN = Math.min(maxN, Math.max(0, 10 - state.narrowPurchases));
+  if (maxN <= 0) return 0;
+  const n0 = state.up2 + 1;
+  const payLe = bulkPayLe();
+  const poolLog = getLogU10();
+  const sumLog = (m) => up2SumLog(n0, m);
+  const totalLog = (m) => logAddLogs(m <= 1 ? NLOG : sumLog(m - 1), clampLog(up2CostLogAt(n0 + m - 1) + payLe));
+  if (!(totalLog(1) <= poolLog)) return 0;
+  let l = 1, h = maxN;
+  while (l < h) {
+    const mid = Math.floor((l + h + 1) / 2);
+    if (totalLog(mid) <= poolLog) l = mid; else h = mid - 1;
+  }
+  const k = l;
+  if (!upgradesFree()) subULog(sumLog(k) + payLe); // 支付 = Σ价格 × Le
+  if (inDistort("narrow")) state.narrowPurchases += k - 1;
+  markPurchase();
+  state.up2 += k;
+  return k;
+}
+// 通用闭式批量：等比价格（下一级 c0、增量 slope）、池 poolLog、支付偏移 payLe（从池本身支付为 0）。
+// 返回可购买级数 k 并回调 apply(总价格和的 log)——「总花费(含最后一级)+payLe ≤ 池」二分，
+// 与逐级购买「池随消耗下降」的中断语义一致
+function bulkBuyGeneric(c0, slope, maxN, poolLog, payLe, apply) {
+  if (maxN <= 0) return 0;
+  const totalLog = (m) => logAddLogs(m <= 1 ? NLOG : bulkGeomSumLog(c0, slope, m - 1),
+    clampLog(c0 + slope * (m - 1) + payLe));
+  if (!(totalLog(1) <= poolLog)) return 0;
+  let l = 1, h = maxN;
+  while (l < h) {
+    const mid = Math.floor((l + h + 1) / 2);
+    if (totalLog(mid) <= poolLog) l = mid; else h = mid - 1;
+  }
+  const k = l;
+  apply(bulkGeomSumLog(c0, slope, k));
+  return k;
+}
+// 批量购买声子升级 1/2/3（纯等比价格；pg3 受上限约束）
+function bulkBuyPG1(maxN) {
+  if (narrowBlocked() || inDistort("adiabatic")) return 0;
+  if (inDistort("narrow")) maxN = Math.min(maxN, Math.max(0, 10 - state.narrowPurchases));
+  const slope = inDistort("inflation") ? 4 : 2; // 每级 ×100；通胀平方 → ×1e4
+  const k = bulkBuyGeneric(pg1CostLog(), slope, maxN, getLogU10(), bulkPayLe(),
+    (sumLog) => { if (!upgradesFree()) subULog(sumLog); });
+  if (k > 0) {
+    if (inDistort("narrow")) state.narrowPurchases += k - 1;
+    markPurchase();
+    state.pg1 += k;
+  }
+  return k;
+}
+function bulkBuyPG2(maxN) {
+  if (narrowBlocked()) return 0;
+  if (inDistort("narrow")) maxN = Math.min(maxN, Math.max(0, 10 - state.narrowPurchases));
+  const slope = inDistort("inflation") ? Math.log10(2) * 2 : Math.log10(2); // 每级 ×2
+  const k = bulkBuyGeneric(pg2CostLog(), slope, maxN, getLogPhonons(), 0,
+    (sumLog) => { if (!upgradesFree()) subPhononsLog(sumLog); });
+  if (k > 0) {
+    if (inDistort("narrow")) state.narrowPurchases += k - 1;
+    markPurchase();
+    state.pg2 += k;
+  }
+  return k;
+}
+function bulkBuyPG3(maxN) {
+  if (narrowBlocked()) return 0;
+  if (state.pg3 >= pg3Cap()) return 0;
+  if (inDistort("rigid") || inDistort("adiabatic") || inDistort("simple")) return 0;
+  if (inDistort("narrow")) maxN = Math.min(maxN, Math.max(0, 10 - state.narrowPurchases));
+  maxN = Math.min(maxN, pg3Cap() - state.pg3);
+  const slope = inDistort("inflation") ? 2 : 1; // 每级 ×10
+  const k = bulkBuyGeneric(pg3CostLog(), slope, maxN, getLogPhonons(), 0,
+    (sumLog) => { if (!upgradesFree()) subPhononsLog(sumLog); });
+  if (k > 0) {
+    if (inDistort("narrow")) state.narrowPurchases += k - 1;
+    markPurchase();
+    state.pg3 += k;
+  }
+  return k;
+}
+
 function runAutomation() {
   if (state.annihilations < 1) return;
   // 狭窄宇宙：购买类自动化禁用（升级限购 10 次是挑战规则），自动湮灭照常工作
@@ -5292,9 +5488,9 @@ function runAutomation() {
   }
   if (!narrow && state.autoOn.phonon && state.autoPhononUpg && state.phUnlocked) {
     const n = autoBuyTimes("phonon");
-    for (let i = 0; i < n; i++) { const lv = state.pg1; if (cmpGE(F(), pg1Cost(), FLog(), pg1CostLog())) buyPG1(true); else break; if (state.pg1 === lv) break; }
-    for (let i = 0; i < n; i++) { const lv = state.pg2; if (cmpGE(state.phonons, pg2Cost(), getLogPhonons(), pg2CostLog())) buyPG2(true); else break; if (state.pg2 === lv) break; }
-    for (let i = 0; i < n; i++) { const lv = state.pg3; if (state.pg3 < pg3Cap() && cmpGE(state.phonons, pg3Cost(), getLogPhonons(), pg3CostLog())) buyPG3(true); else break; if (state.pg3 === lv) break; }
+    bulkBuyPG1(n);
+    bulkBuyPG2(n);
+    bulkBuyPG3(n);
   }
   if (!narrow && state.autoOn.up3 && state.autoUp3 && up3Card) {
     // up3 购买会清零 up1/up2 并重置 U：购买成功后在同一 tick 立即回购，
