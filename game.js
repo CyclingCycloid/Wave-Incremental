@@ -3638,29 +3638,32 @@ function renameTheoryPreset(i) {
   saveGame();
   updateCompactUI();
 }
+// 预设（6 槽）：左键/右键切换内联菜单（加载/保存/导入/命名，作用于所选槽位）
+let theoryMenuIdx = -1; // 当前打开菜单的预设槽位（-1=隐藏）
 function closeTheoryPresetMenu() {
+  theoryMenuIdx = -1;
   const m = document.getElementById("theory-preset-menu");
-  if (m) m.remove();
+  if (m) m.classList.add("hidden");
 }
-function showTheoryPresetMenu(idx, x, y) {
-  closeTheoryPresetMenu();
-  const menu = document.createElement("div");
-  menu.id = "theory-preset-menu";
-  for (const [label, fn] of [
-    ["加载", () => loadTheoryPreset(idx)],
-    ["保存", () => saveTheoryPreset(idx)],
-    ["导入", () => importTheoryPreset(idx)],
-    ["命名", () => renameTheoryPreset(idx)],
-  ]) {
-    const b = document.createElement("button");
-    b.textContent = label;
-    b.addEventListener("click", () => { closeTheoryPresetMenu(); fn(); });
-    menu.appendChild(b);
-  }
-  document.body.appendChild(menu);
-  menu.style.left = Math.min(x, (window.innerWidth || 800) - 96) + "px";
-  menu.style.top = Math.min(y, (window.innerHeight || 600) - 140) + "px";
-  setTimeout(() => document.addEventListener("click", closeTheoryPresetMenu, { once: true }), 0);
+function showTheoryPresetMenu(idx) {
+  if (theoryMenuIdx === idx) { closeTheoryPresetMenu(); return; } // 再次点击同一按钮 → 隐藏
+  theoryMenuIdx = idx;
+  const m = document.getElementById("theory-preset-menu");
+  if (!m) return;
+  m.classList.remove("hidden");
+  // 按钮文案带上所选预设名（如「保存 PR1」），明确作用对象
+  const nm = state.theoryPresets[idx] ? state.theoryPresets[idx].name : "PR" + (idx + 1);
+  const labels = ["加载", "保存", "导入", "命名"];
+  m.querySelectorAll("button").forEach((b, i) => { b.textContent = labels[i] + " " + nm; });
+}
+function setupTheoryPresetMenu() {
+  const m = document.getElementById("theory-preset-menu");
+  if (!m || m.dataset.wired) return;
+  m.dataset.wired = "1";
+  const acts = [loadTheoryPreset, saveTheoryPreset, importTheoryPreset, renameTheoryPreset];
+  m.querySelectorAll("button").forEach((b, i) => {
+    b.addEventListener("click", () => { const idx = theoryMenuIdx; closeTheoryPresetMenu(); if (idx >= 0) acts[i](idx); });
+  });
 }
 
 // ---------- 卷缩重置 ----------
@@ -3868,19 +3871,20 @@ function buildCompactOnce() {
   });
   document.getElementById("theory-export-btn").addEventListener("click", copyTheoryTreeToClipboard);
   document.getElementById("theory-import-btn").addEventListener("click", doImportTheoryTree);
-  // 预设按钮（左键/右键均打开菜单：加载/保存/导入/命名——避免个别环境右键被拦截时无法操作）
+  // 预设按钮（左键/右键切换内联菜单：加载/保存/导入/命名——菜单位于六个小按钮下方，样式一致）
   const prRow = document.getElementById("comp-ins-presets");
   prRow.innerHTML = "";
   compactEls.presets = [];
   for (let i = 0; i < 6; i++) {
     const b = document.createElement("button");
     b.className = "comp-btn small theory-preset-btn";
-    const openMenu = (e) => { e.preventDefault(); showTheoryPresetMenu(i, e.clientX, e.clientY); };
+    const openMenu = (e) => { e.preventDefault(); showTheoryPresetMenu(i); };
     b.addEventListener("click", openMenu);
     b.addEventListener("contextmenu", openMenu);
     prRow.appendChild(b);
     compactEls.presets.push(b);
   }
+  setupTheoryPresetMenu();
   // 理论树（固定坐标世界 + SVG 连线 + 拖动/缩放；手机与桌面布局完全一致，只有缩放差异）
   const svg = document.getElementById("tree-lines");
   svg.setAttribute("width", TREE_WORLD_W);

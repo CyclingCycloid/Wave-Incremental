@@ -722,17 +722,8 @@ body[data-theme="white"] #sub-ann-void {
 /* 理论树工具排与预设排 */
 .comp-ins-tools, .comp-ins-presets { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin: 6px 0; }
 .theory-preset-btn { min-width: 52px; }
-/* 右键菜单（预设：加载/保存/导入/命名） */
-.theory-preset-menu {
-  position: fixed; z-index: 300; display: flex; flex-direction: column;
-  background: var(--bg-panel); border: 1px solid var(--orange-dim); border-radius: 8px;
-  padding: 4px; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-}
-.theory-preset-menu button {
-  background: transparent; border: none; color: var(--text); font-size: 13px;
-  padding: 6px 18px; cursor: pointer; text-align: left; border-radius: 4px;
-}
-.theory-preset-menu button:hover { background: rgba(255,140,26,0.14); color: var(--orange); }
+/* 理论树预设内联菜单（位于六个小按钮下方，复用 comp-ins-presets/comp-btn small 样式） */
+#theory-preset-menu.hidden { display: none !important; }
 /* 理论树视口：恒定深色底 + 点阵（参照黑洞画布做法，白主题下名称同样可读） */
 .tree-viewport {
   position: relative; height: 460px; overflow: hidden;
