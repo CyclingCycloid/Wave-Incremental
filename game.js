@@ -4064,7 +4064,8 @@ function updateCompactUI() {
       // 购买后：提示文字（描述）保持不变 + 显示当前效果，不显示公式
       txt = def.desc + "\n" + (def.id === "01" ? "当前乘数 ×" + fmtLog(cmTimeMultLog()) : (def.effect ? def.effect() : "已解锁"));
     } else if (def.placeholder) {
-      txt = def.parents.some(p => theoryOwned(p)) ? "未实装\n（后续版本）" : "需先解锁\n上级节点";
+      // 占位节点：无论上级是否已购一律显示「未实装」（信息对玩家无价值）
+      txt = "未实装\n（后续版本）";
     } else {
       txt = `${def.desc}\n花费 ${def.cost} 灵感`;
     }
