@@ -5388,7 +5388,7 @@ function bulkBuyUp1(maxN) {
     return logAddLogs(bulkGeomSumLog(costAt(n0), slope1, k1), bulkGeomSumLog(costAt(333), slope2, m - k1));
   };
   // 购买 m 级的总价格（F 项 log10；不含 Le）——逐级停止条件：Σ_{<m} + cost(m) ≤ F0
-  const totalLog = (m) => logAddLogs(m <= 1 ? NLOG : sumSeg(m - 1), costAt(n0 + m - 1));
+  const totalLog = (m) => logAddLogs(m <= 1 ? NLOG : sumLog(m - 1), costAt(n0 + m - 1));
   // 池恒定的闭式计数（上界）
   let k0;
   if (infl) k0 = bulkAffordableExp(costAt(n0), slope1, resLog);
@@ -5409,8 +5409,8 @@ function bulkBuyUp1(maxN) {
       if (totalLog(mid) <= resLog) l = mid; else h = mid - 1;
     }
     k = l;
-    // 支付 = Σ价格 × Le：subULog 内部会再加 Le，故传入 sumLog + payLe
-    subULog(sumLog(k) + bulkPayLe());
+    // 支付 = Σ价格（F 项等比和）：subULog 内部会加 Le 换算成 U 口径
+    subULog(sumLog(k));
   }
   if (inDistort("narrow")) state.narrowPurchases += k - 1;
   markPurchase();
@@ -5449,7 +5449,7 @@ function bulkBuyUp2(maxN) {
     if (totalLog(mid) <= resLog) l = mid; else h = mid - 1;
   }
   const k = l;
-  if (!upgradesFree()) subULog(sumLog(k) + bulkPayLe()); // 支付 = Σ价格 × Le
+  if (!upgradesFree()) subULog(sumLog(k)); // 支付 = Σ价格（F 项等比和），subULog 内部加 Le
   if (inDistort("narrow")) state.narrowPurchases += k - 1;
   markPurchase();
   state.up2 += k;
@@ -5478,7 +5478,7 @@ function bulkBuyPG1(maxN) {
   if (inDistort("narrow")) maxN = Math.min(maxN, Math.max(0, 10 - state.narrowPurchases));
   const slope = inDistort("inflation") ? 4 : 2; // 每级 ×100；通胀平方 → ×1e4
   const k = bulkBuyGeneric(pg1CostLog(), slope, maxN, FLog(),
-    (sumLog) => { if (!upgradesFree()) subULog(sumLog + bulkPayLe()); });
+    (sumLog) => { if (!upgradesFree()) subULog(sumLog); });
   if (k > 0) {
     if (inDistort("narrow")) state.narrowPurchases += k - 1;
     markPurchase();
