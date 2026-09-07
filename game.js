@@ -3736,7 +3736,8 @@ function compactSSGain() {
 // 卷缩重置：获得超弦并重置此前所有内容（统计-通用 与 统计-挑战 保留）
 function compactify(auto) {
   if (!canCompactify()) return;
-  if (!auto && !confirm("确定要进行卷缩重置吗？\n这将重置几乎所有内容（统计-通用与统计-挑战保留），并获得超弦（SS）。")) return;
+  // 第二次起不再弹确认框（自动卷缩也跳过）；仅首次卷缩确认
+  if (state.compactions === 0 && !auto && !confirm("确定要进行卷缩重置吗？\n这将重置几乎所有内容（统计-通用与统计-挑战保留），并获得超弦（SS）。")) return;
   const realNow = gameNow();
   // 首次卷缩（尚无上一纪元）：本纪元时长 = 开局至今的真实游玩时长
   const realDur = state.compStartReal > 0
