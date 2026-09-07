@@ -2476,8 +2476,9 @@ function totalEffectText(id) {
   const cappedSau = (key) => n(key) > 10;
   switch (id) {
     case "sau1": {
-      // 有效级别 = floor(3*(10+(n-10)^0.7))/3，与 pg3Cap 的软上限公式同源（含量子狂潮与节点 21 免费等级）
-      const eff = Math.floor(3 * (10 + Math.pow(Math.max(n("sau1") + sau1FreeLevel() - 10, 0), 0.7))) / 3;
+      // 有效级别 = floor(3*(10+(n-10)^指数))/3，与 pg3Cap 的软上限公式同源（含免费等级；节点 21 削弱软上限 0.7 → 0.8）
+      const exp = theoryOwned("21") ? 0.8 : 0.7;
+      const eff = Math.floor(3 * (10 + Math.pow(Math.max(n("sau1") + sau1FreeLevel() - 10, 0), exp))) / 3;
       return { text: `总效果：声子升级3上限 +${pg3Cap() - 20}`, capped: cappedSau("sau1"), eff };
     }
     case "sau2": {
@@ -2758,11 +2759,12 @@ function effLevel(n, softcap, power) {
 // SAU1：声子升级3上限（单圈重整后软上限：超出 20 基础的部分 = 30+floor(3*(n-10)^0.7)，
 // 即 n>10 时 pg3Cap = 50+floor(3*(n-10)^0.7)；未购 VPU1 时上限 10 级、每级 +2）
 function pg3Cap() {
-  // 量子狂潮与理论树节点 21 的免费等级计入（软上限前）
+  // 量子狂潮与理论树节点 21 的免费等级计入（软上限前）；节点 21 削弱软上限（指数 0.7 → 0.8）
   const n1 = state.sau1 + sau1FreeLevel();
+  const exp = theoryOwned("21") ? 0.8 : 0.7;
   if (vpuOwned("vpu1")) {
     if (n1 <= 10) return 20 + 3 * n1;
-    return 50 + Math.floor(3 * Math.pow(n1 - 10, 0.7));
+    return 50 + Math.floor(3 * Math.pow(n1 - 10, exp));
   }
   return 20 + 2 * n1;
 }
@@ -3519,8 +3521,8 @@ const THEORY_NODES = [
     desc: "略微削弱奇点获取的软上限",
     effect: () => "当前指数 0.12" },
   { id: "21", name: "电磁学", parents: ["11"], cost: 6,
-    desc: "基于CM给予象限拓张免费等级",
-    effect: () => "当前 +" + fmt(theory21FreeLevel()) + " 免费等级" },
+    desc: "基于CM给予象限拓张免费等级，并削弱其软上限",
+    effect: () => "当前 +" + fmt(theory21FreeLevel()) + " 免费等级 ｜ 软上限指数 " + (theoryOwned("21") ? "0.8" : "0.7") },
   { id: "22", name: "刚体力学", parents: ["12"], placeholder: true },
   { id: "23", name: "分析力学", parents: ["12"], placeholder: true },
   { id: "31", name: "电动力学", parents: ["21"], placeholder: true },
