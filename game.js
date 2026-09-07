@@ -25,7 +25,7 @@ function defaultState() {
     autoPhononUpg: 0,      // 声子页可重复升级自动化解锁（1e20 Hz）
     autoUp3: 0,            // 升级3自动化解锁（第8次湮灭）
     autoAnn: 0,            // 自动湮灭解锁（第10次湮灭）
-    autoOn: { wave: false, phonon: false, up3: false, ann: false },
+    autoOn: { wave: false, phonon: false, up3: false, ann: false, sau: false, sbu: false, svpu: false, comp: false },
     autoUp3Mult: 1.1,      // 升级3自动购买倍率阈值（double 缓存）
     autoUp3MultLog: Math.log10(1.1), // 倍率阈值的 log10 权威（可输入超 double）
     autoAnnSp: 1,          // 自动湮灭 Sp 阈值（double 缓存）
@@ -56,11 +56,19 @@ function defaultState() {
     zeroGainSince: 0,       // S19：生产为 0 的起始时刻
     autoUp3Mode: "ratio",  // AU21：升级3自动化模式（ratio=比例 / time=时间间隔）
     autoUp3Interval: 10,   // AU21：时间模式的间隔秒数
-    autoAnnMode: "sp",     // AU22：自动湮灭模式（sp=奇点阈值 / time=时间间隔）
+    autoAnnMode: "sp",     // AU22：自动湮灭模式（sp=奇点阈值 / time=时间间隔 / heldsp=持有倍率，卷缩里程碑14）
     autoAnnInterval: 60,   // AU22：时间模式的间隔秒数
+    autoAnnHeldMult: 1.1,      // heldsp 模式：获取量达到持有奇点的指定倍数时湮灭（double 缓存）
+    autoAnnHeldMultLog: Math.log10(1.1), // heldsp 模式倍率的 log10 权威
     lastAutoUp3At: 0,      // 上次自动升级3时刻
     lastAutoAnnAt: 0,      // 上次自动湮灭时刻
     autoAnnCDLvl: 0,       // A42 奖励解锁：自动湮灭 CD 缩减升级等级（每级 ÷2，最低 25ms）
+    autoSau: 0,            // 卷缩里程碑16：可重复奇点升级自动购买器
+    autoSbu: 0,            // 卷缩里程碑18：黑洞升级自动购买器
+    autoSvpu: 0,           // 卷缩里程碑20：虚粒子升级自动购买器
+    autoComp: 0,           // 卷缩里程碑30：自动卷缩
+    autoCompSS: 0,             // 自动卷缩：SS 阈值（double 缓存）
+    autoCompSSLog: NLOG,       // 自动卷缩：SS 阈值的 log10 权威
     sau1: 0, sau2: 0, sau3: 0, sau4: 0,
     vpuCondMet: [],        // VPU 解锁条件已达成记录（达成一次永久解锁；A45 后生效）
     voidActive: false,     // 虚空挑战进行中
@@ -144,6 +152,9 @@ function defaultState() {
     lastTick: Date.now(),
   };
 }
+
+// 全部自动化开关的默认值（新键加入此处；重置体统一用它，避免字面量漏新键）
+function defaultAutoOn() { return { wave: false, phonon: false, up3: false, ann: false, sau: false, sbu: false, svpu: false, comp: false }; }
 
 const SAVE_KEY = "waveIncremental_save";
 const SLOT_KEY_PREFIX = "waveIncremental_slot";
@@ -1262,6 +1273,19 @@ function migrateState() {
   }
   if (state.compFastest === null || state.compFastest === undefined || !isFinite(state.compFastest) || state.compFastest < 0) state.compFastest = 0;
   if (!Array.isArray(state.compHistory)) state.compHistory = [];
+  // v0.6.0.0：自动化新键合并（旧档 autoOn 缺 sau/sbu/svpu/comp）与阈值 log 权威回填
+  state.autoOn = Object.assign(defaultAutoOn(), state.autoOn || {});
+  if (state.autoAnnHeldMultLog === undefined || !isFinite(state.autoAnnHeldMultLog)) {
+    state.autoAnnHeldMultLog = (typeof state.autoAnnHeldMult === "number" && state.autoAnnHeldMult > 0 && isFinite(state.autoAnnHeldMult))
+      ? Math.log10(state.autoAnnHeldMult) : Math.log10(1.1);
+  }
+  if (state.autoAnnHeldMult === null || state.autoAnnHeldMult === undefined) state.autoAnnHeldMult = fromLog(state.autoAnnHeldMultLog);
+  if (state.autoSau === undefined) state.autoSau = 0;
+  if (state.autoSbu === undefined) state.autoSbu = 0;
+  if (state.autoSvpu === undefined) state.autoSvpu = 0;
+  if (state.autoComp === undefined) state.autoComp = 0;
+  if (state.autoCompSSLog === undefined || !isFinite(state.autoCompSSLog)) state.autoCompSSLog = NLOG;
+  if (state.autoCompSS === null || state.autoCompSS === undefined) state.autoCompSS = fromLog(state.autoCompSSLog);
   // v0.5.1：自动化阈值的 log10 权威回填（支持输入超 double 的阈值）
   if (state.autoUp3MultLog === undefined || !isFinite(state.autoUp3MultLog)) {
     state.autoUp3MultLog = (typeof state.autoUp3Mult === "number" && state.autoUp3Mult > 0 && isFinite(state.autoUp3Mult))
@@ -1589,7 +1613,8 @@ function buyUp3() {
   state.L = wLog < 308 ? 1 / Math.pow(10, wLog) : 0; // 超 double 下溢为 0（读取走 log）
   if (-wLog < getLogMinL()) { state.logMinL = -wLog; state.minL = state.L; } // 极值走 log（新波长 log 为 -wLog）
   setU(resetU());
-  state.up1 = 0;
+  // 卷缩里程碑 20：升级3不再重置升级1的等级
+  if (!compMilestone(20)) state.up1 = 0;
   if (!auOwned("au23")) state.up2 = 0; // AU23 声纹记忆：购买升级3不再重置升级2
   markPurchase();
   state.up3++;
@@ -2085,7 +2110,7 @@ function doAnnihilation() {
   if (!hasMilestone(2)) state.autoWaveUpg = 0;
   if (!hasMilestone(3)) state.autoPhononUpg = 0;
   if (!hasMilestone(5)) {
-    state.autoOn = { wave: false, phonon: false, up3: false, ann: false };
+    state.autoOn = defaultAutoOn();
     state.phOn = false;
   } else {
     state.phOn = true; // 声子发生器一开始就是启动状态
@@ -2228,7 +2253,7 @@ function applyAnnihilationResetBody(realNow) {
   if (!hasMilestone(2)) state.autoWaveUpg = 0;
   if (!hasMilestone(3)) state.autoPhononUpg = 0;
   if (!hasMilestone(5)) {
-    state.autoOn = { wave: false, phonon: false, up3: false, ann: false };
+    state.autoOn = defaultAutoOn();
     state.phOn = false;
   } else {
     state.phOn = true;
@@ -3667,30 +3692,51 @@ function setupTheoryPresetMenu() {
 }
 
 // ---------- 卷缩重置 ----------
-// 卷缩里程碑 1「卷缩一次」：保持湮灭选项卡的可见性；卷缩后初始拥有 3 次湮灭次数
-//（等效于带着 1-3 次湮灭里程碑重开：声子解锁、单次波动/声子升级与两项自动化直接生效）
-function compMilestone1() { return state.compactions >= 1; }
+// 卷缩里程碑（need = 所需卷缩次数；奖励在该次卷缩后的新纪元生效）
+function compMilestone(n) { return state.compactions >= n; }
+function compMilestone1() { return compMilestone(1); }
 const COMP_MILESTONES = [
-  { n: 1, title: "卷缩一次", need: 1,
-    desc: "进行一次卷缩重置",
-    reward: "保持湮灭选项卡的可见性；卷缩后初始拥有 3 次湮灭次数",
-    check: () => state.compactions >= 1,
-    prog: () => `进度：卷缩次数 ${Math.min(state.compactions, 1)} / 1` },
+  { n: 1, reward: "保持湮灭选项卡的可见性；卷缩后初始拥有 3 次湮灭次数" },
+  { n: 2, reward: "卷缩后初始拥有 10 次湮灭次数，「奇点之前的升级不再消耗资源」视为已购买" },
+  { n: 3, reward: "卷缩后初始拥有 20 次湮灭次数和 100 奇点" },
+  { n: 4, reward: "卷缩后「定向」「冷却」「刚性」为已完成状态" },
+  { n: 5, reward: "保持已购的单次奇点升级（AU1n/2n/3n 无条件保留；AU4n 在新纪元解锁条件满足时保留——第 6 次起保留 AU41，第 7 次起 AU42/43，第 8 次起 AU44）" },
+  { n: 6, reward: "卷缩后「狭窄」「膨胀」为已完成状态" },
+  { n: 7, reward: "卷缩后「热寂」「滞涨」为已完成状态" },
+  { n: 8, reward: "卷缩后「简洁」为已完成状态，并自动打破多元宇宙的规则" },
+  { n: 10, reward: "卷缩保持「临界湮灭」「对偶原理」的购买" },
+  { n: 12, reward: "卷缩保持「单圈重整」「量子狂潮」的购买；卷缩后初始拥有 1e6 虚空泡沫（VF）" },
+  { n: 14, reward: "卷缩不再重置虚空里程碑；解锁自动湮灭新类型「持有倍率」（获取量达到当前持有奇点的指定倍数时湮灭）" },
+  { n: 16, reward: "卷缩不再重置虚空升级；解锁可重复奇点升级自动购买器（自动化页）" },
+  { n: 18, reward: "卷缩不再重置虚空泡沫；解锁黑洞升级自动购买器（自动化页）" },
+  { n: 20, reward: "升级3不再重置升级1的等级；解锁虚粒子升级自动购买器（自动化页）" },
+  { n: 25, reward: "卷缩不再重置黑洞质量与虚粒子；卷缩后黑洞处于扭曲状态" },
+  { n: 30, reward: "解锁自动卷缩（可设置在多少超弦时卷缩，自动化页）" },
 ];
 // 卷缩条件：VP ≥ 1e36、完成 A54（所有扭曲生效的虚空）、Sp ≥ 1.79e308（Sp 软上限拐点）
 function canCompactify() {
   return state.testMode
     && state.ach.normal.includes("A55")
     && !state.voidActive
-    && state.compactions === 0 // 第二次卷缩暂不开放（按钮显示「测试中，暂不开放」）
     && getLogVP() >= 36
     && state.voidBestRules >= 8
     && getLogSp() >= SP_SOFTCAP_PIVOT_LOG;
 }
+// 本次卷缩可获得的超弦（log10；公式 lg = ((lgVP−36)/30 + (lgSp−拐点)/300)/2，取整前）
+function compactSSGainLog() {
+  const vp = getLogVP(), sp = getLogSp();
+  if (vp < 36 || sp < SP_SOFTCAP_PIVOT_LOG) return NLOG;
+  return clampLog(((vp - 36) / 30 + (sp - SP_SOFTCAP_PIVOT_LOG) / 300) / 2);
+}
+function compactSSGain() {
+  const lg = compactSSGainLog();
+  if (lg <= NLOG + 1) return 0;
+  return Math.max(1, Math.floor(Math.pow(10, Math.min(lg, 308))));
+}
 // 卷缩重置：获得超弦并重置此前所有内容（统计-通用 与 统计-挑战 保留）
-function compactify() {
+function compactify(auto) {
   if (!canCompactify()) return;
-  if (!confirm("确定要进行卷缩重置吗？\n这将重置几乎所有内容（统计-通用与统计-挑战保留），并获得超弦（SS）。")) return;
+  if (!auto && !confirm("确定要进行卷缩重置吗？\n这将重置几乎所有内容（统计-通用与统计-挑战保留），并获得超弦（SS）。")) return;
   const realNow = gameNow();
   // 首次卷缩（尚无上一纪元）：本纪元时长 = 开局至今的真实游玩时长
   const realDur = state.compStartReal > 0
@@ -3698,7 +3744,8 @@ function compactify() {
     : Math.max(state.realTime || 0, 0);
   // 统计：最快卷缩（真实秒）、最好单次 SS、最佳 SS/分（真实分口径，与湮灭一致，log 权威）
   if (state.compFastest === 0 || realDur < state.compFastest) state.compFastest = realDur;
-  const gained = COMPACT_SS_GAIN_FIRST;
+  // SS 获取：首次固定 1；此后按公式（当前 VP/Sp 决定，重置前读取）
+  const gained = state.compactions === 0 ? COMPACT_SS_GAIN_FIRST : compactSSGain();
   const gLog = Math.log10(Math.max(gained, 1e-300));
   state.logBestSS = Math.max(state.logBestSS ?? NLOG, gLog);
   state.bestSS = Math.pow(10, Math.min(state.logBestSS, 308));
@@ -3720,13 +3767,19 @@ function compactify() {
   addSSLog(gLog);
   addTotalSSLog(gLog);
   state.compactions++;
+  // 卷缩里程碑解锁的自动化（立即授予；老存档由 tick 补发）
+  if (compMilestone(16)) state.autoSau = 1;
+  if (compMilestone(18)) state.autoSbu = 1;
+  if (compMilestone(20)) state.autoSvpu = 1;
+  if (compMilestone(30)) state.autoComp = 1;
   applyCompactionResetBody(realNow);
   setAutosaveStatus(`卷缩完成：获得 ${fmtNum(gained, gLog)} 超弦（SS）`);
 }
 
 // 卷缩重置主体（compactify 与测试工具「导致一次卷缩重置」共用）
 function applyCompactionResetBody(realNow) {
-  // —— 波动 / 声子（全量重置；卷缩里程碑 1 给予的保留项在下方按 3 次湮灭补发）——
+  // 里程碑判定按重置后的新 compactions（此时 compactify 已 ++）——奖励对新纪元立即生效
+  // —— 波动 / 声子（全量重置；里程碑给予的保留项在下方补发）——
   setU(resetU()); state.L = 1; state.logL10 = 0;
   state.up1 = 0; state.up2 = 0; state.up3 = 0; state.up3LastF = 0; state.logUp3LastF = NLOG;
   state.meta1 = 0;
@@ -3737,39 +3790,78 @@ function applyCompactionResetBody(realNow) {
   setSp(0); setTotalSp(0);
   state.spu1 = 0;
   state.sau1 = 0; state.sau2 = 0; state.sau3 = 0; state.sau4 = 0;
+  // AU/VPU 快照：里程碑 5/10/12 按条件恢复（快照于清除前）
+  const prevAu = Object.assign({}, state.au);
+  const prevCond = Array.isArray(state.vpuCondMet) ? state.vpuCondMet.slice() : [];
   state.au = {};            // AU 与 VPU（vpu_* 存于 au）一并清除
   state.vpuCondMet = [];    // VPU 解锁 latch：「仅当出现比湮灭更高层次的重置时才清除」——卷缩即该重置
-  state.annihilations = compMilestone1() ? 3 : 0;
-  if (compMilestone1()) {
+  // 湮灭次数阶梯：≥3 → 20；≥2 → 10；≥1 → 3；否则 0（等效对应湮灭里程碑）
+  state.annihilations = compMilestone(3) ? 20 : compMilestone(2) ? 10 : compMilestone(1) ? 3 : 0;
+  if (compMilestone(1)) {
     state.phUnlocked = 1; state.meta1 = 1; state.phFluct = 1; state.phCoupling = 1;
     state.autoWaveUpg = 1; state.autoPhononUpg = 1;
   }
+  if (compMilestone(2)) state.spu1 = 1; // 「奇点之前的升级不再消耗资源」视为已购买
+  if (compMilestone(3)) { setSp(100); setTotalSp(100); } // 初始 100 奇点
   state.autoUp3 = 0; state.autoAnn = 0;
-  state.autoOn = { wave: false, phonon: false, up3: false, ann: false };
+  state.autoOn = defaultAutoOn();
   state.autoAnnCDLvl = 0;
   state.batchLvl = 0; state.batchMax = 2;
   state.lastAutoUp3At = 0; state.lastAutoAnnAt = 0;
   state.annBestSp = 0; state.annBestSpLog = NLOG;
   state.annBestRate = 0; state.annBestRateLog = NLOG;
   state.annFastest = 0; state.annHistory = [];
-  // —— 扭曲（挑战统计 distortBest/distortTotal 保留）——
-  state.distortActive = ""; state.distortDone = []; state.distortMult = 1;
+  // —— 扭曲（挑战统计 distortBest/distortTotal 保留；里程碑 4/6/7/8 预完成宇宙）——
+  state.distortActive = ""; state.distortDone = [];
+  if (compMilestone(4)) state.distortDone.push("directed", "cooldown", "rigid");
+  if (compMilestone(6)) state.distortDone.push("narrow", "expand");
+  if (compMilestone(7)) state.distortDone.push("adiabatic", "inflation");
+  if (compMilestone(8)) state.distortDone.push("simple");
+  state.distortMult = Math.pow(2, state.distortDone.length);
   state.lastPurchaseAt = 0; state.narrowPurchases = 0;
-  state.rulesBroken = false; state.testBreakRules = false;
+  // 里程碑 8：所有宇宙预完成 → 自动打破多元宇宙的规则（8DA 里程碑的效果即此）
+  state.rulesBroken = compMilestone(8);
+  state.testBreakRules = false;
   state.zeroGainSince = 0; state.capReachedAt = 0;
-  // —— 黑洞 ——
-  setBhMass(1); state.bhState = "accrete"; setVP(0);
+  // —— AU 恢复（里程碑 5）：AU1n/2n/3n 无条件；AU4n 按新纪元解锁条件 ——
+  if (compMilestone(5)) {
+    for (const k of Object.keys(prevAu)) {
+      if (k.startsWith("vpu_")) continue;
+      if (k === "au41" && !hasDistortMilestone(4)) continue; // 4DA
+      if (k === "au42" && !hasDistortMilestone(6)) continue; // 6DA
+      if (k === "au43" && !hasDistortMilestone(7)) continue; // 7DA
+      if (k === "au44" && !state.rulesBroken) continue;      // 打破规则
+      state.au[k] = 1;
+    }
+  }
+  // —— VPU 恢复：里程碑 10（临界湮灭/对偶原理）、12（单圈重整/量子狂潮）——
+  const restoreVpu = (id) => {
+    const key = "vpu_" + id;
+    if (prevAu[key]) {
+      state.au[key] = 1;
+      if (prevCond.includes(id) && !state.vpuCondMet.includes(id)) state.vpuCondMet.push(id);
+    }
+  };
+  if (compMilestone(10)) { restoreVpu("vpu4"); restoreVpu("vpu5"); }
+  if (compMilestone(12)) { restoreVpu("vpu1"); restoreVpu("vpu2"); }
+  // —— 黑洞：里程碑 25 保留质量与虚粒子，且卷缩后处于扭曲状态 ——
+  if (!compMilestone(25)) {
+    setBhMass(1); state.bhState = "accrete"; setVP(0);
+  } else {
+    state.bhState = "distorl";
+  }
   state.sbu1 = 0; state.sbu2 = 0; state.sbu3 = 0;
   state.svpu1 = 0; state.svpu2 = 0; state.svpu3 = 0; state.svpu4 = 0; state.svpu5 = 0;
-  // —— 虚空：可进入性（总 Sp 归零后需重新达到 1e50）与虚空数据全部重置 ——
-  //（量子泡沫 VF、虚空共振 SVU1 的累计投入与填充开关、能标偏移 SVU2 等级、
-  //  虚空里程碑记录 voidBestRules——其解锁的泡沫第二/第三效果与 SVU 资格随之失效）
+  // —— 虚空：里程碑 14/16/18 条件保留，其余重置 ——
   state.voidActive = false; state.voidRules = [];
-  setVoidVFLog(NLOG);
-  state.svu1SpLog = NLOG; state.svu1VpLog = NLOG; state.svu1VfLog = NLOG;
-  state.svu1Filling = false;
-  state.svu2Level = 0;
-  state.voidBestRules = 0;
+  if (!compMilestone(18)) setVoidVFLog(NLOG);
+  if (!compMilestone(16)) {
+    state.svu1SpLog = NLOG; state.svu1VpLog = NLOG; state.svu1VfLog = NLOG;
+    state.svu1Filling = false;
+    state.svu2Level = 0;
+  }
+  if (!compMilestone(14)) state.voidBestRules = 0;
+  if (compMilestone(12)) setVoidVFLog(clampLog(Math.max(state.logVoidVF10 ?? NLOG, 6))); // 初始 1e6 VF（不降低已有）
   // —— 卷缩层自身：CM 重置（TP/V/E/F 配置、SS/Ins/理论树保留）——
   setCMLog(NLOG);
   // 理论树：勾选「卷缩重置理论树」时清空已购节点并返还所耗灵感（AD 重置语义），随后解除开关
@@ -3790,10 +3882,12 @@ function applyCompactionResetBody(realNow) {
   applyCompactVisibility();
   updateCompactButton();
   checkAchievements();
-  switchTab("wave");
-  switchSubtab("main");
+  if (!simActive) {
+    switchTab("wave");
+    switchSubtab("main");
+  }
   saveGame();
-  renderAll();
+  if (!simActive) renderAll();
 }
 
 // 测试工具：「导致一次卷缩重置」——执行与卷缩完全相同的重置范围，
@@ -3997,13 +4091,13 @@ function updateCompactUI() {
   if (simActive) return;
   if (!state.testMode || state.compactions < 1) return;
   buildCompactOnce();
-  // 里程碑（横条：编号 + 奖励 + 状态）
+  // 里程碑（横条：编号 + 进度 + 奖励 + 状态）
   for (let i = 0; i < COMP_MILESTONES.length; i++) {
     const def = COMP_MILESTONES[i], el = compMsEls[i];
     if (!el) continue;
-    const done = def.check();
+    const done = state.compactions >= def.n;
     el.cell.classList.toggle("done", done);
-    el.statusEl.textContent = done ? "✓ 已完成" : "进行中";
+    el.statusEl.textContent = done ? "✓ 已完成" : `${Math.min(state.compactions, def.n)} / ${def.n}`;
   }
   // 维度折叠器：CM 值（显示 floor，后台小数）与产量
   const cmLog = getLogCM();
@@ -4103,18 +4197,21 @@ function updateCompactButton() {
   btn.classList.toggle("hidden", !show);
   if (!show) return;
   const ready = getLogVP() >= 36 && state.voidBestRules >= 8 && getLogSp() >= SP_SOFTCAP_PIVOT_LOG;
-  if (state.compactions >= 1) {
-    btn.classList.remove("compact-ready");
-    btn.disabled = true;
-    btn.textContent = "卷缩（测试中，暂不开放）";
-  } else if (!ready) {
+  if (!ready) {
     btn.classList.remove("compact-ready");
     btn.disabled = true;
     btn.textContent = "需要 1e36 VP、1.79e308 Sp、完成 A54";
-  } else {
+  } else if (state.compactions === 0) {
+    // 首次卷缩：剧情文案（固定 1 SS）
     btn.classList.add("compact-ready");
     btn.disabled = false;
     btn.innerHTML = "你的波动已经足以撕开维度的裂隙<br>突破这个维度的极限";
+  } else {
+    // 后续卷缩：显示本次可获得的基础 SS
+    btn.classList.add("compact-ready");
+    btn.disabled = false;
+    const g = compactSSGain();
+    btn.textContent = `卷缩（+${fmt(g)} SS）`;
   }
 }
 
@@ -4785,6 +4882,11 @@ const AUTO_DEFS = [
   { key: "phonon", unlockState: "autoPhononUpg", name: "自动购买声子页升级", desc: "自动购买波动声子页面的可重复升级", unlockDesc: "1e20 Hz 解锁" },
   { key: "up3", unlockState: "autoUp3", name: "自动购买升级3", desc: "在达到指定倍率时自动购买升级3", unlockDesc: "第 8 次湮灭解锁", input: { id: "auto-up3-mult", label: "倍率", value: () => state.autoUp3Mult } },
   { key: "ann", unlockState: "autoAnn", name: "自动湮灭", desc: "在可获取指定奇点数时自动湮灭", unlockDesc: "第 10 次湮灭解锁", input: { id: "auto-ann-sp", label: "Sp", value: () => state.autoAnnSp } },
+  // 卷缩里程碑解锁（达成前整行不可见）
+  { key: "sau", unlockState: "autoSau", name: "自动购买可重复奇点升级", desc: "自动购买 SAU 可重复升级与真空衰变", unlockDesc: "卷缩里程碑 16 解锁", hideLocked: true },
+  { key: "sbu", unlockState: "autoSbu", name: "自动购买黑洞升级", desc: "自动购买三个黑洞升级（事件视界/引力潮汐/霍金辐射）", unlockDesc: "卷缩里程碑 18 解锁", hideLocked: true },
+  { key: "svpu", unlockState: "autoSvpu", name: "自动购买虚粒子升级", desc: "自动购买虚粒子升级（SVPU）", unlockDesc: "卷缩里程碑 20 解锁", hideLocked: true },
+  { key: "comp", unlockState: "autoComp", name: "自动卷缩", desc: "在可获取指定超弦数时自动卷缩", unlockDesc: "卷缩里程碑 30 解锁", hideLocked: true, input: { id: "auto-comp-ss", label: "SS", value: () => state.autoCompSS } },
 ];
 
 function autoUnlocked(def) {
@@ -4792,6 +4894,10 @@ function autoUnlocked(def) {
   if (def.key === "phonon") return state.autoPhononUpg >= 1;
   if (def.key === "up3") return state.autoUp3 >= 1;
   if (def.key === "ann") return state.autoAnn >= 1;
+  if (def.key === "sau") return state.autoSau >= 1;
+  if (def.key === "sbu") return state.autoSbu >= 1;
+  if (def.key === "svpu") return state.autoSvpu >= 1;
+  if (def.key === "comp") return state.autoComp >= 1;
   return false;
 }
 
@@ -4822,8 +4928,19 @@ function buildAutomationOnce() {
         if (!state.ach.hidden.includes("S13") && !isNaN(vLog) && vLog < 0) { grantHidden("S13"); updateAchievementsUI(); }
       } else if (def.key === "ann") {
         if (!isNaN(vLog)) {
-          state.autoAnnSpLog = vLog;
-          state.autoAnnSp = vLog <= NLOG + 1 ? 0 : (vLog > 308 ? Infinity : Math.pow(10, vLog));
+          // 按当前模式写入对应阈值（sp=绝对获取量 / heldsp=持有倍率）
+          if (state.autoAnnMode === "heldsp") {
+            state.autoAnnHeldMultLog = vLog;
+            state.autoAnnHeldMult = vLog <= NLOG + 1 ? 0 : (vLog > 308 ? Infinity : Math.pow(10, vLog));
+          } else {
+            state.autoAnnSpLog = vLog;
+            state.autoAnnSp = vLog <= NLOG + 1 ? 0 : (vLog > 308 ? Infinity : Math.pow(10, vLog));
+          }
+        }
+      } else if (def.key === "comp") {
+        if (!isNaN(vLog)) {
+          state.autoCompSSLog = vLog;
+          state.autoCompSS = vLog <= NLOG + 1 ? 0 : (vLog > 308 ? Infinity : Math.pow(10, vLog));
         }
       }
       saveGame();
@@ -4834,7 +4951,12 @@ function buildAutomationOnce() {
       modeBtn = document.createElement("button"); modeBtn.className = "batch-btn single hidden";
       modeBtn.addEventListener("click", () => {
         if (def.key === "up3") state.autoUp3Mode = state.autoUp3Mode === "ratio" ? "time" : "ratio";
-        else state.autoAnnMode = state.autoAnnMode === "sp" ? "time" : "sp";
+        else {
+          // 自动湮灭三态循环：sp → time → heldsp（卷缩里程碑14解锁后）→ sp
+          if (state.autoAnnMode === "sp") state.autoAnnMode = "time";
+          else if (state.autoAnnMode === "time") state.autoAnnMode = compMilestone(14) ? "heldsp" : "sp";
+          else state.autoAnnMode = "sp";
+        }
         updateAutomationUI();
       });
       timeInput = document.createElement("input"); timeInput.type = "text"; timeInput.classList.add("hidden"); // text 以允许 AeB 格式
@@ -4938,14 +5060,17 @@ function updateAutomationUI() {
   for (const key in autoRefs) {
     const r = autoRefs[key];
     const unlocked = autoUnlocked(r.def);
+    // 卷缩里程碑解锁的行：达成前整行不可见
+    if (r.def.hideLocked) r.row.classList.toggle("hidden", !unlocked);
     r.lockEl.textContent = unlocked ? "" : r.def.unlockDesc;
     // 描述随模式动态更新（AU21/AU22 解锁时间模式后不再停留在倍率/奇点文案）
     if (r.descEl) {
       const isTime = (r.def.key === "up3" && auOwned("au21") && state.autoUp3Mode === "time")
         || (r.def.key === "ann" && auOwned("au22") && state.autoAnnMode === "time");
+      const isHeld = r.def.key === "ann" && auOwned("au22") && state.autoAnnMode === "heldsp";
       r.descEl.textContent = isTime
         ? (r.def.key === "up3" ? "每经过指定秒数时自动购买升级3" : "每经过指定秒数时自动湮灭")
-        : r.def.desc;
+        : (isHeld ? "在可获取量达到当前持有奇点的指定倍数时自动湮灭" : r.def.desc);
     }
     if (r.def.input) {
       const isTimeMode = (r.def.key === "up3" && state.autoUp3Mode === "time") || (r.def.key === "ann" && state.autoAnnMode === "time");
@@ -4956,7 +5081,11 @@ function updateAutomationUI() {
         // 数值以 AeB 字符串形式显示；阈值走 log10 权威，可显示超 double 的设定值（如 1e400）
         r.inputEl.value = r.def.key === "up3"
           ? fmtNum(state.autoUp3Mult, state.autoUp3MultLog)
-          : fmtNum(state.autoAnnSp, state.autoAnnSpLog);
+          : r.def.key === "comp"
+            ? fmtNum(state.autoCompSS, state.autoCompSSLog)
+            : (r.def.key === "ann" && state.autoAnnMode === "heldsp")
+              ? fmtNum(state.autoAnnHeldMult, state.autoAnnHeldMultLog)
+              : fmtNum(state.autoAnnSp, state.autoAnnSpLog);
       }
     }
     r.btn.textContent = state.autoOn[key] ? "开启中" : "已关闭";
@@ -4973,7 +5102,8 @@ function updateAutomationUI() {
           r.modeBtn.textContent = isTime ? "类型：时间" : "类型：比例";
           if (isTime && document.activeElement !== r.timeInput) r.timeInput.value = state.autoUp3Interval;
         } else {
-          r.modeBtn.textContent = isTime ? "类型：时间" : "类型：奇点";
+          const isHeld = state.autoAnnMode === "heldsp";
+          r.modeBtn.textContent = isTime ? "类型：时间" : isHeld ? "类型：持有倍率" : "类型：奇点";
           if (isTime && document.activeElement !== r.timeInput) r.timeInput.value = state.autoAnnInterval;
         }
       }
@@ -5067,6 +5197,13 @@ function autoAnnTick() {
     if (gameNow() - state.lastAutoAnnAt >= state.autoAnnInterval * 1000 && annihilationReady()) {
       if (doAnnihilation()) state.lastAutoAnnAt = gameNow();
     }
+  } else if (auOwned("au22") && state.autoAnnMode === "heldsp") {
+    // 持有倍率模式（卷缩里程碑 14）：可获取量 ≥ 当前持有奇点 × 倍率（log 域；持有为 0 不触发）。
+    // 持有判定用 state.sp > 0（sp 的零哨兵是字面 0，sp=1 时 getLogSp()=0 与零值同形）
+    if (state.sp > 0 && gameNow() - state.lastAutoAnnAt >= autoAnnCD()
+      && annihilationReady() && spGainLog() >= clampLog(getLogSp() + state.autoAnnHeldMultLog)) {
+      if (doAnnihilation()) state.lastAutoAnnAt = gameNow();
+    }
   } else if (gameNow() - state.lastAutoAnnAt >= autoAnnCD() && annihilationReady() && spGainLog() >= state.autoAnnSpLog) {
     // Sp 模式：阈值以 log10 权威比较（可输入超 double 的阈值；spGainLog 与 spGainExact 同口径），
     // CD 防抖（基础 1s，A42 星标 200ms，A44 升级进一步缩减，最低 25ms）
@@ -5088,6 +5225,39 @@ function autoBuyWaveLoop() {
   // bulk=true 跳过逐次渲染与成就检查（tick 末尾统一执行）
   for (let i = 0; i < n; i++) { const lv = state.up1; if (cmpGE(F(), up1Cost(), FLog(), up1CostLog())) buyUp1(true); else break; if (state.up1 === lv) break; }
   for (let i = 0; i < n; i++) { const lv = state.up2; if (cmpGE(F(), up2Cost(), FLog(), up2CostLog())) buyUp2(true); else break; if (state.up2 === lv) break; }
+}
+// 卷缩里程碑解锁的自动购买器（循环购买至不可负担/达上限，等级未变即收敛）
+function autoBuySauLoop() {
+  for (let i = 0; i < 100; i++) {
+    const before = state.sau1 + "," + state.sau2 + "," + state.sau3 + "," + state.sau4;
+    for (const u of SAU_DEFS) {
+      if (state[u.key] >= effSauMax(u.key)) continue;
+      const cLog = u.costLog(state[u.key] + 1);
+      if (getLogSp() >= cLog) buySAU(u.id);
+    }
+    { // 真空衰变
+      const cLog = VACUUM_DEF.costLog(state.sau4 + 1);
+      if (getLogSp() >= cLog) buySAU("sau4");
+    }
+    if (before === state.sau1 + "," + state.sau2 + "," + state.sau3 + "," + state.sau4) break;
+  }
+}
+function autoBuySbuLoop() {
+  for (let i = 0; i < 100; i++) {
+    const before = state.sbu1 + "," + state.sbu2 + "," + state.sbu3;
+    for (const u of SBU_DEFS) buySBU(u.id);
+    if (before === state.sbu1 + "," + state.sbu2 + "," + state.sbu3) break;
+  }
+}
+function autoBuySvpuLoop() {
+  for (let i = 0; i < 100; i++) {
+    const before = state.svpu1 + "," + state.svpu2 + "," + state.svpu3 + "," + state.svpu4 + "," + state.svpu5;
+    for (const u of SVPU_DEFS) {
+      if ((u.id === "svpu4" || u.id === "svpu5") && !vpuOwned("vpu5")) continue; // VPU5 解锁后才可购买
+      buySVPU(u.id);
+    }
+    if (before === state.svpu1 + "," + state.svpu2 + "," + state.svpu3 + "," + state.svpu4 + "," + state.svpu5) break;
+  }
 }
 function runAutomation() {
   if (state.annihilations < 1) return;
@@ -5121,6 +5291,14 @@ function runAutomation() {
         if (buyUp3()) rebuyAfterUp3();
       }
     }
+  }
+  // 卷缩里程碑解锁的自动购买器与自动卷缩
+  if (!narrow && state.autoOn.sau && state.autoSau) autoBuySauLoop();
+  if (!narrow && state.autoOn.sbu && state.autoSbu && bhUnlocked()) autoBuySbuLoop();
+  if (!narrow && state.autoOn.svpu && state.autoSvpu && bhUnlocked()) autoBuySvpuLoop();
+  if (!narrow && state.autoOn.comp && state.autoComp && canCompactify()) {
+    const ssLog = compactSSGainLog();
+    if (ssLog > NLOG + 1 && ssLog >= state.autoCompSSLog) compactify(true);
   }
   autoAnnTick();
 }
@@ -6070,6 +6248,13 @@ function tick() {
     if (!state.autoUp3 && hasMilestone(8)) state.autoUp3 = 1;
     if (!state.autoAnn && hasMilestone(10)) state.autoAnn = 1;
   }
+  // 卷缩里程碑解锁的自动化（老存档补发；新档在 compactify 内授予）
+  if (state.testMode && state.compactions >= 1) {
+    if (!state.autoSau && compMilestone(16)) { state.autoSau = 1; setAutosaveStatus("自动化解锁：可重复奇点升级（卷缩里程碑 16）"); }
+    if (!state.autoSbu && compMilestone(18)) { state.autoSbu = 1; setAutosaveStatus("自动化解锁：黑洞升级（卷缩里程碑 18）"); }
+    if (!state.autoSvpu && compMilestone(20)) { state.autoSvpu = 1; setAutosaveStatus("自动化解锁：虚粒子升级（卷缩里程碑 20）"); }
+    if (!state.autoComp && compMilestone(30)) { state.autoComp = 1; setAutosaveStatus("自动化解锁：自动卷缩（卷缩里程碑 30）"); }
+  }
 
   // 更新统计极值（log 域 max/min，防 maxU 恒 Infinity、minL 下溢 0 丢精度）
   const f = F();
@@ -6568,7 +6753,6 @@ function setupUI() {
   });
   // 卷缩按钮（顶栏湮灭按钮下方；A55 + 测试模式下显示，条件满足时可点击）
   document.getElementById("compactify-btn").addEventListener("click", () => {
-    if (state.compactions >= 1) return; // 第二次卷缩暂不开放
     compactify();
   });
   // S20：version control —— 查看 changelog
