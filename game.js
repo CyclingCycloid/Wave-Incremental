@@ -2717,9 +2717,10 @@ function sauCostLog(base, n) {
   for (let k = 11; k <= n; k++) log += 2 + 2 * Math.log10(k);
   return log;
 }
-// 真空衰变（独立行，位于 spu1 下方、SAU 行上方）：每级奇点获取 ×2，价 10^(3+n)
+// 真空衰变（独立行，位于 spu1 下方、SAU 行上方）：每级奇点获取 ×2，价 10^(3+n)；
+// 500 级以上每级价格额外 ×级别×100（价 10^(3+500) × ∏_{k=501..n} 100k）
 const VACUUM_DEF = { id: "sau4", key: "sau4", name: "真空衰变", desc: "每级使获得的奇点 ×2", max: Infinity,
-  costLog: (n) => 3 + n };
+  costLog: (n) => (n <= 500 ? 3 + n : 503 + (lgamma10(n) - lgamma10(500)) + 2 * (n - 500)) };
 // 第二类：单次（四组×4，两组共一行）
 const AU_DEFS = [
   [ // 第1组
