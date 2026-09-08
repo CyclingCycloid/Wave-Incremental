@@ -708,9 +708,11 @@ function temperatureCap() {
 }
 // AU42 虚幻凝聚：基于虚粒子数量增加奇点获取 ×(1+VP)^0.4（返回 log10；
 // log 域计算：VP 缓存为 Infinity（log 权威仍有限）时不产生 Infinity/LOG_CAP 污染）
+// 加成指数：理论树节点23 分析力学使效果 ^1.2（0.4 → 0.48）
+function au42Exp() { return 0.4 * (theoryOwned("23") ? 1.2 : 1); }
 function vpSpMultLog() {
   if (!auOwned("au42")) return 0;
-  return 0.4 * logAddLogs(0, getLogVP());
+  return au42Exp() * logAddLogs(0, getLogVP());
 }
 // Sp 获取基础值的 log10（log 域全链路，温度超 double 也不产生 Infinity）。
 // 三段连续：T<1e50 为 1~10 线性（1 Sp @ T_P0）；1e50≤T<1e100 为 lg(T)/5（10~20）；
@@ -2816,7 +2818,9 @@ function invLMultLog() { return auOwned("au14") ? Math.max(0, -0.1 * getLogL10()
 function phononSpMult() {
   if (!auOwned("au41")) return 1;
   const base = Math.sqrt(1 + Math.log10(1 + state.annihilations) / 3);
-  return vpuOwned("vpu5") ? base * base : base; // VPU5 临界湮灭：共轭湮灭效果 ^2
+  let m = vpuOwned("vpu5") ? base * base : base; // VPU5 临界湮灭：共轭湮灭效果 ^2
+  if (theoryOwned("22")) m = Math.pow(m, 10); // 理论树节点22 刚体力学：效果 ^10
+  return m;
 }
 // AU31：时间倍率（真实游玩时间）
 function timeArrowMult() { return auOwned("au31") ? 1 + Math.pow(Math.log10(1 + state.realTime), 0.6) : 1; }
@@ -3564,8 +3568,11 @@ const THEORY_NODES = [
   { id: "21", name: "电磁学", parents: ["11"], cost: 6,
     desc: "基于CM给予象限拓张免费等级，并削弱其软上限",
     effect: () => "当前 +" + fmt(theory21FreeLevel()) + " 免费等级 ｜ 软上限指数 " + (theoryOwned("21") ? "0.72" : "0.7") },
-  { id: "22", name: "刚体力学", parents: ["12"], placeholder: true },
-  { id: "23", name: "分析力学", parents: ["12"], placeholder: true },
+  { id: "22", name: "刚体力学", parents: ["12"], cost: 2,
+    desc: "共轭湮灭的效果变为原来的十次方" },
+  { id: "23", name: "分析力学", parents: ["12"], cost: 2,
+    desc: "略微增强虚幻凝聚的效果",
+    effect: () => "虚幻凝聚效果额外 ^0.2" },
   { id: "31", name: "电动力学", parents: ["21"], placeholder: true },
   { id: "32", name: "几何光学", parents: ["22", "23"], placeholder: true },
   { id: "41", name: "波动光学", parents: ["31", "32"], placeholder: true },
