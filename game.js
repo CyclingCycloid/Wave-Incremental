@@ -3572,7 +3572,7 @@ const THEORY_NODES = [
     desc: "共轭湮灭的效果变为原来的十次方" },
   { id: "23", name: "分析力学", parents: ["12"], cost: 2,
     desc: "略微增强虚幻凝聚的效果",
-    effect: () => "虚幻凝聚效果额外 ^0.2" },
+    effect: () => "虚幻凝聚效果额外 ×" + (getLogVP() > NLOG + 1 ? fmtLog(0.08 * logAddLogs(0, getLogVP())) : "0") },
   { id: "31", name: "电动力学", parents: ["21"], placeholder: true },
   { id: "32", name: "几何光学", parents: ["22", "23"], placeholder: true },
   { id: "41", name: "波动光学", parents: ["31", "32"], placeholder: true },
