@@ -731,7 +731,8 @@ function spGainBaseLog() {
 // 未封顶的最终获取 log10（base + 全部乘数 + 首次保底），spGain* 系列共用
 function spRawGainLog() {
   const mLog = Math.log10(state.distortMult) + state.sau4 * Math.log10(2)
-    + Math.log10(Math.max(1, phononSpMult())) + vpSpMultLog() + cmSpMultLog();
+    + Math.log10(Math.max(1, phononSpMult())) + vpSpMultLog() + cmSpMultLog()
+    + (theoryOwned("32") ? 15 : 0); // 理论树节点32 几何光学：获得的奇点 ×1e15
   const bLog = spGainBaseLog() + mLog;
   const first = state.annihilations === 0 ? 1 : 0;
   // 首次保底 max(1, b)：log 域即 max(0, bLog)。
@@ -2539,8 +2540,11 @@ function totalEffectText(id) {
     }
     case "svpu3":
       return { text: `总效果：升级3软上限削弱 ÷${n("svpu3") + 1}`, capped: false };
-    case "svpu4":
-      return { text: `总效果：温度软上限缩放指数 1/${n("svpu4") + 2}` + (svu2Svpu4Bonus() > 0 ? `（含能标偏移 +${fmt(svu2Svpu4Bonus())}）` : ""), capped: false };
+    case "svpu4": {
+      // 节点41 波动光学：每级相当于 1.3 级——分母按有效等级显示（节点后可带一位小数）
+      const den = state.svpu4 * (theoryOwned("41") ? 1.3 : 1) + 2;
+      return { text: `总效果：温度软上限缩放指数 1/${Number.isInteger(den) ? den : den.toFixed(1)}` + (svu2Svpu4Bonus() > 0 ? `（含能标偏移 +${fmt(svu2Svpu4Bonus())}）` : ""), capped: false };
+    }
     case "svpu5":
       return { text: `总效果：黑洞质量软上限起始 1e${bhMassSoftcapLog()}`, capped: false };
     default:
@@ -3110,8 +3114,9 @@ function svu2Svpu4Bonus() {
   const b = Math.log10(1 + Math.log10(state.svu2Level + 1));
   return state.voidActive ? 2 * b : b;
 }
-// 热能超载的有效等级（温度软上限缩放指数 1/(n+2) 中的 n；含 SVU2 加成）
-function effSvpu4() { return state.svpu4 + svu2Svpu4Bonus(); }
+// 热能超载的有效等级（温度软上限缩放指数 1/(n+2) 中的 n；含 SVU2 加成；
+// 理论树节点 41「波动光学」：每一级都相当于之前的 1.3 级）
+function effSvpu4() { return state.svpu4 * (theoryOwned("41") ? 1.3 : 1) + svu2Svpu4Bonus(); }
 // SVU2 效果 2（仅虚空内）：热寂削弱指数 0.5 → 1/(2+lg(n+1))
 function svu2AdiabaticExp() {
   if (!state.voidActive || state.svu2Level <= 0) return 0.5;
@@ -3514,15 +3519,26 @@ function cmTimeMultLog() {
   const lb = 0.005 * trLog; // lg(Speed^0.005)
   return clampLog(Math.max(la, lb));
 }
+// 理论树节点 31「电动力学」：基于奇点加速维度折叠器 ×(1+lg(Sp+1))^0.8（返回 log10）。
+// lg(Sp+1) 走 lg1FromLog；注意 Sp 的零哨兵是字面 0（getLogSp()=0 非 lg 语义），
+// sp=0 须显式判 sp>0 取 lg(Sp+1)=0，否则 lg1FromLog(0)=lg(2) 会让无奇点时也获得 ×1.235。
+// 内层 1+lg(Sp+1) 为小数值，double 直接算；与节点 01 的时间乘数并列的独立乘数——
+// 基于持有 Sp，不受游戏速度影响
+function cmSpAccelMultLog() {
+  if (!theoryOwned("31")) return 0;
+  const lgs = state.sp > 0 ? lg1FromLog(getLogSp()) : 0; // lg(Sp+1)（sp=0 时为 0）
+  return clampLog(0.8 * Math.log10(1 + lgs));
+}
 // 折叠器 tick：CM 按真实时间累积（挂 applyProduction，离线模拟共用）。
-// 初始不受游戏速度影响；节点 01 后乘上严重削弱的时间倍率（真实 dt × 乘数）
+// 初始不受游戏速度影响；节点 01 后乘上严重削弱的时间倍率（真实 dt × 乘数）；
+// 节点 31 后再乘上基于奇点的加速乘数
 function cmTick(realDt) {
   if (state.compactions < 1 || !state.testMode) return;
   if (tpTotal() <= 0) return;
   const rateLog = cmRateLog();
   if (rateLog <= NLOG + 1) return;
   const dtLog = Math.log10(Math.max(realDt, 1e-300)) + cmTimeMultLog();
-  setCMLog(logAddLogs(getLogCM(), rateLog + dtLog));
+  setCMLog(logAddLogs(getLogCM(), rateLog + dtLog + cmSpAccelMultLog()));
 }
 // 购买拓扑节点：第 n 个花费 floor(1.5^n) SS（n 从 1 起，按**总节点数**计——
 // 含已转换为点/边/面的部分，否则转换后再购买会重新从第 1 个的价钱起算）
@@ -3573,9 +3589,13 @@ const THEORY_NODES = [
   { id: "23", name: "分析力学", parents: ["12"], cost: 2,
     desc: "略微增强虚幻凝聚的效果",
     effect: () => "虚幻凝聚效果额外 ×" + fmtLog(0.08 * logAddLogs(0, getLogVP())) },
-  { id: "31", name: "电动力学", parents: ["21"], placeholder: true },
-  { id: "32", name: "几何光学", parents: ["22", "23"], placeholder: true },
-  { id: "41", name: "波动光学", parents: ["31", "32"], placeholder: true },
+  { id: "31", name: "电动力学", parents: ["21"], cost: 4,
+    desc: "基于奇点加速维度折叠器",
+    effect: () => "当前 ×" + fmtLog(cmSpAccelMultLog()) },
+  { id: "32", name: "几何光学", parents: ["22", "23"], cost: 3,
+    desc: "获得的奇点 ×1e15" },
+  { id: "41", name: "波动光学", parents: ["31", "32"], cost: 7,
+    desc: "增强热能超载的效果" },
 ];
 function theoryOwned(id) { return !!state.theoryNodes[id]; }
 // 理论树节点 21 电磁学：基于 CM 给予象限拓张（SAU1）免费等级 lg(CM+1)×4
@@ -4183,8 +4203,8 @@ function updateCompactUI() {
   // 维度折叠器：CM 值（显示 floor，后台小数）与产量
   document.getElementById("comp-cm-value").textContent = fmtIntRes(state.cm, getLogCM());
   const rateLog = cmRateLog();
-  // 每秒获取写最终值：基础产量 × 折叠器时间乘数（节点 01 的削弱加成等全部计入）
-  const finalRateLog = rateLog <= NLOG + 1 ? NLOG : clampLog(rateLog + cmTimeMultLog());
+  // 每秒获取写最终值：基础产量 × 折叠器时间乘数（节点 01 削弱加成）× 节点31 奇点加速（全部计入）
+  const finalRateLog = rateLog <= NLOG + 1 ? NLOG : clampLog(rateLog + cmTimeMultLog() + cmSpAccelMultLog());
   const rateTxt = finalRateLog <= NLOG + 1 ? "0" : fmtNum(Math.pow(10, Math.min(finalRateLog, 308)), finalRateLog);
   document.getElementById("comp-cm-rate").textContent = `每秒 +${rateTxt}`;
   const baseTxt = rateLog <= NLOG + 1 ? "0" : fmtNum(Math.pow(10, Math.min(rateLog, 308)), rateLog);
