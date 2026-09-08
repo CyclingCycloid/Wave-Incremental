@@ -3563,7 +3563,7 @@ const THEORY_NODES = [
     effect: () => "当前指数 0.12" },
   { id: "21", name: "电磁学", parents: ["11"], cost: 6,
     desc: "基于CM给予象限拓张免费等级，并削弱其软上限",
-    effect: () => "当前 +" + fmt(theory21FreeLevel()) + " 免费等级 ｜ 软上限指数 " + (theoryOwned("21") ? "0.715" : "0.7") },
+    effect: () => "当前 +" + fmt(theory21FreeLevel()) + " 免费等级 ｜ 软上限指数 " + (theoryOwned("21") ? "0.72" : "0.7") },
   { id: "22", name: "刚体力学", parents: ["12"], placeholder: true },
   { id: "23", name: "分析力学", parents: ["12"], placeholder: true },
   { id: "31", name: "电动力学", parents: ["21"], placeholder: true },
