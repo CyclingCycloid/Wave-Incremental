@@ -3690,6 +3690,8 @@ function copyTheoryTreeToClipboard() {
 function doImportTheoryTree() {
   const s = prompt("输入理论树（格式如 01;11;21,22;31;41;0d）");
   if (s === null) return;
+  // S28 增量神秘数字：在理论树导入框输入 69
+  if (s.trim() === "69") { grantHidden("S28"); updateAchievementsUI(); setAutosaveStatus("隐藏成就达成：增量神秘数字（理论树格式有误，导入失败）"); return; }
   const ids = parseTheoryTree(s);
   if (!ids) { setAutosaveStatus("理论树格式有误，导入失败"); return; }
   const n = importTheoryTreeList(ids);
@@ -5922,6 +5924,9 @@ const NORMAL_ACH = [
   { id: "A53", name: "融合", desc: "完成至少两种扭曲的虚空", star: true, reward: "up1 获得免费等级 1（重置不清零）", check: () => state.voidBestRules >= 2 },
   { id: "A54", name: "混沌", desc: "完成所有扭曲生效的虚空", check: () => state.voidBestRules >= 8 },
   { id: "A55", name: "卷缩", desc: "达到 1.79e308 奇点", star: true, reward: "解锁下一个重置层：卷缩（测试中）；任何重置后初始波速为 1e3 m/s", check: () => getLogSp() >= SP_SOFTCAP_PIVOT_LOG },
+  { id: "A61", name: "折叠", desc: "开始产出卡拉比-丘流形", check: () => getLogCM() > NLOG + 1 },
+  { id: "A62", name: "理论", desc: "购买四个理论树节点", check: () => Object.keys(state.theoryNodes).length >= 4 },
+  { id: "A63", name: "里程", desc: "获得所有卷缩里程碑", check: () => COMP_MILESTONES.every(m => state.compactions >= m.n) },
 ];
 const ACH_PER_ROW = 5;
 // 已定义行数；之后整行为未解锁 ???
@@ -5958,6 +5963,8 @@ const HIDDEN_ACH = [
   { id: "S24", name: "你变秃了，也变强了", check: () => false }, // 一天（当日窗口）内 rua 摆线 200 次
   { id: "S25", name: "这是旮旯给木吗？", check: () => false }, // 好感度达到 500
   { id: "S26", name: "你才是挑战者", check: () => false }, // 进入所有（8 种）扭曲生效的虚空
+  { id: "S27", name: "几何学不存在了", check: () => state.testMode && wavelengthExp() > 0 && F() > wavelengthExp() }, // F > e > 0（e 为卷缩几何指数）
+  { id: "S28", name: "增量神秘数字", check: () => false }, // 在理论树导入框输入 69（doImportTheoryTree 内授予）
 ];
 // S5 目标序列：S1,S1,S4,S5,S1,S4
 const S5_SEQUENCE = ["S1", "S1", "S4", "S5", "S1", "S4"];
