@@ -5963,7 +5963,7 @@ const HIDDEN_ACH = [
   { id: "S24", name: "你变秃了，也变强了", check: () => false }, // 一天（当日窗口）内 rua 摆线 200 次
   { id: "S25", name: "这是旮旯给木吗？", check: () => false }, // 好感度达到 500
   { id: "S26", name: "你才是挑战者", check: () => false }, // 进入所有（8 种）扭曲生效的虚空
-  { id: "S27", name: "几何学不存在了", check: () => state.testMode && wavelengthExp() > 0 && F() > wavelengthExp() }, // F > e > 0（e 为卷缩几何指数）
+  { id: "S27", name: "几何学不存在了", check: () => state.tpF > state.tpE && state.tpE > 0 }, // 维度折叠器的面 F > 边 E > 0（几何上不可能：面数超过边数）
   { id: "S28", name: "增量神秘数字", check: () => false }, // 在理论树导入框输入 69（doImportTheoryTree 内授予）
 ];
 // S5 目标序列：S1,S1,S4,S5,S1,S4
