@@ -2748,7 +2748,7 @@ const AU_DEFS = [
   ],
 ];
 function auOwned(id) { return !!state.au[id]; }
-function buySAU(id) {
+function buySAU(id, bulk) {
   const u = SAU_DEFS.find(x => x.id === id) || (id === VACUUM_DEF.id ? VACUUM_DEF : null);
   if (!u) return;
   const n = state[u.key] + 1; // 第 n 次购买（1 起）
@@ -2758,9 +2758,7 @@ function buySAU(id) {
   if (cmpLT(state.sp, Math.pow(10, cLog), getLogSp(), cLog)) return;
   subSpLog(cLog);
   state[u.key]++;
-  checkAchievements(); // A35
-  updateSpUI();
-  setAutosaveStatus("已购买奇点升级：" + u.name);
+  if (!bulk) { checkAchievements(); updateSpUI(); setAutosaveStatus("已购买奇点升级：" + u.name); }
 }
 function buyAU(id) {
   const u = AU_DEFS.flat().find(x => x.id === id);
@@ -3177,7 +3175,7 @@ function sbuCostLog(u, n) {
   if (u.id === "sbu3") return 11 + (n - 1) * 2;      // 1e11 × 100^(n-1)
   return 0;
 }
-function buySBU(id) {
+function buySBU(id, bulk) {
   if (!bhUnlocked()) return;
   const u = SBU_DEFS.find(x => x.id === id);
   if (!u) return;
@@ -3186,8 +3184,7 @@ function buySBU(id) {
   if (cmpLT(state.sp, Math.pow(10, cLog), getLogSp(), cLog)) return;
   subSpLog(cLog);
   state[u.key]++;
-  updateBlackholeUI();
-  setAutosaveStatus("已购买黑洞升级：" + u.name);
+  if (!bulk) { updateBlackholeUI(); setAutosaveStatus("已购买黑洞升级：" + u.name); }
 }
 // 黑洞虚粒子升级（花 VP，位于黑洞页）
 const SVPU_DEFS = [
@@ -3201,7 +3198,7 @@ const SVPU_DEFS = [
 function svpu1Max() { return vpuOwned("vpu4") ? Infinity : 4; }
 // 黑洞质量软上限起始点（log10）：1e50 起始，潮汐撕裂每级 +10 个数量级
 function bhMassSoftcapLog() { return 50 + 10 * state.svpu5; }
-function buySVPU(id) {
+function buySVPU(id, bulk) {
   if (!bhUnlocked()) return;
   const u = SVPU_DEFS.find(x => x.id === id);
   if (!u) return;
@@ -3213,8 +3210,7 @@ function buySVPU(id) {
   if (cmpLT(state.virtualParticles, c, getLogVP(), cLog)) return;
   subVPLog(cLog);
   state[u.key]++;
-  updateBlackholeUI();
-  setAutosaveStatus("已购买黑洞升级：" + u.name);
+  if (!bulk) { updateBlackholeUI(); setAutosaveStatus("已购买黑洞升级：" + u.name); }
 }
 // ---------- 虚粒子单次升级（VPU，A45 星标奖励解锁；2×2 方格，花 VP / VPU2 花 VF）----------
 // 达成 A45 前整区不可见；解锁条件统一由 vpuUnlocked(id) 判定。
@@ -4320,7 +4316,7 @@ function buildBlackholeOnce() {
     const tt = document.createElement("div"); tt.className = "sau-total";
     const ct = document.createElement("div"); ct.className = "sau-cost";
     btn.append(nm, ds, tt, ct);
-    btn.addEventListener("click", () => buySBU(u.id));
+    btn.addEventListener("click", () => buyMaxLoop(u.key, (b) => buySBU(u.id, b)));
     sbuRow.appendChild(btn);
     bhRefs[u.id] = { u, btn, descEl: ds, costEl: ct, totalEl: tt };
   }
@@ -4342,7 +4338,7 @@ function buildBlackholeOnce() {
     const tt = document.createElement("div"); tt.className = "sau-total";
     const ct = document.createElement("div"); ct.className = "sau-cost";
     btn.append(nm, ds, tt, ct);
-    btn.addEventListener("click", () => buySVPU(u.id));
+    btn.addEventListener("click", () => buyMaxLoop(u.key, (b) => buySVPU(u.id, b)));
     const row = (u.id === "svpu4" || u.id === "svpu5") ? svpuTopRow : svpuRow;
     row.appendChild(btn);
     bhRefs[u.id] = { u, btn, descEl: ds, costEl: ct, totalEl: tt, vp: true };
@@ -4668,7 +4664,7 @@ function buildAnnihilationOnce() {
     const tt = document.createElement("div"); tt.className = "sau-total";
     const ct = document.createElement("div"); ct.className = "sau-cost";
     btn.append(nm, ds, tt, ct);
-    btn.addEventListener("click", () => buySAU(VACUUM_DEF.id));
+    btn.addEventListener("click", () => buyMaxLoop(VACUUM_DEF.key, (b) => buySAU(VACUUM_DEF.id, b)));
     vacRow.appendChild(btn);
     vacRef = { u: VACUUM_DEF, btn, descEl: ds, costEl: ct, totalEl: tt };
   }
@@ -4685,7 +4681,7 @@ function buildAnnihilationOnce() {
     const tt = document.createElement("div"); tt.className = "sau-total";
     const ct = document.createElement("div"); ct.className = "sau-cost";
     btn.append(nm, ds, tt, ct);
-    btn.addEventListener("click", () => buySAU(u.id));
+    btn.addEventListener("click", () => buyMaxLoop(u.key, (b) => buySAU(u.id, b)));
     sauRow.appendChild(btn);
     sauRefs.push({ u, btn, descEl: ds, costEl: ct, totalEl: tt });
   }
@@ -5459,6 +5455,17 @@ function bulkBuyUp2(maxN) {
 // 通用闭式批量：等比价格（下一级 c0、增量 slope）、池 poolLog、支付偏移 payLe（从池本身支付为 0）。
 // 返回可购买级数 k 并回调 apply(总价格和的 log)——「总花费(含最后一级)+payLe ≤ 池」二分，
 // 与逐级购买「池随消耗下降」的中断语义一致
+// 通用「买满」循环：重复调用单次购买直到不可购/达上限（bulk 跳过逐次 UI），返回购买次数
+function buyMaxLoop(key, buyFn, cap) {
+  let bought = 0;
+  for (let i = 0; i < (cap || 1e5); i++) {
+    const lv = state[key];
+    buyFn(true);
+    if (state[key] === lv) break;
+    bought++;
+  }
+  return bought;
+}
 function bulkBuyGeneric(c0, slope, maxN, poolLog, apply) {
   if (maxN <= 0) return 0;
   const totalLog = (m) => logAddLogs(m <= 1 ? NLOG : bulkGeomSumLog(c0, slope, m - 1),
