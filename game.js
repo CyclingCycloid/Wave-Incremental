@@ -3666,8 +3666,13 @@ function theoryAvailable(def) {
   if (theoryOwned(def.id) || def.placeholder) return false;
   return def.parents.length === 0 || def.parents.some(p => theoryOwned(p));
 }
-// 灵感（Ins）购买价格（第 n 次，n=已购次数+1）：F：10^(25000n)；Sp：10^(200(n-1))；SS：2^(n-1)
-function insCostLogF() { return clampLog(25000 * (state.insFromF + 1)); }
+// 灵感（Ins）购买价格（第 n 次，n=已购次数+1）：F：10^(25000n)，价格超过 1e200000
+//（第 8 次起）加快为每级 +1e50000（拐点连续：10^(50000n−200000)，n=8 时仍为 1e200000）；
+// Sp：10^(200(n-1))；SS：2^(n-1)
+function insCostLogF() {
+  const n = state.insFromF + 1;
+  return clampLog(n <= 8 ? 25000 * n : 50000 * n - 200000);
+}
 function insCostLogSp() { return clampLog(200 * state.insFromSp); }          // 首次 10^0 = 1 Sp
 function insCostLogSS() { return clampLog(state.insFromSS * Math.log10(2)); } // 首次 2^0 = 1 SS
 // 购买灵感：src 为 "F"/"Sp"/"SS"（F 途径沿用既有约定：价格以 F 计，支付扣 U−cost·L）
