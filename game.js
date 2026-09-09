@@ -2541,7 +2541,7 @@ function totalEffectText(id) {
       return { text: `总效果：声子升级3上限 +${Math.floor(pg3Cap() - 20)}`, capped: n1 > 10, eff };
     }
     case "sau2": {
-      const eff = effLevel(n("sau2"), 10, 1 / 3);
+      const eff = effLevel(n("sau2"), 10, sau2SoftcapExp());
       return { text: `总效果：奇点效果 ×${fmt(sauMult())}`, capped: cappedSau("sau2"), eff };
     }
     case "sau3": {
@@ -2833,9 +2833,12 @@ function pg3Cap() {
   if (n1 <= 10) return 20 + per * n1;
   return 20 + per * 10 + Math.floor(per * Math.pow(n1 - 10, exp));
 }
-// SAU2：奇点效果指数倍率（有效级别 = 10+(n-10)^(1/3)）
+// SAU2 奇点凝聚软上限的缩放指数：基础 1/3；理论树节点 41「波动光学」削弱为 0.5
+//（超出 10 级的部分保留更多；价格超限增速 ×n⁴ 不受影响）
+function sau2SoftcapExp() { return theoryOwned("41") ? 0.5 : 1 / 3; }
+// SAU2：奇点效果指数倍率（有效级别 = 10+(n-10)^sau2SoftcapExp()）
 function sauMult() {
-  const eff = effLevel(state.sau2, 10, 1 / 3);
+  const eff = effLevel(state.sau2, 10, sau2SoftcapExp());
   return 1 + eff / 10;
 }
 // SAU3：热涨落指数（有效级别 = 10+(n-10)^(1/3)；每级 +0.015，单圈重整后 +0.018；量子狂潮免费等级计入）
@@ -3638,7 +3641,7 @@ const THEORY_NODES = [
   { id: "32", name: "几何光学", parents: ["22", "23"], cost: 3,
     desc: "获得的奇点 ×1e15" },
   { id: "41", name: "波动光学", parents: ["31", "32"], cost: 7,
-    desc: "增强热能超载的效果" },
+    desc: "增强热能超载的效果，并削弱奇点凝聚的软上限" },
 ];
 function theoryOwned(id) { return !!state.theoryNodes[id]; }
 // 理论树节点 21 电磁学：基于 CM 给予象限拓张（SAU1）免费等级 lg(CM+1)×4
