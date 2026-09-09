@@ -1424,6 +1424,44 @@ function hardReset() {
   setAutosaveStatus("已硬重置");
 }
 
+// 从文本框导入存档（「从文本框导入」与「从 TXT 文件导入」共用的唯一实现）
+function importSaveFromIo() {
+  const str = document.getElementById("save-io").value;
+  if (!str.trim()) { setAutosaveStatus("文本框为空"); return; }
+  try {
+    // S9 柚子厨蒸鹅心：在导入存档处输入 0721 并导入
+    if (str.trim() === "0721") {
+      const newlyGranted = !state.ach.hidden.includes("S9");
+      grantHidden("S9");
+      updateAchievementsUI();
+      if (newlyGranted) setAutosaveStatus("隐藏成就达成：柚子厨蒸鹅心");
+      else setAutosaveStatus("导入失败：存档无效");
+      return;
+    }
+    const obj = decodeSave(str);
+    state = Object.assign(defaultState(), obj);
+    state.settings = Object.assign({ theme: "black", notation: "scientific", decimals: 3, uiFps: 33, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true }, obj.settings || {});
+    state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
+    migrateState();
+    // 重置瞬时成就状态（与 init 一致）：旧档携带的计时数组会干扰 S3/S5/S6 判定
+    state.hiddenClicks = [];
+    state.metaClicks = [];
+    state.notationSwitches = [Date.now()];
+    state.phToggles = [];
+    if (obj.frequency !== undefined && obj.U === undefined) { setU(obj.frequency); state.L = 1; state.logL10 = 0; }
+    if (obj.totalFrequency !== undefined) setTotalFGained(obj.totalFrequency);
+    queueOfflineProgress();
+    state.lastTick = Date.now();
+    applyTheme(state.settings.theme);
+    applyNotation(state.settings.notation);
+    applyDecimals(state.settings.decimals);
+    processPendingOffline(); // 导入发生在 init 之后：离线结算须就地执行
+    saveGame();
+    renderAll();
+    setAutosaveStatus("已导入存档");
+  } catch { setAutosaveStatus("导入失败：存档无效"); }
+}
+
 // ---------- Save slots ----------
 function slotKey(i) { return SLOT_KEY_PREFIX + "_" + i; }
 // 槽内存档的波长指数 e（用该存档自己的 CM；无卷缩数据时为 1）
@@ -6848,11 +6886,6 @@ function setupUI() {
     });
   });
 
-  document.getElementById("save-export").addEventListener("click", () => {
-    state.lastTick = Date.now();
-    document.getElementById("save-io").value = encodeSave(state);
-    setAutosaveStatus("已导出存档");
-  });
   // 导出存档为 TXT 文件下载（内容与文本框导出一致）
   document.getElementById("save-download").addEventListener("click", () => {
     state.lastTick = Date.now();
@@ -6871,51 +6904,34 @@ function setupUI() {
     setTimeout(() => URL.revokeObjectURL(url), 10000);
     setAutosaveStatus("已导出存档文件");
   });
-  document.getElementById("save-load-from-io").addEventListener("click", () => {
-    const str = document.getElementById("save-io").value;
-    if (!str.trim()) { setAutosaveStatus("文本框为空"); return; }
-    try {
-      // S9 柚子厨蒸鹅心：在导入存档处输入 0721 并导入
-      if (str.trim() === "0721") {
-        const newlyGranted = !state.ach.hidden.includes("S9");
-        grantHidden("S9");
-        updateAchievementsUI();
-        if (newlyGranted) setAutosaveStatus("隐藏成就达成：柚子厨蒸鹅心");
-        else setAutosaveStatus("导入失败：存档无效");
-        return;
-      }
-      const obj = decodeSave(str);
-      state = Object.assign(defaultState(), obj);
-      state.settings = Object.assign({ theme: "black", notation: "scientific", decimals: 3, uiFps: 33, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true }, obj.settings || {});
-      state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
-      migrateState();
-      // 重置瞬时成就状态（与 init 一致）：旧档携带的计时数组会干扰 S3/S5/S6 判定
-      state.hiddenClicks = [];
-      state.metaClicks = [];
-      state.notationSwitches = [Date.now()];
-      state.phToggles = [];
-      if (obj.frequency !== undefined && obj.U === undefined) { setU(obj.frequency); state.L = 1; state.logL10 = 0; }
-      if (obj.totalFrequency !== undefined) setTotalFGained(obj.totalFrequency);
-      queueOfflineProgress();
-      state.lastTick = Date.now();
-      applyTheme(state.settings.theme);
-      applyNotation(state.settings.notation);
-      applyDecimals(state.settings.decimals);
-      processPendingOffline(); // 导入发生在 init 之后：离线结算须就地执行
-      saveGame();
-      renderAll();
-      setAutosaveStatus("已导入存档");
-    } catch { setAutosaveStatus("导入失败：存档无效"); }
+  document.getElementById("save-load-from-io").addEventListener("click", importSaveFromIo);
+  // 从 TXT 文件导入：文件内容填入文本框后走同一导入逻辑（与「导出为 TXT 文件」下载的文件配套）
+  const saveFileInput = document.getElementById("save-file-input");
+  document.getElementById("save-load-txt").addEventListener("click", () => saveFileInput.click());
+  saveFileInput.addEventListener("change", () => {
+    const file = saveFileInput.files && saveFileInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      document.getElementById("save-io").value = String(reader.result || "");
+      importSaveFromIo();
+    };
+    reader.onerror = () => setAutosaveStatus("读取文件失败");
+    reader.readAsText(file);
+    saveFileInput.value = ""; // 清空以允许连续选择同一文件
   });
-  document.getElementById("save-import").addEventListener("click", () => {
-    const io = document.getElementById("save-io"); io.focus(); io.select();
-    setAutosaveStatus("请将存档粘贴到文本框后点“从文本框导入”");
-  });
+  // 导出并复制：存档同步写入文本框呈现，再复制到剪贴板（备用方式：选中后 execCommand）
   document.getElementById("save-copy").addEventListener("click", async () => {
+    state.lastTick = Date.now();
+    const code = encodeSave(state);
     const io = document.getElementById("save-io");
-    if (!io.value) { setAutosaveStatus("文本框为空，先导出"); return; }
-    try { await navigator.clipboard.writeText(io.value); setAutosaveStatus("已复制到剪贴板"); }
-    catch { io.select(); document.execCommand("copy"); setAutosaveStatus("已复制（备用方式）"); }
+    io.value = code;
+    try { await navigator.clipboard.writeText(code); setAutosaveStatus("已导出到文本框并复制到剪贴板"); }
+    catch {
+      io.focus(); io.select();
+      try { document.execCommand("copy"); setAutosaveStatus("已导出到文本框并复制到剪贴板（备用方式）"); }
+      catch { setAutosaveStatus("已导出到文本框，复制失败"); }
+    }
   });
 
   document.getElementById("hard-reset").addEventListener("click", hardReset);
