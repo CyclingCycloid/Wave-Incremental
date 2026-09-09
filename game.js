@@ -5555,7 +5555,11 @@ function bulkBuyGeneric(c0, slope, maxN, poolLog, apply) {
   const totalLog = (m) => logAddLogs(m <= 1 ? NLOG : bulkGeomSumLog(c0, slope, m - 1),
     clampLog(c0 + slope * (m - 1)));
   if (!(totalLog(1) <= poolLog)) return 0;
-  let l = 1, h = maxN;
+  // 上界取整：maxN 可能为小数（bulkBuyPG3 的 pg3Cap()−pg3 受量子狂潮/节点21 免费等级影响），
+  // 二分搜索的 mid=floor((l+h+1)/2) 在 l 收敛到 floor(h) 后恒等于 l<h，小数 h 永不退出 → 死循环；
+  // floor 后不足一级（如 cap−pg3=0.18）则不买（l 初值 1，不守卫会多买一级越过上限）
+  let l = 1, h = Math.floor(maxN);
+  if (h < 1) return 0;
   while (l < h) {
     const mid = Math.floor((l + h + 1) / 2);
     if (totalLog(mid) <= poolLog) l = mid; else h = mid - 1;
