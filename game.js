@@ -2579,9 +2579,9 @@ function totalEffectText(id) {
     case "svpu3":
       return { text: `总效果：升级3软上限削弱 ÷${n("svpu3") + 1}`, capped: false };
     case "svpu4": {
-      // 节点41 波动光学：每级相当于 2 级——分母按有效等级显示（×2 后恒为整数）
-      const den = state.svpu4 * (theoryOwned("41") ? 2 : 1) + 2;
-      return { text: `总效果：温度软上限缩放指数 1/${Number.isInteger(den) ? den : den.toFixed(1)}` + (svu2Svpu4Bonus() > 0 ? `（含能标偏移 +${fmt(svu2Svpu4Bonus())}）` : ""), capped: false };
+      // 节点41 波动光学：SVU2 免费等级与真实等级合并后一并 ×2——分母按合并后的有效等级显示
+      const den = (state.svpu4 + svu2Svpu4Bonus()) * (theoryOwned("41") ? 2 : 1) + 2;
+      return { text: `总效果：温度软上限缩放指数 1/${Number.isInteger(den) ? den : den.toFixed(2)}` + (svu2Svpu4Bonus() > 0 ? `（含能标偏移 +${fmt(svu2Svpu4Bonus())}）` : ""), capped: false };
     }
     case "svpu5":
       return { text: `总效果：黑洞质量软上限起始 1e${bhMassSoftcapLog()}`, capped: false };
@@ -3152,9 +3152,9 @@ function svu2Svpu4Bonus() {
   const b = Math.log10(1 + Math.log10(state.svu2Level + 1));
   return state.voidActive ? 2 * b : b;
 }
-// 热能超载的有效等级（温度软上限缩放指数 1/(n+2) 中的 n；含 SVU2 加成；
-// 理论树节点 41「波动光学」：每一级都相当于之前的 2 级）
-function effSvpu4() { return state.svpu4 * (theoryOwned("41") ? 2 : 1) + svu2Svpu4Bonus(); }
+// 热能超载的有效等级（温度软上限缩放指数 1/(n+2) 中的 n）。SVU2 能标偏移提供的是免费等级，
+// 与真实等级合并后一并受节点 41「波动光学」的 ×2 加成（而非只乘真实等级、免费等级另行直加）
+function effSvpu4() { return (state.svpu4 + svu2Svpu4Bonus()) * (theoryOwned("41") ? 2 : 1); }
 // SVU2 效果 2（仅虚空内）：热寂削弱指数 0.5 → 1/(2+lg(n+1))
 function svu2AdiabaticExp() {
   if (!state.voidActive || state.svu2Level <= 0) return 0.5;
