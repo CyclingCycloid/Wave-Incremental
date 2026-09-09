@@ -5883,7 +5883,7 @@ function renderStats() {
     }
     for (const r of rows) {
       const row = document.createElement("div");
-      row.className = "ann-history-row";
+      row.className = "ann-history-row comp-history-row"; // 修饰类：SS 数值用卷缩层橙色（原继承湮灭紫）
       const label = document.createElement("span"); label.className = "ah-label";
       label.textContent = `${r.label} · ${fmtTime(r.realDur)}（真实）/ ${fmtTimeLog(r.gameDur, r.gameDurLog)}（游戏）`;
       const val = document.createElement("span"); val.className = "ah-val";
