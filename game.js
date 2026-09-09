@@ -2579,8 +2579,8 @@ function totalEffectText(id) {
     case "svpu3":
       return { text: `总效果：升级3软上限削弱 ÷${n("svpu3") + 1}`, capped: false };
     case "svpu4": {
-      // 节点41 波动光学：每级相当于 1.3 级——分母按有效等级显示（节点后可带一位小数）
-      const den = state.svpu4 * (theoryOwned("41") ? 1.3 : 1) + 2;
+      // 节点41 波动光学：每级相当于 2 级——分母按有效等级显示（×2 后恒为整数）
+      const den = state.svpu4 * (theoryOwned("41") ? 2 : 1) + 2;
       return { text: `总效果：温度软上限缩放指数 1/${Number.isInteger(den) ? den : den.toFixed(1)}` + (svu2Svpu4Bonus() > 0 ? `（含能标偏移 +${fmt(svu2Svpu4Bonus())}）` : ""), capped: false };
     }
     case "svpu5":
@@ -3153,8 +3153,8 @@ function svu2Svpu4Bonus() {
   return state.voidActive ? 2 * b : b;
 }
 // 热能超载的有效等级（温度软上限缩放指数 1/(n+2) 中的 n；含 SVU2 加成；
-// 理论树节点 41「波动光学」：每一级都相当于之前的 1.3 级）
-function effSvpu4() { return state.svpu4 * (theoryOwned("41") ? 1.3 : 1) + svu2Svpu4Bonus(); }
+// 理论树节点 41「波动光学」：每一级都相当于之前的 2 级）
+function effSvpu4() { return state.svpu4 * (theoryOwned("41") ? 2 : 1) + svu2Svpu4Bonus(); }
 // SVU2 效果 2（仅虚空内）：热寂削弱指数 0.5 → 1/(2+lg(n+1))
 function svu2AdiabaticExp() {
   if (!state.voidActive || state.svu2Level <= 0) return 0.5;
