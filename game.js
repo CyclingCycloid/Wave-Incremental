@@ -3208,6 +3208,9 @@ const SVPU_DEFS = [
 function svpu1Max() { return vpuOwned("vpu4") ? Infinity : 4; }
 // 黑洞质量软上限起始点（log10）：1e50 起始，潮汐撕裂每级 +10 个数量级
 function bhMassSoftcapLog() { return 50 + 10 * state.svpu5; }
+// 卷缩里程碑 25：虚粒子升级（SVPU）不再消耗虚粒子——只免扣款，不免门槛（与 spu1 同语义：
+// 价格仍须达到才可购买，价格增长是免费状态下的天然限速，防止自动购买器无锚点连买）
+function vpUpgradesFree() { return compMilestone(25); }
 function buySVPU(id, bulk) {
   if (!bhUnlocked()) return;
   const u = SVPU_DEFS.find(x => x.id === id);
@@ -3217,8 +3220,8 @@ function buySVPU(id, bulk) {
   const n = state[u.key] + 1;
   const cLog = u.costLog(n);
   const c = Math.pow(10, cLog);
-  if (cmpLT(state.virtualParticles, c, getLogVP(), cLog)) return;
-  subVPLog(cLog);
+  if (cmpLT(state.virtualParticles, c, getLogVP(), cLog)) return; // 门槛照常
+  if (!vpUpgradesFree()) subVPLog(cLog);
   state[u.key]++;
   if (!bulk) { updateBlackholeUI(); setAutosaveStatus("已购买黑洞升级：" + u.name); }
 }
@@ -3808,7 +3811,7 @@ const COMP_MILESTONES = [
   { n: 16, reward: "卷缩不再重置虚空升级；解锁可重复奇点升级自动购买器（自动化页）" },
   { n: 18, reward: "卷缩不再重置虚空泡沫；解锁黑洞升级自动购买器（自动化页）" },
   { n: 20, reward: "升级3不再重置升级1的等级；解锁虚粒子升级自动购买器（自动化页）" },
-  { n: 25, reward: "卷缩不再重置黑洞质量与虚粒子；卷缩后黑洞处于扭曲状态" },
+  { n: 25, reward: "卷缩不再重置黑洞质量与虚粒子，卷缩后黑洞处于扭曲状态；虚粒子升级不再消耗虚粒子" },
   { n: 30, reward: "解锁自动卷缩（可设置在多少超弦时卷缩，自动化页）" },
 ];
 // 卷缩条件：VP ≥ 1e36、完成 A54（所有扭曲生效的虚空）、Sp ≥ 1.79e308（Sp 软上限拐点）
