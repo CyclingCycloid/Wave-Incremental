@@ -3349,8 +3349,11 @@ function buyVPU(id) {
   const u = VPU_DEFS.find(x => x.id === id);
   if (!u || vpuOwned(id)) return;
   if (u.currency === "vf") {
-    if (!(state.logVoidVF10 >= Math.log10(u.cost))) return;
-    setVoidVFLog(state.logVoidVF10 - Math.log10(u.cost));
+    const cLog = Math.log10(u.cost);
+    if (!(state.logVoidVF10 >= cLog)) return;
+    // 线性扣款 VF − cost：log 域须用异号相减（此前写成 logVF − log10(cost)，等于 VF÷cost）
+    const r = logAddSigned(state.logVoidVF10, 1, cLog, -1);
+    setVoidVFLog(r.sign < 0 ? NLOG : r.log);
   } else {
     const cLog = Math.log10(u.cost);
     if (cmpLT(state.virtualParticles, u.cost, getLogVP(), cLog)) return;
