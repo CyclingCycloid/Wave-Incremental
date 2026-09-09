@@ -2833,9 +2833,9 @@ function pg3Cap() {
   if (n1 <= 10) return 20 + per * n1;
   return 20 + per * 10 + Math.floor(per * Math.pow(n1 - 10, exp));
 }
-// SAU2 奇点凝聚软上限的缩放指数：基础 1/3；理论树节点 41「波动光学」削弱为 0.5
+// SAU2 奇点凝聚软上限的缩放指数：基础 1/3；理论树节点 41「波动光学」削弱为 0.7
 //（超出 10 级的部分保留更多；价格超限增速 ×n⁴ 不受影响）
-function sau2SoftcapExp() { return theoryOwned("41") ? 0.5 : 1 / 3; }
+function sau2SoftcapExp() { return theoryOwned("41") ? 0.7 : 1 / 3; }
 // SAU2：奇点效果指数倍率（有效级别 = 10+(n-10)^sau2SoftcapExp()）
 function sauMult() {
   const eff = effLevel(state.sau2, 10, sau2SoftcapExp());
