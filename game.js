@@ -3123,26 +3123,28 @@ function svu2AdiabaticExp() {
   return 1 / (2 + Math.log10(state.svu2Level + 1));
 }
 // SVU1 填充：每真实秒投入现有 Sp/VP/VF 的 1%（连续复利等效：dt 秒投入 1−0.99^dt）。
-// 投入量累计到 svu1SpLog/svu1VpLog/svu1VfLog（log 域），对应资源同步扣减
+// 投入量累计到 svu1SpLog/svu1VpLog/svu1VfLog（log 域），对应资源同步扣减；
+// 卷缩里程碑 30 起投入不再消耗资源——仍照常记账投入（等级照常增长），仅不扣减
 function svu1FillTick(realDt) {
   if (!state.svu1Filling) return;
+  const free = compMilestone(30); // 里程碑 30：投入免费（仅记账）
   const frac = 1 - Math.pow(0.99, realDt); // dt 秒共投入现有量的 frac（每整秒恰为 1%）
   const takeLog = Math.log10(Math.max(frac, 1e-300));
   // 注意 Sp 的零哨兵是字面 0（非 NLOG）：sp=0 时 getLogSp()=0 会越过哨兵判定，必须显式判 sp>0
   if (state.sp > 0) {
     const spLog = getLogSp();
     state.svu1SpLog = clampLog(logAddLogs(state.svu1SpLog, spLog + takeLog)); // 累计投入 += sp×frac
-    subSpLog(spLog + takeLog);                                                // 扣减 sp×frac（保留 1−frac）
+    if (!free) subSpLog(spLog + takeLog);                                     // 扣减 sp×frac（保留 1−frac）
   }
   if (state.virtualParticles > 0) {
     const vpLog = getLogVP();
     state.svu1VpLog = clampLog(logAddLogs(state.svu1VpLog, vpLog + takeLog));
-    subVPLog(vpLog + takeLog);
+    if (!free) subVPLog(vpLog + takeLog);
   }
   if (state.logVoidVF10 > NLOG + 1) {
     state.svu1VfLog = clampLog(logAddLogs(state.svu1VfLog, state.logVoidVF10 + takeLog)); // 累计投入 += VF×frac
     // Sp/VP 走 sub*Log（语义为「扣减量」）；VF 直接写 log 权威，此处须保留 1−frac 而非扣减 frac
-    setVoidVFLog(state.logVoidVF10 + Math.log10(Math.max(1 - frac, 1e-300)));
+    if (!free) setVoidVFLog(state.logVoidVF10 + Math.log10(Math.max(1 - frac, 1e-300)));
   }
 }
 // 虚空升级定义（虚空里程碑 1 解锁）
@@ -3805,14 +3807,14 @@ const COMP_MILESTONES = [
   { n: 6, reward: "卷缩后「狭窄」「膨胀」为已完成状态" },
   { n: 7, reward: "卷缩后「热寂」「滞涨」为已完成状态" },
   { n: 8, reward: "卷缩后「简洁」为已完成状态，并自动打破多元宇宙的规则" },
-  { n: 10, reward: "卷缩保持「临界湮灭」「对偶原理」的购买" },
+  { n: 10, reward: "卷缩保持「临界湮灭」「对偶原理」的购买；卷缩后初始拥有 1e10 奇点" },
   { n: 12, reward: "卷缩保持「单圈重整」「量子狂潮」的购买；卷缩后初始拥有 1e6 虚空泡沫（VF）" },
   { n: 14, reward: "卷缩不再重置虚空里程碑（保持最佳虚空扭曲生效数）；解锁自动湮灭新类型「持有倍率」（获取量达到当前持有奇点的指定倍数时湮灭）" },
   { n: 16, reward: "卷缩不再重置虚空升级；解锁可重复奇点升级自动购买器（自动化页）" },
   { n: 18, reward: "卷缩不再重置虚空泡沫；解锁黑洞升级自动购买器（自动化页）" },
   { n: 20, reward: "升级3不再重置升级1的等级；解锁虚粒子升级自动购买器（自动化页）" },
   { n: 25, reward: "卷缩不再重置黑洞质量与虚粒子，卷缩后黑洞处于扭曲状态；虚粒子升级不再消耗虚粒子" },
-  { n: 30, reward: "解锁自动卷缩（可设置在多少超弦时卷缩，自动化页）" },
+  { n: 30, reward: "解锁自动卷缩（可设置在多少超弦时卷缩，自动化页）；虚空共振的投入不再消耗资源" },
 ];
 // 卷缩条件：VP ≥ 1e36、完成 A54（所有扭曲生效的虚空）、Sp ≥ 1.79e308（Sp 软上限拐点）
 function canCompactify() {
@@ -3906,6 +3908,7 @@ function applyCompactionResetBody(realNow) {
   if (compMilestone(2)) state.phOn = true; // 第二次卷缩起：声子发生器自动打开
   if (compMilestone(2)) state.spu1 = 1; // 「奇点之前的升级不再消耗资源」视为已购买
   if (compMilestone(3)) { setSp(100); setTotalSp(100); } // 初始 100 奇点
+  if (compMilestone(10)) { setSp(1e10); setTotalSp(1e10); } // 里程碑 10：初始 1e10 奇点（覆盖里程碑 3 的 100）
   state.autoUp3 = 0; state.autoAnn = 0;
   // 里程碑 3 起：卷缩不重置自动化开关（解锁标志 autoUp3/autoAnn 仍清零，
   // 由 tick 按「20 次湮灭」里程碑补发，开关保持即自动恢复运转）
