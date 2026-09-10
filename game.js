@@ -2748,6 +2748,10 @@ function updateVoidUI() {
 function effSauMax(key) {
   return (key === "sau1" || key === "sau3") && vpuOwned("vpu1") ? Infinity : 10;
 }
+// 升级定义的实际等级上限：仅象限拓张/紫外灾难受 effSauMax 约束（单圈重整取消），
+// 奇点凝聚/真空衰变定义为 max:Infinity、无上限。购买/显示/自动购买器三处共用——
+// 自动购买器曾直接用 effSauMax（对 sau2 恒返回 10），把无上限的奇点凝聚错限在 10 级
+function sauDefMax(u) { return u.max !== Infinity ? effSauMax(u.key) : Infinity; }
 // 奇点凝聚 n>10 后的价格延伸（log10）：每级在原 10^(5n) 基础上额外 ×n⁴
 function sau2ExtraCostLog(n) {
   let log = 0;
@@ -2798,7 +2802,7 @@ function buySAU(id, bulk) {
   const u = SAU_DEFS.find(x => x.id === id) || (id === VACUUM_DEF.id ? VACUUM_DEF : null);
   if (!u) return;
   const n = state[u.key] + 1; // 第 n 次购买（1 起）
-  const effMax = u.max !== Infinity ? effSauMax(u.key) : Infinity; // 单圈重整取消 sau1/sau3 上限
+  const effMax = sauDefMax(u); // 单圈重整取消 sau1/sau3 上限
   if (state[u.key] >= effMax) return;
   const cLog = u.costLog(n); // 价格权威（log 域，超 double 的价格也可正确判定与扣款）
   if (cmpLT(state.sp, Math.pow(10, cLog), getLogSp(), cLog)) return;
@@ -4881,7 +4885,7 @@ function updateSpUI() {
     r.btn.classList.toggle("hidden", !sauUnlocked);
     if (!sauUnlocked) continue;
     const n = state[r.u.key] + 1;
-    const effMax = r.u.max !== Infinity ? effSauMax(r.u.key) : Infinity; // 单圈重整取消 sau1/sau3 上限
+    const effMax = sauDefMax(r.u); // 单圈重整取消 sau1/sau3 上限
     const maxed = state[r.u.key] >= effMax;
     const cLog = r.u.costLog(n); // 价格权威（log 域），c 仅作显示缓存（可超 double → Infinity）
     const c = Math.pow(10, cLog);
@@ -5382,13 +5386,13 @@ function autoBuySauLoop() {
   for (let i = 0; i < 100; i++) {
     const before = state.sau1 + "," + state.sau2 + "," + state.sau3 + "," + state.sau4;
     for (const u of SAU_DEFS) {
-      if (state[u.key] >= effSauMax(u.key)) continue;
+      if (state[u.key] >= sauDefMax(u)) continue;
       const cLog = u.costLog(state[u.key] + 1);
-      if (getLogSp() >= cLog) buySAU(u.id);
+      if (getLogSp() >= cLog) buySAU(u.id, true);
     }
     { // 真空衰变
       const cLog = VACUUM_DEF.costLog(state.sau4 + 1);
-      if (getLogSp() >= cLog) buySAU("sau4");
+      if (getLogSp() >= cLog) buySAU("sau4", true);
     }
     if (before === state.sau1 + "," + state.sau2 + "," + state.sau3 + "," + state.sau4) break;
   }
