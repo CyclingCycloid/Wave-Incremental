@@ -6991,6 +6991,8 @@ function handleGameHotkey(e) {
 function applyTestModeUIGlobal() {
   const enterBtn = document.getElementById("enter-test-btn");
   const clearBtn = document.getElementById("clear-vf-btn");
+  const clearVpBtn = document.getElementById("clear-vp-btn");
+  const clearVoidBtn = document.getElementById("clear-void-btn");
   const forceAnnBtn = document.getElementById("force-ann-btn");
   const verEl = document.getElementById("version-label");
   if (enterBtn) {
@@ -6998,6 +7000,8 @@ function applyTestModeUIGlobal() {
     enterBtn.textContent = state.testMode ? "退出测试" : "进入测试";
   }
   if (clearBtn) clearBtn.classList.toggle("hidden", !state.testMode);
+  if (clearVpBtn) clearVpBtn.classList.toggle("hidden", !state.testMode);
+  if (clearVoidBtn) clearVoidBtn.classList.toggle("hidden", !state.testMode);
   if (forceAnnBtn) forceAnnBtn.classList.toggle("hidden", !state.testMode);
   const forceCompactBtn = document.getElementById("force-compact-btn");
   if (forceCompactBtn) forceCompactBtn.classList.toggle("hidden", !state.testMode);
@@ -7237,6 +7241,24 @@ function setupUI() {
   });
   // 测试工具：导致一次卷缩重置（不获 SS、不计卷缩次数）
   document.getElementById("force-compact-btn").addEventListener("click", forceCompactReset);
+  // 测试工具：清除 VP 并将黑洞质量归一
+  document.getElementById("clear-vp-btn").addEventListener("click", () => {
+    setVP(0);
+    setBhMass(1);
+    saveGame();
+    updateBlackholeUI();
+    setAutosaveStatus("虚粒子已清除，黑洞质量归一");
+  });
+  // 测试工具：清除 VF 与虚空升级（SVU1 累计投入与填充开关、SVU2 等级，与卷缩重置同范围）
+  document.getElementById("clear-void-btn").addEventListener("click", () => {
+    setVoidVFLog(NLOG);
+    state.svu1SpLog = NLOG; state.svu1VpLog = NLOG; state.svu1VfLog = NLOG;
+    state.svu1Filling = false;
+    state.svu2Level = 0;
+    saveGame();
+    updateVoidUI();
+    setAutosaveStatus("虚空泡沫与虚空升级已清零");
+  });
   // 湮灭按钮（首次湮灭后显示；点击直接湮灭，不强制切换选项卡）
   document.getElementById("annihilate-btn").addEventListener("click", () => {
     if (state.annihilations === 0) return;
