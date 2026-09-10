@@ -156,7 +156,7 @@
               </div>
               <div class="stat-row">
                 <span class="stat-label">完成普通成就</span>
-                <span class="stat-value" id="stat-ach-n">0 / 28</span>
+                <span class="stat-value" id="stat-ach-n">0 / 29</span>
               </div>
               <div class="stat-row">
                 <span class="stat-label">完成隐藏成就</span>
@@ -668,6 +668,7 @@
               <li>TP 可转换为<strong>点 V / 边 E / 面 F</strong>（各消耗 1 TP，可退回）。</li>
               <li>贝蒂数：b₁ = max(0, E−V+1)；b₂ = max(0, min(F, ⌊2E/3⌋)−E+V)。</li>
               <li><strong>基础 CM 获取 = TP² × 3<sup>√(3·b₁·b₂)</sup></strong>（每秒，TP 按含已转换的总节点数计）。</li>
+              <li>成就 A64「几何」（★：基础 CM 获取超过 4e6/s）解锁<strong>「自动最佳分配」按钮</strong>：以连续最优（边 E*=(21TP−9)/48，面 F=2E/3 边界恰好取等）附近的常数个整数候选，求出整数约束下使 3·b₁·b₂ 最大的点/边/面分配并一键应用——计算量不随 TP 增长。</li>
               <li>折叠器初始<strong>不受游戏速度影响</strong>（按真实时间产出）；CM 在每次卷缩重置时归零（湮灭不影响），后台按小数计算、显示取整。</li>
             </ul>
             <p><strong>CM 的三个效果</strong>：① 波速获取 ×(1+CM)<sup>4</sup>；② 频率公式变为 <strong>F = U / L<sup>e</sup></strong>，其中 e = 1 + lg(1 + lg(1+CM)/3)/10——相当于把一些隐藏维度卷缩起来，从而改变宏观的物理公式（CM=0 时 e=1，与原公式一致）；③ 奇点获取 ×max(1+lg(CM+1)², CM^0.1)（CM=0 时无加成）。</p>

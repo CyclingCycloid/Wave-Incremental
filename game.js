@@ -3602,6 +3602,58 @@ function cmTick(realDt) {
   const dtLog = Math.log10(Math.max(realDt, 1e-300)) + cmTimeMultLog();
   setCMLog(logAddLogs(getLogCM(), rateLog + dtLog + cmSpAccelMultLog()));
 }
+// 整数约束下的最佳分配（A64 奖励「自动最佳分配」的实现）。
+// 连续最优 E*=(21T−9)/48（此时 F=2E/3 边界恰好活跃）附近 ±2 的每个 E，其最优 V 只可能在
+// 内点 V₀=(E−⌊2E/3⌋+1)/2（F≥cap 段）或 F=cap 边界 V_b=T−E−⌊2E/3⌋ —— 常数个候选、
+// 用真实整数公式评估取最大，计算量不随 T 增长（T=10⁶ 与宽邻域精确参考一致）。
+// 小 T（≤64）连续锚点失真，直接 O(T²) 暴力（≤4096 次循环，无感）；
+// T=65…3000 已与暴力逐一比对一致。剩余节点全部计入 F 恒不劣于留着不转（超出 cap 不影响 b₂）
+function bestAllocInt(T) {
+  const score = (V, E, F) => {
+    const b1 = E - V + 1, b2 = Math.min(F, Math.floor(2 * E / 3)) - E + V;
+    return (V >= 0 && E >= 0 && F >= 0 && b1 > 0 && b2 > 0) ? b1 * b2 : -1;
+  };
+  if (T <= 64) {
+    let best = null;
+    for (let E = 0; E <= T; E++) {
+      const cap = Math.floor(2 * E / 3);
+      for (let V = 0; V + E <= T; V++) {
+        const s = score(V, E, T - E - V);
+        if (s > 0 && (!best || s > best.score)) best = { V, E, F: T - E - V, score: s };
+      }
+    }
+    return best;
+  }
+  let best = null;
+  const consider = (V, E) => {
+    if (V < 0 || V > E || E > T) return;
+    const F = T - E - V;
+    if (F < 0) return;
+    const s = score(V, E, F);
+    if (s > 0 && (!best || s > best.score)) best = { V, E, F, score: s };
+  };
+  const ef = (21 * T - 9) / 48;
+  for (let E = Math.floor(ef) - 2; E <= Math.ceil(ef) + 2; E++) {
+    if (E < 0) continue;
+    const cap = Math.floor(2 * E / 3);
+    const v0 = (E - cap + 1) / 2;
+    consider(Math.floor(v0), E);
+    consider(Math.ceil(v0), E);
+    consider(T - E - cap, E); // F=cap 边界
+  }
+  return best;
+}
+// 「自动最佳分配」按钮（A64 奖励）：计算并应用整数约束下的最优 V/E/F
+function applyAutoAlloc() {
+  if (!state.ach.normal.includes("A64")) return;
+  const T = tpTotal();
+  const best = bestAllocInt(T);
+  if (!best) { setAutosaveStatus("拓扑节点不足，暂无可行的几何分配"); return; }
+  state.tpV = best.V; state.tpE = best.E; state.tpF = best.F;
+  state.tp = T - best.V - best.E - best.F;
+  updateCompactUI();
+  setAutosaveStatus(`已自动最佳分配：点 ${best.V} · 边 ${best.E} · 面 ${best.F}（3b₁b₂ = ${3 * best.score}）`);
+}
 // 购买拓扑节点：第 n 个花费 floor(1.5^n) SS（n 从 1 起，按**总节点数**计——
 // 含已转换为点/边/面的部分，否则转换后再购买会重新从第 1 个的价钱起算）
 function tpNextCostValue() {
@@ -4111,8 +4163,17 @@ function buildCompactOnce() {
     row.append(dec, cnt, inc);
     box.append(nm, row);
     geoRow.appendChild(box);
-    compactEls.geo[key] = cnt;
+    compactEls.geo[key] = { cnt, dec, inc };
   }
+  // A64 奖励：自动最佳分配按钮（整数约束最优，常数候选不随 T 增长）；达成前隐藏
+  const autoBtn = document.createElement("button");
+  autoBtn.className = "comp-btn small";
+  autoBtn.textContent = "自动最佳分配";
+  autoBtn.title = "按当前拓扑节点总数计算整数约束下的最优点/边/面分配并应用（成就 A64 奖励）";
+  autoBtn.addEventListener("click", applyAutoAlloc);
+  autoBtn.classList.add("hidden");
+  geoRow.appendChild(autoBtn);
+  compactEls.autoBtn = autoBtn;
   // 灵感三格子（大框内：频率 / 奇点 / 超弦，各自花费）
   const insCells = document.getElementById("comp-ins-cells");
   insCells.innerHTML = "";
@@ -4300,6 +4361,12 @@ function updateCompactUI() {
     : !ssAffordLog(tpCostLogV);
   document.getElementById("comp-tp-line").textContent =
     `拓扑节点：${tpTotal()}（可用 ${state.tp} ｜ 点 ${state.tpV} · 边 ${state.tpE} · 面 ${state.tpF}）`;
+  // 几何格子计数回填（此前从未刷新过，span 一直空白）与 A64 自动分配按钮显隐
+  for (const key of ["V", "E", "F"]) {
+    const g = compactEls.geo[key];
+    if (g) g.cnt.textContent = state["tp" + key];
+  }
+  if (compactEls.autoBtn) compactEls.autoBtn.classList.toggle("hidden", !state.ach.normal.includes("A64"));
   // 灵感大框：总灵感（可用）+ 三途径格子
   document.getElementById("comp-ins-line").textContent =
     `总灵感：${fmtIntRound(state.totalIns, getLogTotalIns())}（可用 ${fmtIntRound(state.ins, getLogIns())}）`;
@@ -6029,6 +6096,7 @@ const NORMAL_ACH = [
   { id: "A61", name: "折叠", desc: "开始产出卡拉比-丘流形", check: () => getLogCM() > NLOG + 1 },
   { id: "A62", name: "理论", desc: "购买九个理论树节点", check: () => Object.keys(state.theoryNodes).length >= 9 },
   { id: "A63", name: "里程", desc: "获得所有卷缩里程碑", check: () => COMP_MILESTONES.every(m => state.compactions >= m.n) },
+  { id: "A64", name: "几何", desc: "基础CM获取超过 4e6/s", star: true, reward: "解锁「自动最佳分配」按钮（整数最优，一键应用）", check: () => cmRateLog() > Math.log10(4e6) },
 ];
 const ACH_PER_ROW = 5;
 // 已定义行数；之后整行为未解锁 ???
