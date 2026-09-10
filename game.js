@@ -3817,7 +3817,7 @@ const THEORY_NODES = [
     desc: "增强热能超载的效果，并削弱奇点凝聚与波长二次软上限" },
   { id: "51", name: "双缝干涉实验", parents: ["41"], cost: 0,
     desc: "拓宽“理论”（橙色）的深度\n解锁“研究”（天蓝色）",
-    reqIns: 55, hiddenUntilIns: 50, reqA63: true },
+    reqIns: 60, hiddenUntilIns: 50, reqA63: true },
 ];
 function theoryOwned(id) { return !!state.theoryNodes[id]; }
 // 理论树节点 21 电磁学：基于 CM 给予象限拓张（SAU1）免费等级 lg(CM+1)×4
