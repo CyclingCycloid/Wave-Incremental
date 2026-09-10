@@ -600,6 +600,8 @@ function up3Exp() {
 
   if (inDistort("inflation")) e /= 2; // 效果开平方根 = 指数 ÷2
   if (inDistort("simple")) e *= 0.5; // 简洁：升级3效果变为原来的平方根
+  // v0.6.2：指数超过 3 后按 2+log₂(e−1) 放缓（e=3 处 2+log₂2=3 恰好连续，此后每翻倍只 +1）
+  if (e > 3) e = 2 + Math.log2(e - 1);
   return e;
 }
 // ---------- e100 软上限 ----------
@@ -675,11 +677,11 @@ function up3WavelengthFromFLog(lf) {
   }
   // 二次软上限（v0.6.2）：波长 < 1e-100000（缩减量 w > 1e5）时，超出部分按
   // ((5+lg(lg(1/L)))/10)^0.1 缩放——lg(1/L)=w，故 p = 0.85/((5+lg(w))/10)^0.1
-  //（节点41 0.85→1）。w=1e5 处 (5+lg w)/10 = 1 → p 恰为 0.85/1（节点41 后恒等），
+  //（节点41 0.85→0.915）。w=1e5 处 (5+lg w)/10 = 1 → p = 0.85/1（节点41 后 0.915），
   // excess→0 时 w→1e5，拐点连续；w 越大 base 越大、p 越小（恒 <1），削弱渐强。
   // 实际购买与「下次重置」预览共用本函数
   if (w > 100000) {
-    const p = (theoryOwned("41") ? 1 : 0.85) / Math.pow((5 + Math.log10(w)) / 10, 0.1);
+    const p = (theoryOwned("41") ? 0.915 : 0.85) / Math.pow((5 + Math.log10(w)) / 10, 0.1);
     w = 100000 + Math.pow(w - 100000, p);
   }
   return w;
@@ -2530,6 +2532,16 @@ function applyAnnihilationVisibility() {
     btn.textContent = state.voidActive ? "虚空挑战中…" : `湮灭（须达到 1.42e32 K）`;
     btn.disabled = true;
   }
+}
+
+// 湮灭按钮的「+N Sp」预览每帧刷新：applyAnnihilationVisibility 仅每 tick（100ms）调用，
+// 高时间倍率下 100ms 的陈旧窗口会让显示远低于点击时的实际获取；仅接管就绪状态——
+// 扭曲/虚空/未就绪等文案仍由 applyAnnihilationVisibility 管理（每 tick 与湮灭时刷新）
+function renderAnnButtonFast() {
+  if (simActive || state.annihilations < 1) return;
+  const btn = document.getElementById("annihilate-btn");
+  if (!btn || btn.classList.contains("hidden") || state.voidActive || state.distortActive) return;
+  if (annihilationReady()) btn.textContent = `湮灭（+${fmtNum(spGain(), spGainLog())} Sp）`;
 }
 
 // 帮助页章节与统计湮灭区随游戏进度开放（避免剧透重置层）
@@ -7313,6 +7325,7 @@ function init() {
     // 自动湮灭每帧检查（rAF ≈60Hz，不受界面刷新频率限制）：检查本身只是几次 log 比较；
     // 触发走 doAnnihilation(true) 跳过 renderAll，由随后的常规渲染承接
     autoAnnTick();
+    renderAnnButtonFast(); // 湮灭按钮「+N Sp」预览同步每帧刷新，消除与实际获取的脱节
     requestAnimationFrame(uiLoop);
   };
   requestAnimationFrame(uiLoop);
