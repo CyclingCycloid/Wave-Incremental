@@ -2597,7 +2597,11 @@ function applyHelpVisibility() {
   document.getElementById("help-svpu-extra").classList.toggle("hidden", !vpuOwned("vpu5"));
   document.getElementById("help-void").classList.toggle("hidden", !state.ach.normal.includes("A52"));
   // 卷缩章节：测试模式下首次卷缩后显示
-  document.getElementById("help-compact").classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
+  // 卷缩相关帮助章节（卷缩/里程碑/维度/理论树/研究）：首次卷缩后显示
+  for (const id of ["help-compact", "help-compact-ms", "help-compact-dim", "help-compact-theory", "help-compact-research"]) {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
+  }
   document.getElementById("stat-ann-group").classList.toggle("hidden", state.annihilations < 1);
   document.getElementById("stat-comp-area").classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
   // 卷缩后保持统计-挑战子页可见（否则湮灭次数归零会重新隐藏）
