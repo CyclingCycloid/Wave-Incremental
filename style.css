@@ -782,7 +782,7 @@ body[data-theme="white"] .tree-viewport { border-color: #c9c9d2; }
 .inf-line .research-res-val { color: #4a6fd4; text-shadow: 0 0 10px rgba(74, 111, 212, 0.3); }
 body[data-theme="white"] .ed-line .research-res-val { color: #2e8fd8; }
 body[data-theme="white"] .inf-line .research-res-val { color: #3050b0; }
-.research-res-rate { font-size: 13px; color: var(--text-dim); margin-left: 8px; font-family: var(--font-num); }
+.research-res-rate { display: block; text-align: center; font-size: 13px; color: var(--text-dim); margin-top: 2px; font-family: var(--font-num); }
 .research-desc { text-align: center; font-size: 13px; line-height: 1.8; color: var(--text-dim); margin: 8px auto 10px; max-width: 640px; }
 .research-mult-line { text-align: center; font-size: 17px; margin: 10px 0; font-family: var(--font-num); }
 .research-num { color: #5fb8e6; font-weight: 700; }
