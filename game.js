@@ -3998,6 +3998,14 @@ function compactSSGain() {
   if (lg <= NLOG + 1) return 0;
   return Math.max(1, Math.floor(Math.pow(10, Math.min(lg, 308))));
 }
+// SS 单次获取的 log10（整数货币口径，v0.6.2 修正）：<1e15 的获取量先向下取整再取 lg，
+// 保证入账/最佳/历史/按钮显示均为整数（否则 log 驱动的显示会出现 199.526 这类小数）；
+// ≥1e15 的量级 floor 已无显示意义，直接用原始 log（同时保留 >1e308 入账不封顶的修复）
+function compactSSGainIntLog() {
+  const lg = compactSSGainLog();
+  if (lg <= NLOG + 1) return lg;
+  return lg < 15 ? Math.log10(Math.max(1, Math.floor(Math.pow(10, lg)))) : lg;
+}
 // 卷缩重置：获得超弦并重置此前所有内容（统计-通用 与 统计-挑战 保留）
 function compactify(auto) {
   if (!canCompactify()) return;
@@ -4011,10 +4019,10 @@ function compactify(auto) {
   // 统计：最快卷缩（真实秒）、最好单次 SS、最佳 SS/分（真实分口径，与湮灭一致，log 权威）
   if (state.compFastest === 0 || realDur < state.compFastest) state.compFastest = realDur;
   // SS 获取：首次固定 1；此后按公式（当前 VP/Sp 决定，重置前读取）。
-  // gLog 直读 compactSSGainLog()（v0.6.2 修复：原从封顶 1.79e308 的 gained 反推，
+  // gLog 走 compactSSGainIntLog()（v0.6.2 修复：原从封顶 1.79e308 的 gained 反推，
   // SS 获取超 1e308 后每次卷缩只入账 1.79e308——gained 现仅作统计/历史显示）
   const firstComp = state.compactions === 0;
-  const gLog = firstComp ? 0 : compactSSGainLog();
+  const gLog = firstComp ? 0 : compactSSGainIntLog();
   const gained = firstComp ? COMPACT_SS_GAIN_FIRST : Math.max(1, Math.floor(Math.pow(10, Math.min(gLog, 308))));
   state.logBestSS = Math.max(state.logBestSS ?? NLOG, gLog);
   state.bestSS = Math.pow(10, Math.min(state.logBestSS, 308));
@@ -4492,10 +4500,10 @@ function updateCompactButton() {
     btn.disabled = false;
     btn.innerHTML = "你的波动已经足以撕开维度的裂隙<br>突破这个维度的极限";
   } else {
-    // 后续卷缩：显示本次可获得的基础 SS（log 权威直读，超 1e308 不再封顶失真）
+    // 后续卷缩：显示本次可获得的基础 SS（整数口径 + log 权威直读，超 1e308 不再封顶失真）
     btn.classList.add("compact-ready");
     btn.disabled = false;
-    const gLog = compactSSGainLog();
+    const gLog = compactSSGainIntLog();
     btn.textContent = `卷缩（+${gLog > NLOG + 1 ? fmtLog(gLog) : 0} SS）`;
   }
 }
