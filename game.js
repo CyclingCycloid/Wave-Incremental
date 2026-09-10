@@ -4051,7 +4051,7 @@ function addInfLog(addLog) { setInfLog(logAddLogs(getLogInf(), addLog)); }
 const RESEARCH_EXPS = [
   { id: "slit", name: "双缝干涉实验", unlock: () => theoryOwned("51"),
     science: "展示光子或电子等微观粒子同时具有波动性与粒子性的经典量子力学实验，当粒子穿过双缝时会在屏上形成明暗相间的干涉条纹。",
-    debuff: (n) => n >= 1 ? `波长缩减效果 ×0.6^${n}（如波长 1e-90000 → 1e-54000）；波速获取指数 ×0.6^${n}` : "无削弱" },
+    debuff: (n) => n >= 1 ? `波长和波速获取公式的指数变为原来的 ${(Math.pow(0.6, n)).toFixed(4)} 倍` : "无削弱" },
 ];
 function researchExpDef(id) { return RESEARCH_EXPS.find(x => x.id === id); }
 // 双缝干涉的等级（实验进行中返回等级，否则 0）
