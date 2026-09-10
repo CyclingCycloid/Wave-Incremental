@@ -815,8 +815,21 @@ body[data-theme="white"] .inf-line .research-res-val { color: #3050b0; }
   .research-exp-card { padding: 8px 10px; }
   .research-predict { max-width: 70vw; }
 }
-.compactify-btn.research-ready { background: linear-gradient(135deg, #1c5a96, #2f7fc4); border-color: #8fd3ff; box-shadow: 0 0 12px rgba(126, 200, 247, 0.55); }
-.compactify-btn.research-abandon { background: linear-gradient(135deg, #14295e, #1d3c85); border-color: #3f6ad4; }
+.compactify-btn.research-ready {
+  color: #b5e2ff; border-color: #8fd3ff;
+  background: linear-gradient(135deg, #1c5a96, #2f7fc4);
+  animation: research-pulse 2s ease-in-out infinite alternate;
+}
+@keyframes research-pulse {
+  from { box-shadow: 0 0 6px rgba(126, 200, 247, 0.3); }
+  to { box-shadow: 0 0 18px rgba(126, 200, 247, 0.65); }
+}
+.compactify-btn.research-ready:hover:not(:disabled) { background: linear-gradient(135deg, #2568ab, #3a8fd4); }
+.compactify-btn.research-abandon {
+  color: #9fb4e8; border-color: #3f6ad4;
+  background: linear-gradient(135deg, #14295e, #1d3c85);
+}
+.compactify-btn.research-abandon:hover:not(:disabled) { background: rgba(63, 106, 212, 0.2); }
 .color-theory { color: var(--orange); }
 .color-research { color: #8fd3ff; }
 .tn-node.research-node.bought { border-color: #8fd3ff; box-shadow: 0 0 10px rgba(126, 200, 247, 0.4); }
