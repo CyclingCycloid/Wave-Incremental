@@ -785,3 +785,5 @@ body[data-theme="white"] .tree-viewport { border-color: #c9c9d2; }
 .compactify-btn.research-abandon { background: linear-gradient(135deg, #14295e, #1d3c85); border-color: #3f6ad4; }
 .color-theory { color: var(--orange); }
 .color-research { color: #8fd3ff; }
+.tn-node.research-node.bought { border-color: #8fd3ff; box-shadow: 0 0 10px rgba(126, 200, 247, 0.4); }
+.tn-node.research-node.bought .tn-name { color: #8fd3ff; }

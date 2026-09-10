@@ -3815,7 +3815,7 @@ const THEORY_NODES = [
     desc: "获得的奇点 ×1e15" },
   { id: "41", name: "波动光学", parents: ["31", "32"], cost: 7,
     desc: "增强热能超载的效果，并削弱奇点凝聚与波长二次软上限" },
-  { id: "51", name: "双缝干涉实验", parents: ["41"], cost: 0,
+  { id: "51", name: "双缝干涉实验", parents: ["41"], cost: 0, research: true,
     desc: "拓宽“理论”的深度\n解锁“研究”",
     descHtml: "拓宽<span class=\"color-theory\">“理论”</span>的深度<br>解锁<span class=\"color-research\">“研究”</span>",
     reqIns: 60, hiddenUntilIns: 50, reqA63: true },
@@ -4026,6 +4026,24 @@ function setupTheoryPresetMenu() {
 }
 
 // ---------- 研究系统（v0.6.3：实验 ED 与推论 Inf）----------
+// ED / Inf 资源双表示（log10 权威 + double 缓存，零哨兵 NLOG，同 SS/Ins 模式）
+function getLogED() {
+  if (state.logED !== undefined && isFinite(state.logED)) return clampLog(state.logED);
+  return state.ed > 0 ? clampLog(Math.log10(state.ed)) : NLOG;
+}
+function setEDLog(lg) {
+  state.logED = clampLog(lg);
+  state.ed = (lg <= NLOG + 1) ? 0 : (lg > 308 ? Infinity : Math.pow(10, lg));
+}
+function getLogInf() {
+  if (state.logDinf !== undefined && isFinite(state.logDinf)) return clampLog(state.logDinf);
+  return state.inf > 0 ? clampLog(Math.log10(state.inf)) : NLOG;
+}
+function setInfLog(lg) {
+  state.logDinf = clampLog(lg);
+  state.inf = (lg <= NLOG + 1) ? 0 : (lg > 308 ? Infinity : Math.pow(10, lg));
+}
+function addInfLog(addLog) { setInfLog(logAddLogs(getLogInf(), addLog)); }
 // 实验定义：解锁来自理论树节点（各有需求）；每个实验对应一种削弱
 const RESEARCH_EXPS = [
   { id: "slit", name: "双缝干涉实验", unlock: () => theoryOwned("51"),
@@ -4437,7 +4455,7 @@ function buildCompactOnce() {
   for (const def of THEORY_NODES) {
     const pos = TREE_LAYOUT[def.id];
     const node = document.createElement("div");
-    node.className = "tn-node";
+    node.className = "tn-node" + (def.research ? " research-node" : ""); // 实验类节点：已购后天蓝色光
     node.style.left = pos.x + "px"; node.style.top = pos.y + "px";
     node.style.width = TREE_NODE_W + "px"; node.style.height = TREE_NODE_H + "px";
     const nm = document.createElement("div"); nm.className = "tn-name"; nm.textContent = def.name;
