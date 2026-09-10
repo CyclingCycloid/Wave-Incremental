@@ -4048,7 +4048,7 @@ function addInfLog(addLog) { setInfLog(logAddLogs(getLogInf(), addLog)); }
 const RESEARCH_EXPS = [
   { id: "slit", name: "双缝干涉实验", unlock: () => theoryOwned("51"),
     science: "展示光子或电子等微观粒子同时具有波动性与粒子性的经典量子力学实验，当粒子穿过双缝时会在屏上形成明暗相间的干涉条纹。",
-    debuff: (n) => n >= 1 ? `波长的效果指数与波速获取指数变为 ${(1 / ((1 + n) * (1 + n))).toFixed(6)}` : "选择等级后生效" },
+    debuff: (n) => n >= 1 ? `波长的效果指数与波速获取指数变为 ${(1 / ((1 + n) * (1 + n))).toFixed(6)}` : "无削弱" },
 ];
 function researchExpDef(id) { return RESEARCH_EXPS.find(x => x.id === id); }
 // 双缝干涉的等级（实验进行中返回等级，否则 0）
@@ -4068,7 +4068,8 @@ function researchMultipliers() {
     const lgR1 = state.sp > 0 ? lg1FromLog(getLogSp()) : 0;   // RealSp = 当前持有 Sp
     const lgP1 = lg1FromLog(run.predictSpLog);
     pred = lgP1 <= 0 ? (lgR1 <= 0 ? 100 : 0) : 100 * (1 - Math.min(1, Math.abs(lgR1 - lgP1) / lgP1));
-    bonus = Math.pow(Math.max(lgR1, 0), 0.25);
+    const effR1 = Math.min(lgR1, lgP1); // 总奇点超过预测时，附加分按预测值计算
+    bonus = Math.pow(Math.max(effR1, 0), 0.25);
   }
   const total = run ? difficulty * pred * bonus : 0;
   return { difficulty, pred, bonus, total };
@@ -4081,6 +4082,16 @@ function researchEDGainLog() {
 }
 // 实验退出条件：持有 Sp 达到软上限拐点（ED 不要求 VP 与全扭曲虚空）
 function researchExitReady() { return getLogSp() >= SP_SOFTCAP_PIVOT_LOG; }
+// 「可获得 − 当前 ED」的显示串（里程碑式资源：不足/无 → "0"；顶栏与研究页按钮共用）
+function researchExitDiffText() {
+  const gainLog = researchEDGainLog();
+  const curLog = getLogED();
+  if (gainLog > NLOG + 1 && gainLog > curLog) {
+    const d = logAddSigned(gainLog, 1, curLog, -1);
+    if (d.sign > 0) return fmtLog(d.log);
+  }
+  return "0";
+}
 // 研究重置：一次卷缩重置（不计次数、不获 SS），并额外重置虚粒子与黑洞质量
 function researchResetBody() {
   applyCompactionResetBody(gameNow());
@@ -4651,6 +4662,7 @@ function updateCompactUI() {
 // ---------- 研究页 UI（v0.6.3，天蓝色主题；拥有节点51 解锁）----------
 let researchBuilt = false, researchEls = {};
 function getSelEntry(id) { return state.researchSel.find(x => x.id === id); }
+function researchSelLevel(id) { const s = getSelEntry(id); return s ? s.level : 0; } // 0 = 未选择
 function buildResearchOnce() {
   if (researchBuilt) return;
   const list = document.getElementById("research-list");
@@ -4666,25 +4678,40 @@ function buildResearchOnce() {
     const dec = document.createElement("button"); dec.className = "comp-btn small"; dec.textContent = "−";
     const cnt = document.createElement("span"); cnt.className = "research-exp-cnt";
     const inc = document.createElement("button"); inc.className = "comp-btn small"; inc.textContent = "+";
-    const sel = document.createElement("button"); sel.className = "comp-btn small research-select"; sel.textContent = "选择";
-    dec.addEventListener("click", () => { const s = getSelEntry(def.id); if (s) { s.level = Math.max(1, s.level - 1); saveGame(); updateResearchUI(); } });
-    inc.addEventListener("click", () => { const s = getSelEntry(def.id); if (s) { s.level = Math.min(10, s.level + 1); saveGame(); updateResearchUI(); } });
-    sel.addEventListener("click", () => {
-      const i = state.researchSel.findIndex(x => x.id === def.id);
-      if (i >= 0) state.researchSel.splice(i, 1); else state.researchSel.push({ id: def.id, level: 1 });
+    // 等级 0 = 未选择：− 到 0 移除条目，+ 从 0 新增等级 1（无独立的选择按钮）
+    dec.addEventListener("click", () => {
+      const s = getSelEntry(def.id);
+      if (!s) return;
+      if (s.level <= 1) state.researchSel.splice(state.researchSel.indexOf(s), 1);
+      else s.level--;
       saveGame(); updateResearchUI();
     });
-    lv.append(dec, cnt, inc, sel);
+    inc.addEventListener("click", () => {
+      const s = getSelEntry(def.id);
+      if (!s) state.researchSel.push({ id: def.id, level: 1 });
+      else if (s.level < 10) s.level++;
+      else return;
+      saveGame(); updateResearchUI();
+    });
+    lv.append(dec, cnt, inc);
     card.append(nm, sc, db, lv);
     list.appendChild(card);
-    researchEls.exps[def.id] = { card, db, cnt, sel };
+    researchEls.exps[def.id] = { card, db, cnt };
   }
   const predict = document.getElementById("research-predict");
   predict.addEventListener("change", () => {
     const vLog = parseSciInputLog(predict.value);
     if (!isNaN(vLog)) { state.researchPredictSpLog = vLog; saveGame(); updateResearchUI(); }
   });
-  document.getElementById("research-start-btn").addEventListener("click", startResearch);
+  document.getElementById("research-start-btn").addEventListener("click", () => {
+    // 动作按钮双功能：实验中=结束（Sp 拐点上）/放弃，实验外=开始
+    if (state.researchRun) {
+      if (researchExitReady()) researchExit();
+      else researchAbandon();
+      return;
+    }
+    startResearch();
+  });
   researchBuilt = true;
 }
 function updateResearchUI() {
@@ -4697,21 +4724,18 @@ function updateResearchUI() {
   // 资源行（ED/Inf 均为整数显示，0-1 显 0）
   const rateLog = infRateLog();
   const rateTxt = rateLog <= NLOG + 1 ? "0" : fmtNum(Math.pow(10, Math.min(rateLog, 308)), rateLog);
-  document.getElementById("research-res-line").textContent =
+  document.getElementById("research-stats").textContent =
     `实验数据（ED）：${fmtIntRes(state.ed, getLogED())}　　推论（Inf）：${fmtIntRes(state.inf, getLogInf())}（每秒 +${rateTxt}）`;
   // 实验卡片（实验中显示快照等级并锁定编辑）
   const run = state.researchRun;
   for (const def of RESEARCH_EXPS) {
     const el = researchEls.exps[def.id];
     if (!el) continue;
-    const selEntry = getSelEntry(def.id);
     const runEntry = run ? run.exps.find(x => x.id === def.id) : null;
-    const n = run ? (runEntry ? runEntry.level : 0) : (selEntry ? selEntry.level : 0);
+    const n = run ? (runEntry ? runEntry.level : 0) : researchSelLevel(def.id);
     el.db.textContent = "削弱：" + def.debuff(n);
-    el.cnt.textContent = "等级 " + n;
-    el.sel.textContent = selEntry ? "取消" : "选择";
-    el.sel.disabled = !!run;
-    el.card.classList.toggle("selected", !!(selEntry || runEntry));
+    el.cnt.textContent = n >= 1 ? "等级 " + n : "未选择";
+    el.card.classList.toggle("selected", n >= 1);
     el.card.classList.toggle("running", !!run);
   }
   // 三乘数实时显示（实验外预测/附加为 0，只算难度分）
@@ -4719,15 +4743,25 @@ function updateResearchUI() {
   const f0 = (v) => (v > 0 && isFinite(v)) ? fmt(v) : "0";
   document.getElementById("research-mult-line").innerHTML =
     `<span class="research-num">${f0(m.difficulty)}</span>(难度)*<span class="research-num">${f0(m.pred)}</span>(预测)*<span class="research-num">${f0(m.bonus)}</span>(附加)=<span class="research-total">${m.total > 0 ? fmtNum(m.total, researchEDGainLog()) : "0"}</span>`;
-  // 预测输入与开始按钮（实验中锁定）
+  // 预测输入与动作按钮（实验中具备与顶栏替换按钮相同的结束/放弃功能）
   const predict = document.getElementById("research-predict");
   if (document.activeElement !== predict) {
     predict.value = run ? fmtLog(run.predictSpLog)
       : (state.researchPredictSpLog > NLOG + 1 ? fmtNum(Math.pow(10, Math.min(state.researchPredictSpLog, 308)), state.researchPredictSpLog) : "");
   }
   const startBtn = document.getElementById("research-start-btn");
-  startBtn.disabled = !!run;
-  startBtn.textContent = run ? "实验进行中" : "开始实验";
+  startBtn.classList.remove("research-abandon");
+  if (run) {
+    if (researchExitReady()) {
+      startBtn.textContent = `结束实验（获得 ${researchExitDiffText()} 实验数据）`;
+      startBtn.classList.add("research-exit");
+    } else {
+      startBtn.textContent = "放弃实验";
+      startBtn.classList.add("research-abandon");
+    }
+  } else {
+    startBtn.textContent = "开始实验";
+  }
 }
 
 // 卷缩层可见性：主选项卡与全局栏超弦显示（首次卷缩后、且测试模式下）
@@ -4750,16 +4784,9 @@ function updateCompactButton() {
   // 研究实验进行中：顶栏按钮替换为结束/放弃实验（结束条件=Sp 拐点，XX 为可获得−当前 ED 的差）
   if (state.researchRun) {
     if (researchExitReady()) {
-      const gainLog = researchEDGainLog();
-      const curLog = getLogED();
-      let diffTxt = "0";
-      if (gainLog > NLOG + 1 && gainLog > curLog) {
-        const d = logAddSigned(gainLog, 1, curLog, -1);
-        if (d.sign > 0) diffTxt = fmtLog(d.log);
-      }
       btn.className = "annihilate-btn compactify-btn compact-ready research-ready";
       btn.disabled = false;
-      btn.innerHTML = `结束实验<br>获得 ${diffTxt} 实验数据`;
+      btn.innerHTML = `结束实验<br>获得 ${researchExitDiffText()} 实验数据`;
     } else {
       btn.className = "annihilate-btn compactify-btn research-abandon";
       btn.disabled = false;
