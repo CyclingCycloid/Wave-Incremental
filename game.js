@@ -3816,7 +3816,8 @@ const THEORY_NODES = [
   { id: "41", name: "波动光学", parents: ["31", "32"], cost: 7,
     desc: "增强热能超载的效果，并削弱奇点凝聚与波长二次软上限" },
   { id: "51", name: "双缝干涉实验", parents: ["41"], cost: 0,
-    desc: "拓宽“理论”（橙色）的深度\n解锁“研究”（天蓝色）",
+    desc: "拓宽“理论”的深度\n解锁“研究”",
+    descHtml: "拓宽<span class=\"color-theory\">“理论”</span>的深度<br>解锁<span class=\"color-research\">“研究”</span>",
     reqIns: 60, hiddenUntilIns: 50, reqA63: true },
 ];
 function theoryOwned(id) { return !!state.theoryNodes[id]; }
@@ -4608,9 +4609,12 @@ function updateCompactUI() {
     el.node.classList.toggle("available", theoryAvailable(def));
     el.node.classList.toggle("locked", !owned && !theoryAvailable(def));
     let txt;
+    let html = null; // 节点51 等带彩色描述的节点走 innerHTML（“理论”橙色、“研究”天蓝色）
     if (owned) {
       // 购买后：提示文字（描述）保持不变 + 显示当前效果，不显示公式
-      txt = def.desc + "\n" + (def.id === "01" ? "当前乘数 ×" + fmtLog(cmTimeMultLog()) : (def.effect ? def.effect() : "已解锁"));
+      const effectTxt = def.id === "01" ? "当前乘数 ×" + fmtLog(cmTimeMultLog()) : (def.effect ? def.effect() : "已解锁");
+      if (def.descHtml) html = def.descHtml + "<br>" + effectTxt;
+      else txt = def.desc + "\n" + effectTxt;
     } else if (def.placeholder) {
       // 占位节点：无论上级是否已购一律显示「未实装」（信息对玩家无价值）
       txt = "未实装\n（后续版本）";
@@ -4618,11 +4622,12 @@ function updateCompactUI() {
       // 节点51：总灵感 <50 时一律显示 ？？？
       txt = "？？？\n？？？";
     } else {
-      txt = def.reqIns
-        ? `${def.desc}\n需求：${def.reqA63 ? "拥有 A63、" : ""}总灵感 ${def.reqIns}（不消耗）`
-        : `${def.desc}\n花费 ${def.cost} 灵感`;
+      const reqTxt = def.reqIns ? "需求：" + (def.reqA63 ? "拥有 A63、" : "") + "总灵感 " + def.reqIns + "（不消耗）" : "花费 " + def.cost + " 灵感";
+      if (def.descHtml) html = def.descHtml + "<br>" + reqTxt;
+      else txt = `${def.desc}\n${reqTxt}`;
     }
-    el.st.textContent = txt;
+    if (html !== null) el.st.innerHTML = html;
+    else el.st.textContent = txt;
   }
 }
 // ---------- 研究页 UI（v0.6.3，天蓝色主题；拥有节点51 解锁）----------
