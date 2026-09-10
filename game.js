@@ -609,9 +609,9 @@ function up3Exp() {
 
   if (inDistort("inflation")) e /= 2; // 效果开平方根 = 指数 ÷2
   if (inDistort("simple")) e *= 0.5; // 简洁：升级3效果变为原来的平方根
-  // 研究·双缝干涉实验（v0.6.3）：实验中波长效果指数变为 1/(1+等级)
+  // 研究·双缝干涉实验（v0.6.3）：实验中波长效果指数变为 1/(1+等级)^1.5
   const slit = researchSlitLevel();
-  if (slit >= 1) return 1 / (1 + slit);
+  if (slit >= 1) return 1 / Math.pow(1 + slit, 1.5);
   // v0.6.2：指数超过 3 后按 2+log₂(e−1) 放缓（e=3 处 2+log₂2=3 恰好连续，此后每翻倍只 +1）
   if (e > 3) e = 2 + Math.log2(e - 1);
   return e;
@@ -854,11 +854,11 @@ function gainRate() {
   if (inDistort("inflation")) g = Math.sqrt(Math.max(0, g));
   // 膨胀宇宙：波速获取指数随时间下降（每秒 -0.1，到 0 为止）
   if (inDistort("expand")) g = Math.pow(Math.max(0, g), distortGainExp());
-  // 研究·双缝干涉实验（v0.6.3）：波速获取整体幂次 1/(1+等级)
+  // 研究·双缝干涉实验（v0.6.3）：波速获取整体幂次 1/(1+等级)^1.5
   {
     const slit = researchSlitLevel();
     if (slit >= 1) {
-      const sp2 = 1 / (1 + slit);
+      const sp2 = 1 / Math.pow(1 + slit, 1.5);
       const s = g < 0 ? -1 : 1;
       g = s * Math.pow(Math.abs(g), sp2);
     }
@@ -928,10 +928,10 @@ function gainRateLog() {
     if (ge <= 0) return { log: NLOG, sign: 1 };
     log *= ge;
   }
-  // 研究·双缝干涉实验（v0.6.3）：整体幂次 1/(1+等级)
+  // 研究·双缝干涉实验（v0.6.3）：整体幂次 1/(1+等级)^1.5
   {
     const slit = researchSlitLevel();
-    if (slit >= 1) log *= 1 / (1 + slit);
+    if (slit >= 1) log *= 1 / Math.pow(1 + slit, 1.5);
   }
   // 虚空共振（SVU1）：虚空内波速获取速率整体幂次（幂在 log 域 = 乘指数）；
   // 虚空泡沫第三效果（里程碑 2）：全局整体幂次
@@ -4050,7 +4050,7 @@ function addInfLog(addLog) { setInfLog(logAddLogs(getLogInf(), addLog)); }
 const RESEARCH_EXPS = [
   { id: "slit", name: "双缝干涉实验", unlock: () => theoryOwned("51"),
     science: "展示光子或电子等微观粒子同时具有波动性与粒子性的经典量子力学实验，当粒子穿过双缝时会在屏上形成明暗相间的干涉条纹。",
-    debuff: (n) => n >= 1 ? `波长的效果指数与波速获取指数变为 ${(1 / (1 + n)).toFixed(6)}` : "无削弱" },
+    debuff: (n) => n >= 1 ? `波长的效果指数与波速获取指数变为 ${(1 / Math.pow(1 + n, 1.5)).toFixed(6)}` : "无削弱" },
 ];
 function researchExpDef(id) { return RESEARCH_EXPS.find(x => x.id === id); }
 // 双缝干涉的等级（实验进行中返回等级，否则 0）
