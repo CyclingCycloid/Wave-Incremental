@@ -600,8 +600,6 @@ function up3Exp() {
 
   if (inDistort("inflation")) e /= 2; // 效果开平方根 = 指数 ÷2
   if (inDistort("simple")) e *= 0.5; // 简洁：升级3效果变为原来的平方根
-  // v0.6.2：指数超过 3 后按 2+log₂(e−1) 放缓（e=3 处 2+log₂2=3 恰好连续，此后每翻倍只 +1）
-  if (e > 3) e = 2 + Math.log2(e - 1);
   return e;
 }
 // ---------- e100 软上限 ----------
