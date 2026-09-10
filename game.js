@@ -4736,6 +4736,7 @@ function updateResearchUI() {
   document.getElementById("research-inf-rate").textContent = rateLog <= NLOG + 1
     ? "（每秒 +0）"
     : `（每秒 +${fmtNum(Math.pow(10, Math.min(rateLog, 308)), rateLog)}）`;
+  document.getElementById("research-depth").textContent = fmt(state.theoryDepth);
   // 实验卡片（实验中显示快照等级并锁定编辑）
   const run = state.researchRun;
   for (const def of RESEARCH_EXPS) {
