@@ -1147,11 +1147,19 @@ function migrateState() {
   // v0.4.2.x：批量升级改版（增速 ×20），一次性清除旧价格体系的等级（标记防重复）
   if (!state.batchResetDone && state.batchLvl > 0) { state.batchLvl = 0; state.batchMax = 2; state.batchResetDone = 1; }
   else if (!state.batchResetDone) state.batchResetDone = 1;
-  // v0.4.3 黑洞字段回填（旧档无 bhMass/bhState/sbu*）
-  if (state.bhMass === undefined || state.bhMass === null) { state.bhMass = 1; state.logBhMass = 0; }
+  // v0.4.3 黑洞字段回填（旧档无 bhMass/bhState/sbu*）。
+  // null（超 double 的缓存被 JSON 存为 null）不得走「旧档缺字段」兜底：那会把 log 权威
+  // 一并清成 0，重载后黑洞质量/虚粒子被打回 1/0——权威有效时从 log 恢复缓存
+  if (state.bhMass === undefined || state.bhMass === null) {
+    if (state.logBhMass === undefined || !isFinite(state.logBhMass)) { state.bhMass = 1; state.logBhMass = 0; }
+    else setBhMassLog(state.logBhMass);
+  }
   if (state.logBhMass === undefined || !isFinite(state.logBhMass)) state.logBhMass = clampLog(Math.log10(Math.max(state.bhMass, 0)));
   if (!state.bhState) state.bhState = "accrete";
-  if (state.virtualParticles === undefined || state.virtualParticles === null) { state.virtualParticles = 0; state.logVP = NLOG; }
+  if (state.virtualParticles === undefined || state.virtualParticles === null) {
+    if (state.logVP === undefined || !isFinite(state.logVP)) { state.virtualParticles = 0; state.logVP = NLOG; }
+    else setVPLog(state.logVP);
+  }
   if (state.logVP === undefined || !isFinite(state.logVP)) state.logVP = clampLog(Math.log10(Math.max(state.virtualParticles, 0)));
   if (state.sbu1 === undefined) state.sbu1 = 0;
   if (state.sbu2 === undefined) state.sbu2 = 0;
@@ -3868,7 +3876,7 @@ const COMP_MILESTONES = [
   { n: 18, reward: "卷缩不再重置虚空泡沫；解锁黑洞升级自动购买器（自动化页）" },
   { n: 20, reward: "升级3不再重置升级1的等级；解锁虚粒子升级自动购买器（自动化页）" },
   { n: 25, reward: "卷缩不再重置黑洞质量与虚粒子，卷缩后黑洞处于扭曲状态；虚粒子升级不再消耗虚粒子" },
-  { n: 30, reward: "解锁自动卷缩（可设置在多少超弦时卷缩，自动化页）；虚空共振的投入不再消耗资源" },
+  { n: 30, reward: "解锁自动卷缩（可设置在多少超弦时卷缩，自动化页）；虚空共振的投入不再消耗资源；卷缩不再重置标签页" },
 ];
 // 卷缩条件：VP ≥ 1e36、完成 A54（所有扭曲生效的虚空）、Sp ≥ 1.79e308（Sp 软上限拐点）
 function canCompactify() {
@@ -4045,7 +4053,8 @@ function applyCompactionResetBody(realNow) {
   applyCompactVisibility();
   updateCompactButton();
   checkAchievements();
-  if (!simActive) {
+  if (!simActive && !compMilestone(30)) {
+    // 卷缩里程碑 30：卷缩不再重置标签页（不再强制切回波动/主要，自动卷缩同样生效）
     switchTab("wave");
     switchSubtab("main");
   }
