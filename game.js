@@ -612,19 +612,23 @@ function lgamma10(n) {
   if (n < 2) return 0;
   return (n * Math.log(n) - n + 0.5 * Math.log(2 * Math.PI * n)) / Math.LN10;
 }
-// 高段价格增速（v0.6.2）：付费级别超过 start 后每级价格额外 ×级别^0.01
-//（log 域闭式：0.01·(lgamma10(n)−lgamma10(start))；n=start 处为 0，拐点连续）
-function lateCostLog(n, start) { return n > start ? 0.01 * (lgamma10(n) - lgamma10(start)) : 0; }
-// 分段高段价格（v0.6.2）：付费级别 k=start+1..n 每级额外乘 max(10^mulLog, k^powExp) 的 log10 累计
-//（首个 k^powExp ≥ 10^mulLog 的级别 k0=⌈10^(mulLog/powExp)⌉ 分段；两段在 k0 处衔接，拐点连续）
-function lateCostMaxLog(n, start, mulLog, powExp) {
-  if (n <= start) return 0;
-  const k0 = Math.ceil(Math.pow(10, mulLog / powExp));
-  const flatEnd = Math.min(n, k0 - 1);
-  let log = 0;
-  if (flatEnd > start) log += mulLog * (flatEnd - start);
-  if (n >= k0) log += powExp * (lgamma10(n) - lgamma10(k0 - 1));
-  return log;
+// 高段价格（v0.6.2 修正）：付费级别超过 start 后，价格直接变为上一级的 1.01 次方
+//（上一级 1e1000 → 下一级 1e1010），即 lg(n) = lg(start)×1.01^(n−start)，闭式 O(1)；
+// start 及之前沿用原公式（含既有各层），start 处无缝衔接
+function lateCostLog(n, start, origLog) {
+  if (n <= start) return origLog(n);
+  return origLog(start) * Math.pow(1.01, n - start);
+}
+// 分段递推高段价格（v0.6.2 修正）：付费级别超过 start 后每级 lg' = max(lg + mulLog, lg × powExp)
+//（价格 = max(上一级×10^mulLog, 上一级^powExp)）。lg 低于交点 mulLog/(powExp−1) 时线性 +mulLog，
+// 越过阈值后转 ×powExp 几何增长；闭式分段 O(1)，与逐级递推一致
+function lateCostMaxLog(n, start, origLog, mulLog, powExp) {
+  if (n <= start) return origLog(n);
+  const lgStart = origLog(start);
+  const j0 = Math.max(0, Math.ceil((mulLog / (powExp - 1) - lgStart) / mulLog)); // 线性段级数
+  const cross = lgStart + mulLog * j0;
+  if (n <= start + j0) return lgStart + mulLog * (n - start);
+  return cross * Math.pow(powExp, n - start - j0);
 }
 function softcapped() { return F() > SOFTCAP_F; }
 // 升级1价格（含软上限与通胀）：基础 5×2^n；e100 后增速 ×10（近似取 5×10^n×校准，保持当前价平滑）
@@ -671,15 +675,13 @@ function up3WavelengthFromFLog(lf) {
     const scale = up3SoftcapScale(lf);
     w = e * 100 + e * scale * (lf - 100);
   }
-  // 二次软上限（v0.6.2）：缩减效果超过 1e100000（新波长 ≤ 1e-100000）的部分
-  // 指数 = 0.85/((5+lg(lg(Eff)))/10)^0.1（节点41 波动光学 0.85→0.9）。lg(lg(Eff)) 在
-  // Eff<10 区间钳为 max(lg(Eff),1)（该区指数恒 ≈0.911）；Eff=1 处任意指数输出均为 1，
-  // 拐点连续；随 Eff 增大指数缓降、软上限渐强。实际购买与「下次重置」预览共用本函数
+  // 二次软上限（v0.6.2）：波长 < 1e-100000（缩减量 w > 1e5）时，超出部分按
+  // (lg(lg(1/L)+1)/5)^0.5 缩放——lg(1/L)=w，故 p = 0.85/(lg(w+1)/5)^0.5（节点41 0.85→0.9）。
+  // w=1e5 处 lg(w+1)/5 ≈ 1 → p ≈ 0.85，excess→0 时 w→1e5，拐点连续；
+  // w 越大 base 越大、p 越小（恒 <0.85），削弱渐强。实际购买与「下次重置」预览共用本函数
   if (w > 100000) {
-    const eff = w - 100000;
-    const lglg = Math.log10(Math.max(Math.log10(eff), 1));
-    const p = (theoryOwned("41") ? 0.9 : 0.85) / Math.pow((5 + lglg) / 10, 0.1);
-    w = 100000 + Math.pow(eff, p);
+    const p = (theoryOwned("41") ? 0.9 : 0.85) / Math.sqrt(Math.log10(w + 1) / 5);
+    w = 100000 + Math.pow(w - 100000, p);
   }
   return w;
 }
@@ -2559,7 +2561,7 @@ const SAU_DEFS = [
   { id: "sau1", key: "sau1", name: "象限拓张", desc: "声子升级3的硬上限 +2/级", vpu1Desc: "声子升级3的硬上限 +3/级", max: 10,
     costLog: (n) => sauCostLog(2, n) }, // 第n次（1起）10^(2+2n)；超10级后增速×当前等级（log 域，价格可超 double）
   { id: "sau2", key: "sau2", name: "奇点凝聚", desc: "第 n 级使奇点效果指数额外乘以 (1+n/10)", max: Infinity,
-    costLog: (n) => 5 * n + (n > 10 ? sau2ExtraCostLog(n) : 0) + lateCostLog(n, 250) }, // 250 级起每级 ×级别^0.01（v0.6.2）
+    costLog: (n) => lateCostLog(n, 250, (m) => 5 * m + (m > 10 ? sau2ExtraCostLog(m) : 0)) }, // 250 级起价格 = 上一级的 1.01 次方（v0.6.2）
   { id: "sau3", key: "sau3", name: "紫外灾难", desc: "热涨落效果指数 +0.015/级", vpu1Desc: "热涨落效果指数 +0.018/级", max: 10,
     costLog: (n) => sauCostLog(3, n) },
 ];
@@ -2806,16 +2808,18 @@ function sau2ExtraCostLog(n) {
 // SAU1/SAU3 价格的 log10：n≤10 为 base+2n（增速 ×100）；超过 10 级后每级增速 =
 // 原增速 ×100 × n²（n 为当前等级），log 域累积
 function sauCostLog(base, n) {
-  if (n <= 10) return base + 2 * n + lateCostLog(n, 500);
-  let log = base + 20; // 第 10 次购买的价格
-  for (let k = 11; k <= n; k++) log += 2 + 2 * Math.log10(k);
-  return log + lateCostLog(n, 500); // 500 级起每级 ×级别^0.01（v0.6.2）
+  return lateCostLog(n, 500, (m) => { // 500 级起价格 = 上一级的 1.01 次方（v0.6.2）
+    if (m <= 10) return base + 2 * m;
+    let log = base + 20; // 第 10 次购买的价格
+    for (let k = 11; k <= m; k++) log += 2 + 2 * Math.log10(k);
+    return log;
+  });
 }
 // 真空衰变（独立行，位于 spu1 下方、SAU 行上方）：每级奇点获取 ×2，价 10^(3+n)；
 // 500 级以上每级价格额外 ×级别×100（价 10^(3+500) × ∏_{k=501..n} 100k）
 const VACUUM_DEF = { id: "sau4", key: "sau4", name: "真空衰变", desc: "每级使获得的奇点 ×2", max: Infinity,
-  // 500 级起每级额外 ×级别×100（原层）；1000 级起再叠每级 ×级别^0.01（v0.6.2 高段价格）
-  costLog: (n) => (n <= 500 ? 3 + n : 503 + (lgamma10(n) - lgamma10(500)) + 2 * (n - 500) + lateCostLog(n, 1000)) };
+  // 500 级起每级额外 ×级别×100（原层）；1000 级起价格 = 上一级的 1.01 次方（v0.6.2）
+  costLog: (n) => lateCostLog(n, 1000, (m) => (m <= 500 ? 3 + m : 503 + (lgamma10(m) - lgamma10(500)) + 2 * (m - 500))) };
 // 第二类：单次（四组×4，两组共一行）
 const AU_DEFS = [
   [ // 第1组
@@ -3272,10 +3276,12 @@ const SBU_DEFS = [
 ];
 function sbuCostLog(u, n) {
   if (u.id === "sbu1") {
-    // 1e9 × 100^(n-1)；超过 12 级后每级额外 ×(n-2)²；500 级起再叠每级 ×级别^0.01（v0.6.2）
-    let log = 9 + (n - 1) * 2;
-    for (let k = 13; k <= n; k++) log += 2 * Math.log10(k - 2);
-    return log + lateCostLog(n, 500);
+    // 1e9 × 100^(n-1)；超过 12 级后每级额外 ×(n-2)²；500 级起价格 = 上一级的 1.01 次方（v0.6.2）
+    return lateCostLog(n, 500, (m) => {
+      let log = 9 + (m - 1) * 2;
+      for (let k = 13; k <= m; k++) log += 2 * Math.log10(k - 2);
+      return log;
+    });
   }
   if (u.id === "sbu2") {
     // 1e10 × 1000^(n-1)；超过 7 级后每级额外 ×n³
@@ -3283,7 +3289,7 @@ function sbuCostLog(u, n) {
     for (let k = 8; k <= n; k++) log += 3 * Math.log10(k);
     return log;
   }
-  if (u.id === "sbu3") return 11 + (n - 1) * 2 + lateCostLog(n, 1000); // 1e11 × 100^(n-1)；1000 级起每级 ×级别^0.01（v0.6.2）
+  if (u.id === "sbu3") return lateCostLog(n, 1000, (m) => 11 + (m - 1) * 2); // 1e11 × 100^(n-1)；1000 级起价格 = 上一级的 1.01 次方（v0.6.2）
   return 0;
 }
 function buySBU(id, bulk) {
@@ -3299,11 +3305,11 @@ function buySBU(id, bulk) {
 }
 // 黑洞虚粒子升级（花 VP，位于黑洞页）
 const SVPU_DEFS = [
-  { id: "svpu1", key: "svpu1", name: "全息原理", desc: "吸积公式中质量的指数 +0.03/级", max: Infinity, costLog: (n) => 1 + 2 * (n - 1) + lateCostMaxLog(n, 40, 5, 1.05) }, // 10×100^(n-1) VP，每级 ×100（上限走 svpu1Max：4 级，VPU4 后无上限）；40 级起每级 ×max(1e5, 级别^1.05)
+  { id: "svpu1", key: "svpu1", name: "全息原理", desc: "吸积公式中质量的指数 +0.03/级", max: Infinity, costLog: (n) => lateCostMaxLog(n, 40, (m) => 1 + 2 * (m - 1), 5, 1.05) }, // 10×100^(n-1) VP，每级 ×100（上限走 svpu1Max：4 级，VPU4 后无上限）；40 级起每级价格 = max(上一级×1e5, 上一级^1.05)
   { id: "svpu2", key: "svpu2", name: "虚幻湮灭", desc: "获得的湮灭次数×2", max: Infinity, costLog: (n) => Math.log10(3) + (n - 1) * Math.log10(5) },  // 3×5^(n-1) VP
   { id: "svpu3", key: "svpu3", name: "非欧几何", desc: "削弱升级3软上限", max: 3, costLog: (n) => 5 * n - 4 },                  // 10^(5n-4) VP，增速 ×1e5
   { id: "svpu4", key: "svpu4", name: "热能超载", desc: "削弱温度的软上限", max: 3, costLog: (n) => 7 + (n - 1) * 3 },              // 1e7×1000^(n-1) VP
-  { id: "svpu5", key: "svpu5", name: "潮汐撕裂", desc: "黑洞质量的软上限起始点每级 +10 个数量级", max: Infinity, costLog: (n) => Math.log10(5e7) + (n - 1) * Math.log10(2000) + lateCostMaxLog(n, 30, 10, 1.05) }, // 5e7×2000^(n-1) VP；30 级起每级 ×max(1e10, 级别^1.05)
+  { id: "svpu5", key: "svpu5", name: "潮汐撕裂", desc: "黑洞质量的软上限起始点每级 +10 个数量级", max: Infinity, costLog: (n) => lateCostMaxLog(n, 30, (m) => Math.log10(5e7) + (m - 1) * Math.log10(2000), 10, 1.05) }, // 5e7×2000^(n-1) VP；30 级起每级价格 = max(上一级×1e10, 上一级^1.05)
 ];
 // 全息原理的实际等级上限（对偶原理 VPU4 后取消：4 → 无上限）
 function svpu1Max() { return vpuOwned("vpu4") ? Infinity : 4; }
