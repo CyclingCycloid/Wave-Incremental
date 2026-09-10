@@ -1,9 +1,9 @@
-/* ===== Wave Incremental v0.5.1 — game logic ===== */
+/* ===== Wave Incremental v0.6.2 — game logic ===== */
 
 // ---------- Save schema ----------
 function defaultState() {
   return {
-    version: "0.5.1",
+    version: "0.6.2",
     // 物理资源
     U: 10,                 // 波速 m/s (默认国际单位制，double 缓存；极端值看 logU10)
     logU10: 1,             // log10(U) 权威表示（防溢出/下溢；U=0 时为 NLOG 哨兵）
@@ -4165,15 +4165,12 @@ function buildCompactOnce() {
     geoRow.appendChild(box);
     compactEls.geo[key] = { cnt, dec, inc };
   }
-  // A64 奖励：自动最佳分配按钮（整数约束最优，常数候选不随 T 增长）；达成前隐藏
-  const autoBtn = document.createElement("button");
-  autoBtn.className = "comp-btn small";
-  autoBtn.textContent = "自动最佳分配";
-  autoBtn.title = "按当前拓扑节点总数计算整数约束下的最优点/边/面分配并应用（成就 A64 奖励）";
-  autoBtn.addEventListener("click", applyAutoAlloc);
-  autoBtn.classList.add("hidden");
-  geoRow.appendChild(autoBtn);
-  compactEls.autoBtn = autoBtn;
+  // A64 奖励：自动最佳分配按钮（静态 HTML，位于「几何转换」提示与点/边/面行之间、居中）
+  const autoBtn = document.getElementById("comp-auto-alloc");
+  if (autoBtn) {
+    autoBtn.addEventListener("click", applyAutoAlloc);
+    compactEls.autoBtn = autoBtn;
+  }
   // 灵感三格子（大框内：频率 / 奇点 / 超弦，各自花费）
   const insCells = document.getElementById("comp-ins-cells");
   insCells.innerHTML = "";
@@ -5407,7 +5404,7 @@ function updateAutomationUI() {
 function autoBuyTimes(key) {
   if (state.ach.normal.includes("A34") && state.batchMode[key]) {
     const lim = batchLimit();
-    if (lim === Infinity) return inDistort("simple") ? 256 : 1e8;
+    if (lim === Infinity) return inDistort("simple") ? 256 : 1e13;
     return lim;
   }
   return 1;
@@ -6096,7 +6093,7 @@ const NORMAL_ACH = [
   { id: "A61", name: "折叠", desc: "开始产出卡拉比-丘流形", check: () => getLogCM() > NLOG + 1 },
   { id: "A62", name: "理论", desc: "购买九个理论树节点", check: () => Object.keys(state.theoryNodes).length >= 9 },
   { id: "A63", name: "里程", desc: "获得所有卷缩里程碑", check: () => COMP_MILESTONES.every(m => state.compactions >= m.n) },
-  { id: "A64", name: "几何", desc: "基础CM获取超过 4e6/s", star: true, reward: "解锁「自动最佳分配」按钮（整数最优，一键应用）", check: () => cmRateLog() > Math.log10(4e6) },
+  { id: "A64", name: "几何", desc: "基础CM获取超过 4e6/s", star: true, reward: "解锁「自动最佳分配」按钮", check: () => cmRateLog() > Math.log10(4e6) },
 ];
 const ACH_PER_ROW = 5;
 // 已定义行数；之后整行为未解锁 ???
@@ -6925,7 +6922,7 @@ function applyTestModeUIGlobal() {
   const forceCompactBtn = document.getElementById("force-compact-btn");
   if (forceCompactBtn) forceCompactBtn.classList.toggle("hidden", !state.testMode);
   if (verEl) verEl.textContent = state.testMode
-    ? "v0.6.1 The Compactification Update（测试）"
+    ? "v0.6.2 The Softcap Update（测试）"
     : "v0.5.1 The Void Update";
 }
 

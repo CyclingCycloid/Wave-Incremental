@@ -700,6 +700,7 @@ body[data-theme="white"] #sub-ann-void {
 .comp-section { margin: 14px 0; text-align: center; }
 .comp-tp-line { font-family: var(--font-num); font-size: 13px; margin: 6px 0 10px; }
 .comp-geo-hint { font-size: 13px; color: var(--text-dim); margin-bottom: 8px; }
+.comp-auto-row { margin: 4px 0 8px; text-align: center; }
 .comp-geo-row { display: flex; gap: 26px; flex-wrap: wrap; justify-content: center; margin: 8px 0; }
 .comp-geo-box { text-align: center; }
 .comp-geo-name { font-size: 13px; margin-bottom: 4px; }
