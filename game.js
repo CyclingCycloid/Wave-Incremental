@@ -4728,11 +4728,13 @@ function updateResearchUI() {
   if (subtab) subtab.classList.toggle("hidden", !accessible);
   if (!accessible) return;
   buildResearchOnce();
-  // 资源行（ED/Inf 均为整数显示，0-1 显 0）
+  // 资源显示（主资源样式：大字号数值；ED 浅蓝、Inf 深蓝，各自一行居中；0-1 显 0）
+  document.getElementById("research-ed").textContent = fmtIntRes(state.ed, getLogED());
+  document.getElementById("research-inf").textContent = fmtIntRes(state.inf, getLogInf());
   const rateLog = infRateLog();
-  const rateTxt = rateLog <= NLOG + 1 ? "0" : fmtNum(Math.pow(10, Math.min(rateLog, 308)), rateLog);
-  document.getElementById("research-stats").textContent =
-    `实验数据（ED）：${fmtIntRes(state.ed, getLogED())}　　推论（Inf）：${fmtIntRes(state.inf, getLogInf())}（每秒 +${rateTxt}）`;
+  document.getElementById("research-inf-rate").textContent = rateLog <= NLOG + 1
+    ? "（每秒 +0）"
+    : `（每秒 +${fmtNum(Math.pow(10, Math.min(rateLog, 308)), rateLog)}）`;
   // 实验卡片（实验中显示快照等级并锁定编辑）
   const run = state.researchRun;
   for (const def of RESEARCH_EXPS) {

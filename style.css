@@ -774,7 +774,15 @@ body[data-theme="white"] .tree-viewport { border-color: #c9c9d2; }
 }
 #sub-research > *:not(.research-bg) { position: relative; z-index: 1; }
 .research-title { text-align: center; font-size: 22px; letter-spacing: 8px; margin: 4px 0 10px; color: var(--text); text-shadow: 0 0 12px rgba(95,184,230,0.55); }
-.research-stats { text-align: center; font-size: 14px; margin: 8px 0; font-family: var(--font-num); color: var(--text); }
+.research-stats { text-align: center; margin: 10px 0 4px; }
+.research-res-line { margin: 2px 0; }
+.research-res-label { font-size: 14px; color: var(--text-dim); margin-right: 8px; }
+.research-res-val { font-size: 30px; font-weight: 700; font-family: var(--font-num); line-height: 1.1; }
+.ed-line .research-res-val { color: #9fd4ff; text-shadow: 0 0 10px rgba(159, 212, 255, 0.35); }
+.inf-line .research-res-val { color: #4a6fd4; text-shadow: 0 0 10px rgba(74, 111, 212, 0.3); }
+body[data-theme="white"] .ed-line .research-res-val { color: #2e8fd8; }
+body[data-theme="white"] .inf-line .research-res-val { color: #3050b0; }
+.research-res-rate { font-size: 13px; color: var(--text-dim); margin-left: 8px; font-family: var(--font-num); }
 .research-desc { text-align: center; font-size: 13px; line-height: 1.8; color: var(--text-dim); margin: 8px auto 10px; max-width: 640px; }
 .research-mult-line { text-align: center; font-size: 14px; margin: 10px 0; font-family: var(--font-num); }
 .research-num { color: #5fb8e6; font-weight: 700; }
