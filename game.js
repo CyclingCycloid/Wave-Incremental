@@ -600,6 +600,8 @@ function up3Exp() {
 
   if (inDistort("inflation")) e /= 2; // 效果开平方根 = 指数 ÷2
   if (inDistort("simple")) e *= 0.5; // 简洁：升级3效果变为原来的平方根
+  // v0.6.2：指数超过 3 后按 2+log₂(e−1) 放缓（e=3 处 2+log₂2=3 恰好连续，此后每翻倍只 +1）
+  if (e > 3) e = 2 + Math.log2(e - 1);
   return e;
 }
 // ---------- e100 软上限 ----------
@@ -609,6 +611,20 @@ const SOFTCAP_F = 1e100;
 function lgamma10(n) {
   if (n < 2) return 0;
   return (n * Math.log(n) - n + 0.5 * Math.log(2 * Math.PI * n)) / Math.LN10;
+}
+// 高段价格增速（v0.6.2）：付费级别超过 start 后每级价格额外 ×级别^0.01
+//（log 域闭式：0.01·(lgamma10(n)−lgamma10(start))；n=start 处为 0，拐点连续）
+function lateCostLog(n, start) { return n > start ? 0.01 * (lgamma10(n) - lgamma10(start)) : 0; }
+// 分段高段价格（v0.6.2）：付费级别 k=start+1..n 每级额外乘 max(10^mulLog, k^powExp) 的 log10 累计
+//（首个 k^powExp ≥ 10^mulLog 的级别 k0=⌈10^(mulLog/powExp)⌉ 分段；两段在 k0 处衔接，拐点连续）
+function lateCostMaxLog(n, start, mulLog, powExp) {
+  if (n <= start) return 0;
+  const k0 = Math.ceil(Math.pow(10, mulLog / powExp));
+  const flatEnd = Math.min(n, k0 - 1);
+  let log = 0;
+  if (flatEnd > start) log += mulLog * (flatEnd - start);
+  if (n >= k0) log += powExp * (lgamma10(n) - lgamma10(k0 - 1));
+  return log;
 }
 function softcapped() { return F() > SOFTCAP_F; }
 // 升级1价格（含软上限与通胀）：基础 5×2^n；e100 后增速 ×10（近似取 5×10^n×校准，保持当前价平滑）
@@ -655,10 +671,16 @@ function up3WavelengthFromFLog(lf) {
     const scale = up3SoftcapScale(lf);
     w = e * 100 + e * scale * (lf - 100);
   }
-  // 二次软上限（v0.6.1）：缩减效果超过 1e100000（新波长 ≤ 1e-100000）的部分指数变为 0.85 次方
-  //（节点41 波动光学削弱为 0.9；拐点处连续：w = 100000 时输入输出相等，指数切换不影响连续性；
-  // 实际购买与「下次重置」预览共用本函数）
-  if (w > 100000) w = 100000 + Math.pow(w - 100000, theoryOwned("41") ? 0.9 : 0.85);
+  // 二次软上限（v0.6.2）：缩减效果超过 1e100000（新波长 ≤ 1e-100000）的部分
+  // 指数 = 0.85/((5+lg(lg(Eff)))/10)^0.1（节点41 波动光学 0.85→0.9）。lg(lg(Eff)) 在
+  // Eff<10 区间钳为 max(lg(Eff),1)（该区指数恒 ≈0.911）；Eff=1 处任意指数输出均为 1，
+  // 拐点连续；随 Eff 增大指数缓降、软上限渐强。实际购买与「下次重置」预览共用本函数
+  if (w > 100000) {
+    const eff = w - 100000;
+    const lglg = Math.log10(Math.max(Math.log10(eff), 1));
+    const p = (theoryOwned("41") ? 0.9 : 0.85) / Math.pow((5 + lglg) / 10, 0.1);
+    w = 100000 + Math.pow(eff, p);
+  }
   return w;
 }
 // 冷却宇宙：购买任何升级 → 波速获取量变为 A^k，k 在 15 秒内从 0 线性升到上限 0.75；
@@ -689,7 +711,7 @@ const T_P0 = 1.4168e32; // 最初宇宙的普朗克温度
 function planckMultLog() {
   if (inDistort("simple")) return 0; // 简洁宇宙：普朗克常数倍率始终为 1
   const exp = planckExp();
-  return clampLog(exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp)) + vpu2SingMultLog());
+  return clampLog(exp * spEffectTermLog() + vpu2SingMultLog());
 }
 function planckMult() {
   const l = planckMultLog();
@@ -699,7 +721,7 @@ function planckMult() {
 // log10 版本（权威）：log10(T_P0) + exp·log10(1+totalSp)，含 250 软上限收敛
 function temperatureCapLog() {
   const exp = tempCapExp();
-  let logCap = Math.log10(T_P0) + exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp)) + vpu2SingMultLog();
+  let logCap = Math.log10(T_P0) + exp * spEffectTermLog() + vpu2SingMultLog();
   if (logCap > 250) logCap = (vpuOwned("vpu1") ? 212.5 + 0.15 * logCap : 225 + 0.1 * logCap); // 软上限：超 1e250 部分开十次方根（单圈重整后 0.15 次方）；截距各自校准使 1e250 拐点连续（212.5+0.15×250=225+0.1×250=250）
   return clampLog(logCap);
 }
@@ -766,6 +788,17 @@ function spSoftcapLog(spLog) {
   const exp = theoryOwned("12") ? 0.12 : 0.15;
   return SP_SOFTCAP_PIVOT_LOG + (spLog - SP_SOFTCAP_PIVOT_LOG) / Math.pow(spLog, exp);
 }
+// 有效总奇点（log10，仅四个奇点效果使用）：超过 1e2000 的部分按 1/√(lg Sp) 幂缩放
+//（v0.6.2；1e2000 处连续；不改变总奇点的显示与统计口径）
+function effTotalSpLog() {
+  const lg = getLogTotalSp();
+  return lg <= 2000 ? lg : 2000 + (lg - 2000) / Math.pow(lg, 0.5);
+}
+// 奇点效果用的 Sp 底数项（log10）：>250 走 log 权威并套 1e2000 软上限，否则精确 lg(1+Sp)
+function spEffectTermLog() {
+  const lg = getLogTotalSp();
+  return lg > 250 ? effTotalSpLog() : Math.log10(1 + state.totalSp);
+}
 // gainRate 的 log10 版本（完整乘法链在 log 域，永不溢出）
 function gainRate() {
   let g;
@@ -791,7 +824,7 @@ function gainRate() {
     let exp = waveGainExp();
     if (inDistort("simple")) exp /= 2;
     if (getLogTotalSp() > 250) {
-      g *= Decimal.pow(10, getLogTotalSp() * exp).toNumber();
+      g *= Decimal.pow(10, effTotalSpLog() * exp).toNumber();
     } else {
       g *= Math.pow(1 + state.totalSp, exp);
     }
@@ -853,7 +886,7 @@ function gainRateLog() {
   {
     let exp = waveGainExp();
     if (inDistort("simple")) exp /= 2;
-    log += exp * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp));
+    log += exp * spEffectTermLog();
   }
   log += vpu2SingMultLog(); // 量子狂潮：奇点效果额外乘数
   // 定向：每刻独立 50% 概率取反（与 gainRate 同款原版语义）
@@ -2526,7 +2559,7 @@ const SAU_DEFS = [
   { id: "sau1", key: "sau1", name: "象限拓张", desc: "声子升级3的硬上限 +2/级", vpu1Desc: "声子升级3的硬上限 +3/级", max: 10,
     costLog: (n) => sauCostLog(2, n) }, // 第n次（1起）10^(2+2n)；超10级后增速×当前等级（log 域，价格可超 double）
   { id: "sau2", key: "sau2", name: "奇点凝聚", desc: "第 n 级使奇点效果指数额外乘以 (1+n/10)", max: Infinity,
-    costLog: (n) => 5 * n + (n > 10 ? sau2ExtraCostLog(n) : 0) },
+    costLog: (n) => 5 * n + (n > 10 ? sau2ExtraCostLog(n) : 0) + lateCostLog(n, 250) }, // 250 级起每级 ×级别^0.01（v0.6.2）
   { id: "sau3", key: "sau3", name: "紫外灾难", desc: "热涨落效果指数 +0.015/级", vpu1Desc: "热涨落效果指数 +0.018/级", max: 10,
     costLog: (n) => sauCostLog(3, n) },
 ];
@@ -2579,8 +2612,12 @@ function totalEffectText(id) {
       const mult = multLog > 308 ? Infinity : Math.pow(10, multLog);
       return { text: `总效果：虚粒子获取 ×${fmtNum(mult, multLog)}`, capped: n("sbu3") > 10, eff };
     }
-    case "svpu1":
-      return { text: `总效果：吸积质量指数 +${(0.03 * n("svpu1")).toFixed(2)}`, capped: false };
+    case "svpu1": {
+      // v0.6.2：质量指数超 1 开平方——显示合并后的有效指数
+      const n0 = 0.75 + 0.03 * n("svpu1") + (vpuOwned("vpu4") ? 0.05 : 0);
+      const eff = n0 > 1 ? Math.sqrt(n0) : n0;
+      return { text: `总效果：吸积质量指数 ${eff.toFixed(3)}`, capped: n0 > 1, eff };
+    }
     case "svpu2": {
       const lg = n("svpu2") * Math.log10(2);
       return { text: `总效果：湮灭次数 ×${fmtNum(Math.pow(10, Math.min(lg, 308)), lg)}`, capped: false };
@@ -2769,15 +2806,16 @@ function sau2ExtraCostLog(n) {
 // SAU1/SAU3 价格的 log10：n≤10 为 base+2n（增速 ×100）；超过 10 级后每级增速 =
 // 原增速 ×100 × n²（n 为当前等级），log 域累积
 function sauCostLog(base, n) {
-  if (n <= 10) return base + 2 * n;
+  if (n <= 10) return base + 2 * n + lateCostLog(n, 500);
   let log = base + 20; // 第 10 次购买的价格
   for (let k = 11; k <= n; k++) log += 2 + 2 * Math.log10(k);
-  return log;
+  return log + lateCostLog(n, 500); // 500 级起每级 ×级别^0.01（v0.6.2）
 }
 // 真空衰变（独立行，位于 spu1 下方、SAU 行上方）：每级奇点获取 ×2，价 10^(3+n)；
 // 500 级以上每级价格额外 ×级别×100（价 10^(3+500) × ∏_{k=501..n} 100k）
 const VACUUM_DEF = { id: "sau4", key: "sau4", name: "真空衰变", desc: "每级使获得的奇点 ×2", max: Infinity,
-  costLog: (n) => (n <= 500 ? 3 + n : 503 + (lgamma10(n) - lgamma10(500)) + 2 * (n - 500)) };
+  // 500 级起每级额外 ×级别×100（原层）；1000 级起再叠每级 ×级别^0.01（v0.6.2 高段价格）
+  costLog: (n) => (n <= 500 ? 3 + n : 503 + (lgamma10(n) - lgamma10(500)) + 2 * (n - 500) + lateCostLog(n, 1000)) };
 // 第二类：单次（四组×4，两组共一行）
 const AU_DEFS = [
   [ // 第1组
@@ -2972,7 +3010,7 @@ function spAccretionMultLog() {
   if (!auOwned("au43")) return 0;
   // l1 = lg(Sp+1) 的数值本身（totalSp=0 时为 0）
   const spLog = state.totalSp > 0 ? getLogTotalSp() : -Infinity;
-  const l1 = spLog === -Infinity ? 0 : logAddLogs(0, spLog);
+  const l1 = spLog === -Infinity ? 0 : lg1FromLog(effTotalSpLog()); // v0.6.2：lg(有效Sp+1)，套 1e2000 软上限
   // lg( lg(Sp+1) + (Sp+1)^0.01 ) × 指数；理论树节点 11：第 4 效果（黑洞吸积）的指数同乘
   return clampLog(accretionExp() * logAddLogs(Math.log10(Math.max(l1, 1e-300)), 0.01 * l1));
 }
@@ -3217,7 +3255,14 @@ function bhVPGainLog() {
   const x = 0.1 * mLog;
   // 大质量时 10^x−1 ≈ 10^x（log ≈ x）；小质量直接算，避免精度损失
   const inner = x > 15 ? x : Math.log10(Math.max(Math.pow(10, x) - 1, 1e-300));
-  return clampLog(inner + sbu3Eff() * Math.log10(2) + vfVPMultLog()); // VF 加成
+  const raw = clampLog(inner + sbu3Eff() * Math.log10(2) + vfVPMultLog()); // VF 加成
+  // v0.6.2：VP 获取超过 1e60 的部分按 min(0.5, 1/(lg(VP)−60)^0.1) 幂缩放（各加成后生效；
+  // raw=60 处输出恒为 60，拐点连续；raw>1084 后指数由 0.5 起缓降）
+  if (raw > 60) {
+    const exp = Math.min(0.5, 1 / Math.pow(raw - 60, 0.1));
+    return clampLog(60 + (raw - 60) * exp);
+  }
+  return raw;
 }
 // 黑洞升级定义
 const SBU_DEFS = [
@@ -3227,10 +3272,10 @@ const SBU_DEFS = [
 ];
 function sbuCostLog(u, n) {
   if (u.id === "sbu1") {
-    // 1e9 × 100^(n-1)；超过 12 级后每级额外 ×(n-2)²
+    // 1e9 × 100^(n-1)；超过 12 级后每级额外 ×(n-2)²；500 级起再叠每级 ×级别^0.01（v0.6.2）
     let log = 9 + (n - 1) * 2;
     for (let k = 13; k <= n; k++) log += 2 * Math.log10(k - 2);
-    return log;
+    return log + lateCostLog(n, 500);
   }
   if (u.id === "sbu2") {
     // 1e10 × 1000^(n-1)；超过 7 级后每级额外 ×n³
@@ -3238,7 +3283,7 @@ function sbuCostLog(u, n) {
     for (let k = 8; k <= n; k++) log += 3 * Math.log10(k);
     return log;
   }
-  if (u.id === "sbu3") return 11 + (n - 1) * 2;      // 1e11 × 100^(n-1)
+  if (u.id === "sbu3") return 11 + (n - 1) * 2 + lateCostLog(n, 1000); // 1e11 × 100^(n-1)；1000 级起每级 ×级别^0.01（v0.6.2）
   return 0;
 }
 function buySBU(id, bulk) {
@@ -3254,11 +3299,11 @@ function buySBU(id, bulk) {
 }
 // 黑洞虚粒子升级（花 VP，位于黑洞页）
 const SVPU_DEFS = [
-  { id: "svpu1", key: "svpu1", name: "全息原理", desc: "吸积公式中质量的指数 +0.03/级", max: Infinity, costLog: (n) => 1 + 2 * (n - 1) }, // 10×100^(n-1) VP，每级 ×100（实际上限走 svpu1Max：4 级，对偶原理 VPU4 后无上限）
+  { id: "svpu1", key: "svpu1", name: "全息原理", desc: "吸积公式中质量的指数 +0.03/级", max: Infinity, costLog: (n) => 1 + 2 * (n - 1) + lateCostMaxLog(n, 40, 5, 1.05) }, // 10×100^(n-1) VP，每级 ×100（上限走 svpu1Max：4 级，VPU4 后无上限）；40 级起每级 ×max(1e5, 级别^1.05)
   { id: "svpu2", key: "svpu2", name: "虚幻湮灭", desc: "获得的湮灭次数×2", max: Infinity, costLog: (n) => Math.log10(3) + (n - 1) * Math.log10(5) },  // 3×5^(n-1) VP
   { id: "svpu3", key: "svpu3", name: "非欧几何", desc: "削弱升级3软上限", max: 3, costLog: (n) => 5 * n - 4 },                  // 10^(5n-4) VP，增速 ×1e5
   { id: "svpu4", key: "svpu4", name: "热能超载", desc: "削弱温度的软上限", max: 3, costLog: (n) => 7 + (n - 1) * 3 },              // 1e7×1000^(n-1) VP
-  { id: "svpu5", key: "svpu5", name: "潮汐撕裂", desc: "黑洞质量的软上限起始点每级 +10 个数量级", max: Infinity, costLog: (n) => Math.log10(5e7) + (n - 1) * Math.log10(2000) }, // 5e7×2000^(n-1) VP
+  { id: "svpu5", key: "svpu5", name: "潮汐撕裂", desc: "黑洞质量的软上限起始点每级 +10 个数量级", max: Infinity, costLog: (n) => Math.log10(5e7) + (n - 1) * Math.log10(2000) + lateCostMaxLog(n, 30, 10, 1.05) }, // 5e7×2000^(n-1) VP；30 级起每级 ×max(1e10, 级别^1.05)
 ];
 // 全息原理的实际等级上限（对偶原理 VPU4 后取消：4 → 无上限）
 function svpu1Max() { return vpuOwned("vpu4") ? Infinity : 4; }
@@ -3398,7 +3443,10 @@ function vpu2SingMult() {
 function vpu2SingMultLog() { return vpuOwned("vpu2") ? Math.log10(vpu2SingMult()) : 0; }
 // VPU5 临界湮灭效果：自动湮灭无 CD（由 autoAnnCD 调用）；共轭湮灭效果 ^2（由 phononSpMult 调用）
 // 吸积质量指数：基础 0.75 + 全息原理 0.03/级 + 对偶原理（VPU4）+0.05
-function bhAccretionMassExp() { return 0.75 + 0.03 * state.svpu1 + (vpuOwned("vpu4") ? 0.05 : 0); }
+function bhAccretionMassExp() {
+  const n = 0.75 + 0.03 * state.svpu1 + (vpuOwned("vpu4") ? 0.05 : 0);
+  return n > 1 ? Math.sqrt(n) : n; // v0.6.2：质量指数超过 1 的部分开平方（n=1 处连续）
+}
 // SVPU2 虚幻湮灭：每次获得的奇点 ×2^svpu2（乘在每次 gained 上，不加成次数本身）
 function annSpMult() { return Math.pow(2, state.svpu2); }
 // SVPU3 非欧几何：升级3软上限缩放指数的次幂 1/(n+1)（n=svpu3）
@@ -3962,9 +4010,12 @@ function compactify(auto) {
     : Math.max(state.realTime || 0, 0);
   // 统计：最快卷缩（真实秒）、最好单次 SS、最佳 SS/分（真实分口径，与湮灭一致，log 权威）
   if (state.compFastest === 0 || realDur < state.compFastest) state.compFastest = realDur;
-  // SS 获取：首次固定 1；此后按公式（当前 VP/Sp 决定，重置前读取）
-  const gained = state.compactions === 0 ? COMPACT_SS_GAIN_FIRST : compactSSGain();
-  const gLog = Math.log10(Math.max(gained, 1e-300));
+  // SS 获取：首次固定 1；此后按公式（当前 VP/Sp 决定，重置前读取）。
+  // gLog 直读 compactSSGainLog()（v0.6.2 修复：原从封顶 1.79e308 的 gained 反推，
+  // SS 获取超 1e308 后每次卷缩只入账 1.79e308——gained 现仅作统计/历史显示）
+  const firstComp = state.compactions === 0;
+  const gLog = firstComp ? 0 : compactSSGainLog();
+  const gained = firstComp ? COMPACT_SS_GAIN_FIRST : Math.max(1, Math.floor(Math.pow(10, Math.min(gLog, 308))));
   state.logBestSS = Math.max(state.logBestSS ?? NLOG, gLog);
   state.bestSS = Math.pow(10, Math.min(state.logBestSS, 308));
   const rateLog = clampLog(gLog + Math.log10(60 / Math.max(realDur, 1e-9)));
@@ -4441,11 +4492,11 @@ function updateCompactButton() {
     btn.disabled = false;
     btn.innerHTML = "你的波动已经足以撕开维度的裂隙<br>突破这个维度的极限";
   } else {
-    // 后续卷缩：显示本次可获得的基础 SS
+    // 后续卷缩：显示本次可获得的基础 SS（log 权威直读，超 1e308 不再封顶失真）
     btn.classList.add("compact-ready");
     btn.disabled = false;
-    const g = compactSSGain();
-    btn.textContent = `卷缩（+${fmt(g)} SS）`;
+    const gLog = compactSSGainLog();
+    btn.textContent = `卷缩（+${gLog > NLOG + 1 ? fmtLog(gLog) : 0} SS）`;
   }
 }
 
@@ -5015,7 +5066,7 @@ function updateSpUI() {
   const panel = document.getElementById("sp-bonus-panel");
   const rows = [
     ["总奇点 (Sp)", fmtNum(state.totalSp, getLogTotalSp())],
-    ["波速获取倍率", "×" + fmtNum(hasDistortMilestone(1) ? Decimal.pow(1 + state.totalSp, waveGainExp()).toNumber() : Math.pow(1 + state.totalSp, 2), waveGainExp() * (getLogTotalSp() > 250 ? getLogTotalSp() : Math.log10(1 + state.totalSp)))],
+    ["波速获取倍率", "×" + fmtNum(hasDistortMilestone(1) ? Decimal.pow(1 + state.totalSp, waveGainExp()).toNumber() : Math.pow(1 + state.totalSp, 2), waveGainExp() * spEffectTermLog())],
     ["普朗克常数倍率", "×" + fmtNum(planckMult(), planckMultLog())],
   ];
   if (auOwned("au43")) rows.push(["黑洞吸积效率倍率", "×" + fmtNum(spAccretionMult(), spAccretionMultLog())]);
@@ -5031,7 +5082,7 @@ function updateSpUI() {
   // 温度上限软上限提示：原上限超 1e250 且未打破规则时显示（亮红）
   {
     const expS = hasDistortMilestone(1) ? tempCapExp() : 10;
-    const rawLogCap = (getLogTotalSp() > 250 ? expS * getLogTotalSp() : expS * Math.log10(1 + state.totalSp)) + Math.log10(T_P0);
+    const rawLogCap = expS * spEffectTermLog() + Math.log10(T_P0);
     if (rawLogCap > 250 && !state.rulesBroken) {
       const warn = document.createElement("div");
       warn.className = "spb-warning";
