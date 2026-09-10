@@ -760,3 +760,26 @@ body[data-theme="white"] .tree-viewport { border-color: #c9c9d2; }
 .tn-node.locked { opacity: 0.55; }
 .tree-controls { position: absolute; right: 10px; bottom: 10px; display: flex; gap: 6px; z-index: 5; }
 .tree-hint { position: absolute; left: 10px; bottom: 12px; font-size: 11px; color: #8a8a96; z-index: 5; pointer-events: none; }
+
+/* ===== 研究（v0.6.3，天蓝色主题）===== */
+.research-subtab { color: #8fd3ff; }
+.subtab.research-subtab.active { color: #b5e2ff; }
+.research-res-line { text-align: center; font-size: 15px; color: #9fd8ff; margin: 10px 0; font-family: var(--font-num); }
+.research-desc { font-size: 13px; color: var(--text-dim); margin: 8px 0; }
+.research-mult-line { text-align: center; font-size: 14px; margin: 10px 0; font-family: var(--font-num); }
+.research-num { color: #8fd3ff; font-weight: 700; }
+.research-total { color: #8fd3ff; font-weight: 700; font-size: 20px; }
+.research-start-row { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 10px 0; }
+.research-predict { width: 180px; font-family: var(--font-num); }
+.research-sub { color: #8fd3ff; margin: 14px 0 8px; }
+.research-list { display: flex; flex-direction: column; gap: 10px; }
+.research-exp-card { border: 1px solid #3f6fb5; border-radius: 8px; padding: 10px 12px; background: rgba(28, 56, 96, 0.3); }
+.research-exp-card.selected { border-color: #8fd3ff; box-shadow: 0 0 8px rgba(126, 200, 247, 0.3); }
+.research-exp-card.running { border-style: dashed; }
+.research-exp-name { color: #8fd3ff; font-weight: 700; margin-bottom: 4px; }
+.research-exp-science { font-size: 13px; color: var(--text-dim); margin-bottom: 4px; }
+.research-exp-debuff { font-size: 13px; color: var(--text); margin-bottom: 6px; }
+.research-exp-level { display: flex; align-items: center; gap: 8px; }
+.research-exp-cnt { font-family: var(--font-num); min-width: 4em; text-align: center; }
+.compactify-btn.research-ready { background: linear-gradient(135deg, #1c5a96, #2f7fc4); border-color: #8fd3ff; box-shadow: 0 0 12px rgba(126, 200, 247, 0.55); }
+.compactify-btn.research-abandon { background: linear-gradient(135deg, #14295e, #1d3c85); border-color: #3f6ad4; }

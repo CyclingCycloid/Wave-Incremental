@@ -1,9 +1,9 @@
-/* ===== Wave Incremental v0.6.2 — game logic ===== */
+/* ===== Wave Incremental v0.6.3 — game logic ===== */
 
 // ---------- Save schema ----------
 function defaultState() {
   return {
-    version: "0.6.2",
+    version: "0.6.3",
     // 物理资源
     U: 10,                 // 波速 m/s (默认国际单位制，double 缓存；极端值看 logU10)
     logU10: 1,             // log10(U) 权威表示（防溢出/下溢；U=0 时为 NLOG 哨兵）
@@ -104,6 +104,15 @@ function defaultState() {
     theoryNodes: {},       // 理论树已购节点（id→1，如 "01"）
     theoryRespec: false,   // 理论树重置开关：下次卷缩重置时清空已购理论并返还灵感
     theoryPresets: [1, 2, 3, 4, 5, 6].map(n => ({ name: "PR" + n, tree: "" })), // 理论树预设（右键管理）
+    theoryDepth: 5,        // 理论深度：层号 ≤ TD 的理论树节点可购（v0.6.3）
+    // 研究系统（v0.6.3 测试）
+    ed: 0,                 // 实验数据（里程碑式：只记录历史最高的一次，double 缓存）
+    logED: NLOG,           // log10(ED) 权威
+    inf: 0,                // 推论（double 缓存）
+    logDinf: NLOG,         // log10(推论) 权威
+    researchSel: [],       // 实验选择（未激活时可编辑）[{ id, level }]
+    researchRun: null,     // 进行中的实验 { exps: [{ id, level }], predictSpLog }
+    researchPredictSpLog: NLOG, // 预测的总奇点（log10）
     compStartReal: 0,      // 本次卷缩开始（真实时间戳 ms）
     compGameElapsed: 0,    // 本次卷缩的游戏时长（double 缓存，超 double 封顶 MAX_VALUE）
     compGameElapsedLog: NLOG, // 本次卷缩游戏时长的 log10 权威
@@ -600,8 +609,9 @@ function up3Exp() {
 
   if (inDistort("inflation")) e /= 2; // 效果开平方根 = 指数 ÷2
   if (inDistort("simple")) e *= 0.5; // 简洁：升级3效果变为原来的平方根
-  // v0.6.2：指数超过 3 后按 2+log₂(e−1) 放缓（e=3 处 2+log₂2=3 恰好连续，此后每翻倍只 +1）
-  if (e > 3) e = 2 + Math.log2(e - 1);
+  // 研究·双缝干涉实验（v0.6.3）：实验中波长效果指数变为 1/(1+等级)²
+  const slit = researchSlitLevel();
+  if (slit >= 1) return 1 / ((1 + slit) * (1 + slit));
   return e;
 }
 // ---------- e100 软上限 ----------
@@ -842,6 +852,15 @@ function gainRate() {
   if (inDistort("inflation")) g = Math.sqrt(Math.max(0, g));
   // 膨胀宇宙：波速获取指数随时间下降（每秒 -0.1，到 0 为止）
   if (inDistort("expand")) g = Math.pow(Math.max(0, g), distortGainExp());
+  // 研究·双缝干涉实验（v0.6.3）：波速获取整体幂次 1/(1+等级)²
+  {
+    const slit = researchSlitLevel();
+    if (slit >= 1) {
+      const sp2 = 1 / ((1 + slit) * (1 + slit));
+      const s = g < 0 ? -1 : 1;
+      g = s * Math.pow(Math.abs(g), sp2);
+    }
+  }
   // 虚空共振（SVU1）：虚空内波速获取速率整体幂次（符号保持——定向宇宙中可为负）；
   // 虚空泡沫第三效果（里程碑 2）：波速获取速率整体幂次（全局，^1+min(0.2, lg(VF+1)/300)）
   {
@@ -906,6 +925,11 @@ function gainRateLog() {
     const ge = distortGainExp();
     if (ge <= 0) return { log: NLOG, sign: 1 };
     log *= ge;
+  }
+  // 研究·双缝干涉实验（v0.6.3）：整体幂次 1/(1+等级)²
+  {
+    const slit = researchSlitLevel();
+    if (slit >= 1) log *= 1 / ((1 + slit) * (1 + slit));
   }
   // 虚空共振（SVU1）：虚空内波速获取速率整体幂次（幂在 log 域 = 乘指数）；
   // 虚空泡沫第三效果（里程碑 2）：全局整体幂次
@@ -1341,6 +1365,16 @@ function migrateState() {
       if (typeof p.tree !== "string") p.tree = "";
     }
   }
+  // v0.6.3：理论深度与研究系统字段回填
+  if (state.theoryDepth === undefined || !isFinite(state.theoryDepth)) state.theoryDepth = 5;
+  if (state.ed === undefined || state.ed === null) state.ed = 0;
+  if (state.logED === undefined || !isFinite(state.logED)) state.logED = (state.ed > 0 && isFinite(state.ed)) ? clampLog(Math.log10(state.ed)) : NLOG;
+  if (state.inf === undefined || state.inf === null) state.inf = 0;
+  if (state.logDinf === undefined || !isFinite(state.logDinf)) state.logDinf = (state.inf > 0 && isFinite(state.inf)) ? clampLog(Math.log10(state.inf)) : NLOG;
+  if (!Array.isArray(state.researchSel)) state.researchSel = [];
+  state.researchSel = state.researchSel.filter(x => x && typeof x.id === "string" && isFinite(x.level) && x.level >= 1);
+  if (state.researchPredictSpLog === undefined || !isFinite(state.researchPredictSpLog)) state.researchPredictSpLog = NLOG;
+  if (state.researchRun !== null && (typeof state.researchRun !== "object" || !Array.isArray(state.researchRun.exps) || !isFinite(state.researchRun.predictSpLog))) state.researchRun = null;
   if (state.compGameElapsedLog === undefined || !isFinite(state.compGameElapsedLog)) {
     state.compGameElapsedLog = (state.compGameElapsed > 0 && isFinite(state.compGameElapsed)) ? Math.log10(state.compGameElapsed) : NLOG;
   }
@@ -1388,7 +1422,7 @@ function migrateState() {
   // 派生统计跟随，Sp/声子等资源清为对应零值。
   const SANITY_MAX = 1e12;
   const polluted = [state.logU10, state.logL10, state.logTotalF, state.logMaxF, state.logMaxU, state.logDsp, state.logDtotal, state.logDph, state.logUp3LastF, state.logVP, state.logBhMass,
-    state.logDss, state.logDtotalSS, state.logBestSS, state.logBestSSRate, state.logDins, state.logDtotalIns, state.logCM, state.compGameElapsedLog]
+    state.logDss, state.logDtotalSS, state.logBestSS, state.logBestSSRate, state.logDins, state.logDtotalIns, state.logCM, state.compGameElapsedLog, state.logED, state.logDinf]
     .some(v => v !== undefined && v !== null && isFinite(v) && Math.abs(v) >= SANITY_MAX);
   if (polluted) {
     setU(resetU());
@@ -1402,6 +1436,9 @@ function migrateState() {
     setUp3LastF(NLOG);
     setVP(0);
     setBhMass(1);
+    setEDLog(NLOG);
+    setInfLog(NLOG);
+    state.researchRun = null;
     state.up1 = 0; state.up2 = 0; state.up3 = 0; state.meta1 = 0;
     state.pg1 = 0; state.pg2 = 0; state.pg3 = 0;
     state.phFluct = 0; state.phCoupling = 0;
@@ -1680,6 +1717,7 @@ function switchSubtab(name) {
   if (name === "ann-blackhole") updateBlackholeUI();
   if (name === "ann-void") updateVoidUI();
   if (name === "comp-ms" || name === "comp-dim" || name === "comp-theory") updateCompactUI();
+  if (name === "research") updateResearchUI();
 }
 
 // ---------- Purchase ----------
@@ -2538,7 +2576,7 @@ function applyAnnihilationVisibility() {
 // 高时间倍率下 100ms 的陈旧窗口会让显示远低于点击时的实际获取；仅接管就绪状态——
 // 扭曲/虚空/未就绪等文案仍由 applyAnnihilationVisibility 管理（每 tick 与湮灭时刷新）
 function renderAnnButtonFast() {
-  if (simActive || state.annihilations < 1) return;
+  if (simActive || state.annihilations < 1 || state.researchRun) return;
   const btn = document.getElementById("annihilate-btn");
   if (!btn || btn.classList.contains("hidden") || state.voidActive || state.distortActive) return;
   if (annihilationReady()) btn.textContent = `湮灭（+${fmtNum(spGain(), spGainLog())} Sp）`;
@@ -3777,6 +3815,9 @@ const THEORY_NODES = [
     desc: "获得的奇点 ×1e15" },
   { id: "41", name: "波动光学", parents: ["31", "32"], cost: 7,
     desc: "增强热能超载的效果，并削弱奇点凝聚与波长二次软上限" },
+  { id: "51", name: "双缝干涉实验", parents: ["41"], cost: 0,
+    desc: "拓宽“理论”（橙色）的深度\n解锁“研究”（天蓝色）",
+    reqIns: 55, hiddenUntilIns: 50, reqA63: true },
 ];
 function theoryOwned(id) { return !!state.theoryNodes[id]; }
 // 理论树节点 21 电磁学：基于 CM 给予象限拓张（SAU1）免费等级 lg(CM+1)×4
@@ -3799,6 +3840,10 @@ function tempCapExp() { return 10 * daExpMult() * theory11Exp(); }   // 普朗�
 function accretionExp() { return 3 * theory11Exp(); }                // 黑洞吸积效率（AU43）^exp
 function theoryAvailable(def) {
   if (theoryOwned(def.id) || def.placeholder) return false;
+  if (+def.id[0] > state.theoryDepth) return false; // 理论深度：更深层的节点暂不可购（显示？？？）
+  if (def.hiddenUntilIns && getLogTotalIns() < Math.log10(def.hiddenUntilIns)) return false; // 节点51：总灵感 <50 隐藏
+  if (def.reqIns && getLogTotalIns() < Math.log10(def.reqIns)) return false; // 节点51：总灵感门槛
+  if (def.reqA63 && !state.ach.normal.includes("A63")) return false;
   return def.parents.length === 0 || def.parents.some(p => theoryOwned(p));
 }
 // 灵感（Ins）购买价格（第 n 次，n=已购次数+1）：F：10^(25000n)，价格超过 1e200000
@@ -3835,9 +3880,11 @@ function buyIns(src) {
 function buyTheoryNode(id) {
   const def = THEORY_NODES.find(n => n.id === id);
   if (!def || def.placeholder || theoryOwned(id) || !theoryAvailable(def)) return;
-  const cLog = Math.log10(Math.max(def.cost, 1));
-  if (getLogIns() < cLog) return;
-  subInsLog(cLog);
+  if (!def.reqIns) { // reqIns 节点（双缝干涉实验）：不消耗灵感，以总灵感为门槛
+    const cLog = Math.log10(Math.max(def.cost, 1));
+    if (getLogIns() < cLog) return;
+    subInsLog(cLog);
+  }
   state.theoryNodes[id] = 1;
   setAutosaveStatus("理论解锁：" + def.name);
 }
@@ -3878,9 +3925,11 @@ function importTheoryTreeList(ids) {
   for (const id of ids) {
     const def = THEORY_NODES.find(n => n.id === id);
     if (!def || theoryOwned(id) || !theoryAvailable(def)) continue;
-    const cLog = Math.log10(Math.max(def.cost, 1));
-    if (getLogIns() < cLog) continue;
-    subInsLog(cLog);
+    if (!def.reqIns) {
+      const cLog = Math.log10(Math.max(def.cost, 1));
+      if (getLogIns() < cLog) continue;
+      subInsLog(cLog);
+    }
     state.theoryNodes[id] = 1;
     bought++;
   }
@@ -3973,6 +4022,85 @@ function setupTheoryPresetMenu() {
   m.querySelectorAll("button").forEach((b, i) => {
     b.addEventListener("click", () => { const idx = theoryMenuIdx; closeTheoryPresetMenu(); if (idx >= 0) acts[i](idx); });
   });
+}
+
+// ---------- 研究系统（v0.6.3：实验 ED 与推论 Inf）----------
+// 实验定义：解锁来自理论树节点（各有需求）；每个实验对应一种削弱
+const RESEARCH_EXPS = [
+  { id: "slit", name: "双缝干涉实验", unlock: () => theoryOwned("51"),
+    science: "展示光子或电子等微观粒子同时具有波动性与粒子性的经典量子力学实验，当粒子穿过双缝时会在屏上形成明暗相间的干涉条纹。",
+    debuff: (n) => n >= 1 ? `波长的效果指数与波速获取指数变为 ${(1 / ((1 + n) * (1 + n))).toFixed(6)}` : "选择等级后生效" },
+];
+function researchExpDef(id) { return RESEARCH_EXPS.find(x => x.id === id); }
+// 双缝干涉的等级（实验进行中返回等级，否则 0）
+function researchSlitLevel() {
+  if (!state.researchRun) return 0;
+  const e = state.researchRun.exps.find(x => x.id === "slit");
+  return e ? e.level : 0;
+}
+// 三乘数（线性值，显示与结算共用的单一实现）：实验外预测/附加为 0、只算难度分
+function researchMultipliers() {
+  const run = state.researchRun;
+  const exps = run ? run.exps : state.researchSel;
+  const sum = exps.reduce((s, x) => s + x.level, 0);
+  const difficulty = exps.length ? Math.pow(3, sum) * Math.pow(10, exps.length - 1) : 0;
+  let pred = 0, bonus = 0;
+  if (run) {
+    const lgR1 = state.sp > 0 ? lg1FromLog(getLogSp()) : 0;   // RealSp = 当前持有 Sp
+    const lgP1 = lg1FromLog(run.predictSpLog);
+    pred = lgP1 <= 0 ? (lgR1 <= 0 ? 100 : 0) : 100 * (1 - Math.min(1, Math.abs(lgR1 - lgP1) / lgP1));
+    bonus = Math.pow(Math.max(lgR1, 0), 0.25);
+  }
+  const total = run ? difficulty * pred * bonus : 0;
+  return { difficulty, pred, bonus, total };
+}
+// 可获得的 ED（log10；三乘数为 0 时返回零哨兵）
+function researchEDGainLog() {
+  const m = researchMultipliers();
+  if (!(m.total > 0) || !isFinite(m.total)) return NLOG;
+  return clampLog(Math.log10(m.total));
+}
+// 实验退出条件：持有 Sp 达到软上限拐点（ED 不要求 VP 与全扭曲虚空）
+function researchExitReady() { return getLogSp() >= SP_SOFTCAP_PIVOT_LOG; }
+// 研究重置：一次卷缩重置（不计次数、不获 SS），并额外重置虚粒子与黑洞质量
+function researchResetBody() {
+  applyCompactionResetBody(gameNow());
+  setVP(0);
+  setBhMass(1);
+}
+function startResearch() {
+  if (state.researchRun) return;
+  if (!state.researchSel.length) { setAutosaveStatus("请先选择至少一个实验"); return; }
+  if (!(state.researchPredictSpLog > NLOG + 1)) { setAutosaveStatus("请先输入预测的总奇点"); return; }
+  state.researchRun = { exps: state.researchSel.map(x => ({ id: x.id, level: x.level })), predictSpLog: state.researchPredictSpLog };
+  researchResetBody(); // 进入实验：一次卷缩重置（不计次数），并重置 VP 与黑洞质量
+  setAutosaveStatus("实验已开始");
+}
+function researchExit() {
+  if (!state.researchRun || !researchExitReady()) return;
+  const gainLog = researchEDGainLog();
+  const before = getLogED();
+  // 里程碑式：只有超过历史最高才入账；否则视为「获得 0 实验数据」（S29）
+  const gained = gainLog > NLOG + 1 && gainLog > before;
+  if (gained) setEDLog(gainLog);
+  else { grantHidden("S29"); updateAchievementsUI(); }
+  state.researchRun = null;
+  researchResetBody();
+  setAutosaveStatus(gained ? "实验结束：获得 " + fmtLog(gainLog) + " 实验数据" : "实验结束：未获得实验数据");
+}
+function researchAbandon() {
+  if (!state.researchRun) return;
+  state.researchRun = null;
+  researchResetBody();
+  setAutosaveStatus("已放弃实验（无实验数据）");
+}
+// 推论产出：Multi(占位 1) × ED^0.8 每秒（真实时间）
+function infRateLog() { const lg = getLogED(); return lg <= NLOG + 1 ? NLOG : clampLog(lg * 0.8); }
+function infTick(realDt) {
+  if (!theoryOwned("51")) return;
+  const rateLog = infRateLog();
+  if (rateLog <= NLOG + 1) return;
+  addInfLog(clampLog(rateLog + Math.log10(Math.max(realDt, 1e-300))));
 }
 
 // ---------- 卷缩重置 ----------
@@ -4330,9 +4458,10 @@ const TREE_LAYOUT = {
   "21": { x: 185, y: 370 }, "22": { x: 525, y: 370 }, "23": { x: 865, y: 370 },
   "31": { x: 185, y: 520 }, "32": { x: 695, y: 520 },
   "41": { x: 445, y: 670 },
+  "51": { x: 445, y: 820 },
 };
 const TREE_NODE_W = 150, TREE_NODE_H = 92;
-const TREE_WORLD_W = 1100, TREE_WORLD_H = 800;
+const TREE_WORLD_W = 1100, TREE_WORLD_H = 950;
 let treeView = { x: 0, y: 0, z: 1 }; // 平移/缩放状态
 function treeApplyView() {
   document.getElementById("tree-world").style.transform =
@@ -4485,12 +4614,99 @@ function updateCompactUI() {
     } else if (def.placeholder) {
       // 占位节点：无论上级是否已购一律显示「未实装」（信息对玩家无价值）
       txt = "未实装\n（后续版本）";
+    } else if (def.hiddenUntilIns && getLogTotalIns() < Math.log10(def.hiddenUntilIns)) {
+      // 节点51：总灵感 <50 时一律显示 ？？？
+      txt = "？？？\n？？？";
     } else {
-      txt = `${def.desc}\n花费 ${def.cost} 灵感`;
+      txt = def.reqIns
+        ? `${def.desc}\n需求：${def.reqA63 ? "拥有 A63、" : ""}总灵感 ${def.reqIns}（不消耗）`
+        : `${def.desc}\n花费 ${def.cost} 灵感`;
     }
     el.st.textContent = txt;
   }
 }
+// ---------- 研究页 UI（v0.6.3，天蓝色主题；拥有节点51 解锁）----------
+let researchBuilt = false, researchEls = {};
+function getSelEntry(id) { return state.researchSel.find(x => x.id === id); }
+function buildResearchOnce() {
+  if (researchBuilt) return;
+  const list = document.getElementById("research-list");
+  list.innerHTML = "";
+  researchEls.exps = {};
+  for (const def of RESEARCH_EXPS) {
+    const card = document.createElement("div");
+    card.className = "research-exp-card";
+    const nm = document.createElement("div"); nm.className = "research-exp-name"; nm.textContent = def.name;
+    const sc = document.createElement("div"); sc.className = "research-exp-science"; sc.textContent = def.science;
+    const db = document.createElement("div"); db.className = "research-exp-debuff";
+    const lv = document.createElement("div"); lv.className = "research-exp-level";
+    const dec = document.createElement("button"); dec.className = "comp-btn small"; dec.textContent = "−";
+    const cnt = document.createElement("span"); cnt.className = "research-exp-cnt";
+    const inc = document.createElement("button"); inc.className = "comp-btn small"; inc.textContent = "+";
+    const sel = document.createElement("button"); sel.className = "comp-btn small research-select"; sel.textContent = "选择";
+    dec.addEventListener("click", () => { const s = getSelEntry(def.id); if (s) { s.level = Math.max(1, s.level - 1); saveGame(); updateResearchUI(); } });
+    inc.addEventListener("click", () => { const s = getSelEntry(def.id); if (s) { s.level = Math.min(10, s.level + 1); saveGame(); updateResearchUI(); } });
+    sel.addEventListener("click", () => {
+      const i = state.researchSel.findIndex(x => x.id === def.id);
+      if (i >= 0) state.researchSel.splice(i, 1); else state.researchSel.push({ id: def.id, level: 1 });
+      saveGame(); updateResearchUI();
+    });
+    lv.append(dec, cnt, inc, sel);
+    card.append(nm, sc, db, lv);
+    list.appendChild(card);
+    researchEls.exps[def.id] = { card, db, cnt, sel };
+  }
+  const predict = document.getElementById("research-predict");
+  predict.addEventListener("change", () => {
+    const vLog = parseSciInputLog(predict.value);
+    if (!isNaN(vLog)) { state.researchPredictSpLog = vLog; saveGame(); updateResearchUI(); }
+  });
+  document.getElementById("research-start-btn").addEventListener("click", startResearch);
+  researchBuilt = true;
+}
+function updateResearchUI() {
+  if (simActive) return;
+  const accessible = theoryOwned("51");
+  const subtab = document.getElementById("subtab-research");
+  if (subtab) subtab.classList.toggle("hidden", !accessible);
+  if (!accessible) return;
+  buildResearchOnce();
+  // 资源行（ED/Inf 均为整数显示，0-1 显 0）
+  const rateLog = infRateLog();
+  const rateTxt = rateLog <= NLOG + 1 ? "0" : fmtNum(Math.pow(10, Math.min(rateLog, 308)), rateLog);
+  document.getElementById("research-res-line").textContent =
+    `实验数据（ED）：${fmtIntRes(state.ed, getLogED())}　　推论（Inf）：${fmtIntRes(state.inf, getLogInf())}（每秒 +${rateTxt}）`;
+  // 实验卡片（实验中显示快照等级并锁定编辑）
+  const run = state.researchRun;
+  for (const def of RESEARCH_EXPS) {
+    const el = researchEls.exps[def.id];
+    if (!el) continue;
+    const selEntry = getSelEntry(def.id);
+    const runEntry = run ? run.exps.find(x => x.id === def.id) : null;
+    const n = run ? (runEntry ? runEntry.level : 0) : (selEntry ? selEntry.level : 0);
+    el.db.textContent = "削弱：" + def.debuff(n);
+    el.cnt.textContent = "等级 " + n;
+    el.sel.textContent = selEntry ? "取消" : "选择";
+    el.sel.disabled = !!run;
+    el.card.classList.toggle("selected", !!(selEntry || runEntry));
+    el.card.classList.toggle("running", !!run);
+  }
+  // 三乘数实时显示（实验外预测/附加为 0，只算难度分）
+  const m = researchMultipliers();
+  const f0 = (v) => (v > 0 && isFinite(v)) ? fmt(v) : "0";
+  document.getElementById("research-mult-line").innerHTML =
+    `<span class="research-num">${f0(m.difficulty)}</span>(难度)*<span class="research-num">${f0(m.pred)}</span>(预测)*<span class="research-num">${f0(m.bonus)}</span>(附加)=<span class="research-total">${m.total > 0 ? fmtNum(m.total, researchEDGainLog()) : "0"}</span>`;
+  // 预测输入与开始按钮（实验中锁定）
+  const predict = document.getElementById("research-predict");
+  if (document.activeElement !== predict) {
+    predict.value = run ? fmtLog(run.predictSpLog)
+      : (state.researchPredictSpLog > NLOG + 1 ? fmtNum(Math.pow(10, Math.min(state.researchPredictSpLog, 308)), state.researchPredictSpLog) : "");
+  }
+  const startBtn = document.getElementById("research-start-btn");
+  startBtn.disabled = !!run;
+  startBtn.textContent = run ? "实验进行中" : "开始实验";
+}
+
 // 卷缩层可见性：主选项卡与全局栏超弦显示（首次卷缩后、且测试模式下）
 function applyCompactVisibility() {
   if (simActive) return;
@@ -4508,6 +4724,27 @@ function updateCompactButton() {
   const show = state.testMode && state.ach.normal.includes("A55");
   btn.classList.toggle("hidden", !show);
   if (!show) return;
+  // 研究实验进行中：顶栏按钮替换为结束/放弃实验（结束条件=Sp 拐点，XX 为可获得−当前 ED 的差）
+  if (state.researchRun) {
+    if (researchExitReady()) {
+      const gainLog = researchEDGainLog();
+      const curLog = getLogED();
+      let diffTxt = "0";
+      if (gainLog > NLOG + 1 && gainLog > curLog) {
+        const d = logAddSigned(gainLog, 1, curLog, -1);
+        if (d.sign > 0) diffTxt = fmtLog(d.log);
+      }
+      btn.className = "annihilate-btn compactify-btn compact-ready research-ready";
+      btn.disabled = false;
+      btn.innerHTML = `结束实验<br>获得 ${diffTxt} 实验数据`;
+    } else {
+      btn.className = "annihilate-btn compactify-btn research-abandon";
+      btn.disabled = false;
+      btn.textContent = "放弃实验";
+    }
+    return;
+  }
+  btn.classList.remove("research-ready", "research-abandon");
   const ready = getLogVP() >= 36 && state.voidBestRules >= 8 && getLogSp() >= SP_SOFTCAP_PIVOT_LOG;
   if (!ready) {
     btn.classList.remove("compact-ready");
@@ -5809,7 +6046,7 @@ function runAutomation() {
   if (!narrow && state.autoOn.sau && state.autoSau) autoBuySauLoop();
   if (!narrow && state.autoOn.sbu && state.autoSbu && bhUnlocked()) autoBuySbuLoop();
   if (!narrow && state.autoOn.svpu && state.autoSvpu && bhUnlocked()) autoBuySvpuLoop();
-  if (!narrow && state.autoOn.comp && state.autoComp && canCompactify()) {
+  if (!narrow && !state.researchRun && state.autoOn.comp && state.autoComp && canCompactify()) {
     const ssLog = compactSSGainLog();
     if (ssLog > NLOG + 1 && ssLog >= state.autoCompSSLog) compactify(true);
   }
@@ -6173,6 +6410,7 @@ const NORMAL_ACH = [
   { id: "A62", name: "理论", desc: "购买九个理论树节点", check: () => Object.keys(state.theoryNodes).length >= 9 },
   { id: "A63", name: "里程", desc: "获得所有卷缩里程碑", check: () => COMP_MILESTONES.every(m => state.compactions >= m.n) },
   { id: "A64", name: "几何", desc: "基础CM获取超过 4e6/s", star: true, reward: "解锁「自动最佳分配」按钮", check: () => cmRateLog() > Math.log10(4e6) },
+  { id: "A65", name: "研究", desc: "解锁研究选项卡", check: () => theoryOwned("51") },
 ];
 const ACH_PER_ROW = 5;
 // 已定义行数；之后整行为未解锁 ???
@@ -6211,6 +6449,7 @@ const HIDDEN_ACH = [
   { id: "S26", name: "你才是挑战者", check: () => false }, // 进入所有（8 种）扭曲生效的虚空
   { id: "S27", name: "几何学不存在了", check: () => state.tpF > state.tpE && state.tpE > 0 }, // 维度折叠器的面 F > 边 E > 0（几何上不可能：面数超过边数）
   { id: "S28", name: "增量神秘数字", check: () => false }, // 在理论树导入框输入 69（doImportTheoryTree 内授予）
+  { id: "S29", name: "我想做的前人们都做过了", check: () => false }, // 结束一次获得 0 实验数据的实验（researchExit 内授予）
 ];
 // S5 目标序列：S1,S1,S4,S5,S1,S4
 const S5_SEQUENCE = ["S1", "S1", "S4", "S5", "S1", "S4"];
@@ -6730,6 +6969,7 @@ function applyProduction(realDt) {
   // 卷缩层：维度折叠器产出 CM（真实时间；节点 01 后受削弱的时间倍率加成）。
   // 挂在 applyProduction 内 → 离线模拟自动兼容
   cmTick(realDt);
+  infTick(realDt); // 研究：推论产出（真实时间，拥有节点51 后）
 }
 
 function tick() {
@@ -6851,6 +7091,7 @@ function tick() {
     if (state.ach.normal.includes("A52")) updateVoidUI();
   }
   if (state.testMode && state.compactions >= 1) updateCompactUI();
+  if (theoryOwned("51")) updateResearchUI();
   if (!document.getElementById("page-stats").classList.contains("hidden")) renderStats();
   if (!document.getElementById("page-achievements").classList.contains("hidden")) updateAchievementsUI();
 }
@@ -6999,6 +7240,7 @@ function applyTestModeUIGlobal() {
   const clearBtn = document.getElementById("clear-vf-btn");
   const clearVpBtn = document.getElementById("clear-vp-btn");
   const clearVoidBtn = document.getElementById("clear-void-btn");
+  const clearResearchBtn = document.getElementById("clear-research-btn");
   const forceAnnBtn = document.getElementById("force-ann-btn");
   const verEl = document.getElementById("version-label");
   if (enterBtn) {
@@ -7008,11 +7250,12 @@ function applyTestModeUIGlobal() {
   if (clearBtn) clearBtn.classList.toggle("hidden", !state.testMode);
   if (clearVpBtn) clearVpBtn.classList.toggle("hidden", !state.testMode);
   if (clearVoidBtn) clearVoidBtn.classList.toggle("hidden", !state.testMode);
+  if (clearResearchBtn) clearResearchBtn.classList.toggle("hidden", !state.testMode);
   if (forceAnnBtn) forceAnnBtn.classList.toggle("hidden", !state.testMode);
   const forceCompactBtn = document.getElementById("force-compact-btn");
   if (forceCompactBtn) forceCompactBtn.classList.toggle("hidden", !state.testMode);
   if (verEl) verEl.textContent = state.testMode
-    ? "v0.6.2 The Softcap Update（测试）"
+    ? "v0.6.3 The Research Update（测试）"
     : "v0.5.1 The Void Update";
 }
 
@@ -7265,6 +7508,14 @@ function setupUI() {
     updateVoidUI();
     setAutosaveStatus("虚空泡沫与虚空升级已清零");
   });
+  // 测试工具：清空 ED 与推论
+  document.getElementById("clear-research-btn").addEventListener("click", () => {
+    setEDLog(NLOG);
+    setInfLog(NLOG);
+    saveGame();
+    updateResearchUI();
+    setAutosaveStatus("实验数据与推论已清零");
+  });
   // 湮灭按钮（首次湮灭后显示；点击直接湮灭，不强制切换选项卡）
   document.getElementById("annihilate-btn").addEventListener("click", () => {
     if (state.annihilations === 0) return;
@@ -7279,6 +7530,12 @@ function setupUI() {
   });
   // 卷缩按钮（顶栏湮灭按钮下方；A55 + 测试模式下显示，条件满足时可点击）
   document.getElementById("compactify-btn").addEventListener("click", () => {
+    // 研究实验中：顶栏按钮为结束/放弃实验（Sp 拐点决定哪个）
+    if (state.researchRun) {
+      if (researchExitReady()) researchExit();
+      else researchAbandon();
+      return;
+    }
     compactify();
   });
   // S20：version control —— 查看 changelog

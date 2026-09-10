@@ -156,11 +156,11 @@
               </div>
               <div class="stat-row">
                 <span class="stat-label">完成普通成就</span>
-                <span class="stat-value" id="stat-ach-n">0 / 29</span>
+                <span class="stat-value" id="stat-ach-n">0 / 30</span>
               </div>
               <div class="stat-row">
                 <span class="stat-label">完成隐藏成就</span>
-                <span class="stat-value" id="stat-ach-h">0 / 28</span>
+                <span class="stat-value" id="stat-ach-h">0 / 29</span>
               </div>
               <div class="stat-row">
                 <span class="stat-label">时间速率</span>
@@ -348,6 +348,7 @@
             <button id="clear-vf-btn" class="hidden">清零VF</button>
             <button id="clear-vp-btn" class="hidden">清除VP·质量归一</button>
             <button id="clear-void-btn" class="hidden">清零VF与虚空升级</button>
+            <button id="clear-research-btn" class="hidden">清空ED与推论</button>
             <button id="force-ann-btn" class="hidden">无Sp湮灭</button>
             <button id="force-compact-btn" class="hidden">导致一次卷缩重置</button>
           </div>
@@ -451,6 +452,7 @@
           <button class="subtab active" data-subtab="comp-ms">里程碑</button>
           <button class="subtab" data-subtab="comp-dim">维度</button>
           <button class="subtab" data-subtab="comp-theory">理论树</button>
+          <button class="subtab research-subtab hidden" data-subtab="research" id="subtab-research">研究</button>
         </nav>
 
         <!-- 里程碑（参照湮灭里程碑横条） -->
@@ -510,6 +512,19 @@
             </div>
             <div class="tree-hint">拖动移动 · 滚轮 / 按钮缩放</div>
           </div>
+        </div>
+
+        <!-- 研究（v0.6.3 测试，天蓝色主题；购买节点51 解锁） -->
+        <div class="subpage hidden" id="sub-research">
+          <div class="research-res-line" id="research-res-line"></div>
+          <div class="research-desc">实验数据（ED）= 难度分 × 预测分 × 附加分。难度分 = 3<sup>选择级别总和</sup> × 10<sup>实验个数−1</sup>；预测分按预测的总奇点与实际总奇点（持有）的偏差计算（最高 100）；附加分 = lg(实际奇点+1)<sup>0.25</sup>。结束时 ED 只记录历史最高的一次。</div>
+          <div class="research-mult-line" id="research-mult-line"></div>
+          <div class="research-start-row">
+            <label>预测总奇点：<input type="text" id="research-predict" class="research-predict" placeholder="如 1e300" /></label>
+            <button id="research-start-btn" class="comp-btn">开始实验</button>
+          </div>
+          <h3 class="research-sub">实验列表</h3>
+          <div id="research-list" class="research-list"></div>
         </div>
       </section>
 
