@@ -2556,12 +2556,12 @@ function applyHelpVisibility() {
   document.getElementById("help-svpu-extra").classList.toggle("hidden", !vpuOwned("vpu5"));
   document.getElementById("help-void").classList.toggle("hidden", !state.ach.normal.includes("A52"));
   // 卷缩章节：测试模式下首次卷缩后显示
-  document.getElementById("help-compact").classList.toggle("hidden", state.compactions < 1);
+  document.getElementById("help-compact").classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
   document.getElementById("stat-ann-group").classList.toggle("hidden", state.annihilations < 1);
-  document.getElementById("stat-comp-area").classList.toggle("hidden", state.compactions < 1);
+  document.getElementById("stat-comp-area").classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
   // 卷缩后保持统计-挑战子页可见（否则湮灭次数归零会重新隐藏）
   document.getElementById("subtab-stats-challenge").classList.toggle("hidden", state.annihilations < 20 && state.compactions < 1);
-  document.getElementById("comp-history-area").classList.toggle("hidden", state.compactions < 1);
+  document.getElementById("comp-history-area").classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
 }
 
 // ---------- 奇点升级 ----------
@@ -3529,7 +3529,7 @@ function tickBlackhole(dt) {
 // 全部数值采用「log10 权威 + double 缓存」双表示；CM 后台小数计算、显示取整。
 // 卷缩重置此前所有内容（统计-通用 与 统计-挑战 保留）；湮灭不重置卷缩层内容。
 
-const COMPACT_SS_GAIN_FIRST = 1; // 第一次卷缩固定获得 1 SS；此后按 compactSSGainLog 公式（整数口径见 compactSSGainIntLog）
+const COMPACT_SS_GAIN_FIRST = 1; // 第一次卷缩固定获得 1 SS（后续卷缩的获取公式待定；第二次暂不开放）
 
 // ---------- SS / Ins / CM 资源双表示（仿 VP 模式，零哨兵 NLOG）----------
 function getLogSS() {
@@ -3662,7 +3662,7 @@ function cmSpAccelMultLog() {
 // 初始不受游戏速度影响；节点 01 后乘上严重削弱的时间倍率（真实 dt × 乘数）；
 // 节点 31 后再乘上基于奇点的加速乘数
 function cmTick(realDt) {
-  if (state.compactions < 1) return;
+  if (state.compactions < 1 || !state.testMode) return;
   if (tpTotal() <= 0) return;
   const rateLog = cmRateLog();
   if (rateLog <= NLOG + 1) return;
@@ -3999,7 +3999,8 @@ const COMP_MILESTONES = [
 ];
 // 卷缩条件：VP ≥ 1e36、完成 A54（所有扭曲生效的虚空）、Sp ≥ 1.79e308（Sp 软上限拐点）
 function canCompactify() {
-  return state.ach.normal.includes("A55")
+  return state.testMode
+    && state.ach.normal.includes("A55")
     && !state.voidActive
     && getLogVP() >= 36
     && state.voidBestRules >= 8
@@ -4396,7 +4397,7 @@ function setupTreePanZoom() {
 }
 function updateCompactUI() {
   if (simActive) return;
-  if (state.compactions < 1) return;
+  if (!state.testMode || state.compactions < 1) return;
   buildCompactOnce();
   // 里程碑（横条：编号 + 进度 + 奖励 + 状态）
   for (let i = 0; i < COMP_MILESTONES.length; i++) {
@@ -4493,7 +4494,7 @@ function updateCompactUI() {
 // 卷缩层可见性：主选项卡与全局栏超弦显示（首次卷缩后、且测试模式下）
 function applyCompactVisibility() {
   if (simActive) return;
-  const show = state.compactions >= 1;
+  const show = state.testMode && state.compactions >= 1;
   document.getElementById("tab-compact").classList.toggle("hidden", !show);
   document.getElementById("ss-display").classList.toggle("hidden", !show);
   if (!show && !document.getElementById("page-compact").classList.contains("hidden")) {
@@ -4504,7 +4505,7 @@ function applyCompactVisibility() {
 function updateCompactButton() {
   const btn = document.getElementById("compactify-btn");
   if (!btn) return;
-  const show = state.ach.normal.includes("A55");
+  const show = state.testMode && state.ach.normal.includes("A55");
   btn.classList.toggle("hidden", !show);
   if (!show) return;
   const ready = getLogVP() >= 36 && state.voidBestRules >= 8 && getLogSp() >= SP_SOFTCAP_PIVOT_LOG;
@@ -5929,8 +5930,8 @@ function renderFast() {
   } else {
     trEl.classList.add("hidden");
   }
-  // 超弦显示（卷缩层：首次卷缩后；显隐由 applyCompactVisibility 管理）
-  if (state.compactions >= 1) {
+  // 超弦显示（卷缩层：首次卷缩后、测试模式下；显隐由 applyCompactVisibility 管理）
+  if (state.testMode && state.compactions >= 1) {
     document.getElementById("ss-value").textContent = fmtIntRound(state.ss, getLogSS());
   }
   // 狭窄宇宙：剩余购买次数
@@ -6000,8 +6001,8 @@ function renderStats() {
   // 卷缩统计（v0.6.0.0 测试，独立分组；不随卷缩重置——统计-通用/挑战之外的新组）
   const compGroup = document.getElementById("stat-comp-area");
   if (compGroup) {
-    compGroup.classList.toggle("hidden", state.compactions < 1);
-    if (state.compactions >= 1) {
+    compGroup.classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
+    if (state.testMode && state.compactions >= 1) {
       const compReal = state.compStartReal > 0 ? (Date.now() - state.compStartReal) / 1000 : 0;
       document.getElementById("stat-comp-time").textContent =
         `${fmtTime(compReal, true)} / ${fmtTimeLog(state.compGameElapsed, state.compGameElapsedLog)}`;
@@ -6167,7 +6168,7 @@ const NORMAL_ACH = [
   { id: "A52", name: "超载", desc: "达到 1e50 Sp", star: true, reward: "解锁“虚空”选项卡", check: () => getLogTotalSp() >= 50 },
   { id: "A53", name: "融合", desc: "完成至少两种扭曲的虚空", star: true, reward: "up1 获得免费等级 1（重置不清零）", check: () => state.voidBestRules >= 2 },
   { id: "A54", name: "混沌", desc: "完成所有扭曲生效的虚空", check: () => state.voidBestRules >= 8 },
-  { id: "A55", name: "卷缩", desc: "达到 1.79e308 奇点", star: true, reward: "解锁下一个重置层：卷缩；任何重置后初始波速为 1e3 m/s", check: () => getLogSp() >= SP_SOFTCAP_PIVOT_LOG },
+  { id: "A55", name: "卷缩", desc: "达到 1.79e308 奇点", star: true, reward: "解锁下一个重置层：卷缩（测试中）；任何重置后初始波速为 1e3 m/s", check: () => getLogSp() >= SP_SOFTCAP_PIVOT_LOG },
   { id: "A61", name: "折叠", desc: "开始产出卡拉比-丘流形", check: () => getLogCM() > NLOG + 1 },
   { id: "A62", name: "理论", desc: "购买九个理论树节点", check: () => Object.keys(state.theoryNodes).length >= 9 },
   { id: "A63", name: "里程", desc: "获得所有卷缩里程碑", check: () => COMP_MILESTONES.every(m => state.compactions >= m.n) },
@@ -6768,7 +6769,7 @@ function tick() {
     if (!state.autoAnn && hasMilestone(10)) state.autoAnn = 1;
   }
   // 卷缩里程碑解锁的自动化（老存档补发；新档在 compactify 内授予）
-  if (state.compactions >= 1) {
+  if (state.testMode && state.compactions >= 1) {
     if (!state.autoSau && compMilestone(16)) { state.autoSau = 1; setAutosaveStatus("自动化解锁：可重复奇点升级（卷缩里程碑 16）"); }
     if (!state.autoSbu && compMilestone(18)) { state.autoSbu = 1; setAutosaveStatus("自动化解锁：黑洞升级（卷缩里程碑 18）"); }
     if (!state.autoSvpu && compMilestone(20)) { state.autoSvpu = 1; setAutosaveStatus("自动化解锁：虚粒子升级（卷缩里程碑 20）"); }
@@ -6849,7 +6850,7 @@ function tick() {
     if (bhUnlocked()) updateBlackholeUI();
     if (state.ach.normal.includes("A52")) updateVoidUI();
   }
-  if (state.compactions >= 1) updateCompactUI();
+  if (state.testMode && state.compactions >= 1) updateCompactUI();
   if (!document.getElementById("page-stats").classList.contains("hidden")) renderStats();
   if (!document.getElementById("page-achievements").classList.contains("hidden")) updateAchievementsUI();
 }
@@ -7006,7 +7007,7 @@ function applyTestModeUIGlobal() {
   if (forceCompactBtn) forceCompactBtn.classList.toggle("hidden", !state.testMode);
   if (verEl) verEl.textContent = state.testMode
     ? "v0.6.2 The Softcap Update（测试）"
-    : "v0.6.2 The Softcap Update";
+    : "v0.5.1 The Void Update";
 }
 
 // ---------- Wire up UI ----------
@@ -7304,7 +7305,7 @@ function init() {
   applyPhononVisibility();
   applyAnnihilationVisibility();
   // 卷缩层：本次卷缩真实时间基缺失时补发（老档/异常档兜底），并同步可见性与按钮
-  if (state.compactions >= 1 && !state.compStartReal) {
+  if (state.testMode && state.compactions >= 1 && !state.compStartReal) {
     state.compStartReal = gameNow();
     state.compGameElapsed = 0; state.compGameElapsedLog = NLOG;
   }
