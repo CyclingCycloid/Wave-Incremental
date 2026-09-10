@@ -3820,7 +3820,7 @@ const THEORY_NODES = [
   { id: "51", name: "双缝干涉实验", parents: ["41"], cost: 0, research: true,
     desc: "拓宽“理论”的深度\n解锁“研究”",
     descHtml: "拓宽<span class=\"color-theory\">“理论”</span>的深度<br>解锁<span class=\"color-research\">“研究”</span>",
-    reqIns: 60, hiddenUntilIns: 50, reqA63: true },
+    reqIns: 55, hiddenUntilIns: 50, reqA63: true },
 ];
 function theoryOwned(id) { return !!state.theoryNodes[id]; }
 // 理论树节点 21 电磁学：基于 CM 给予象限拓张（SAU1）免费等级 lg(CM+1)×4
@@ -4703,7 +4703,12 @@ function buildResearchOnce() {
   const predict = document.getElementById("research-predict");
   predict.addEventListener("change", () => {
     const vLog = parseSciInputLog(predict.value);
-    if (!isNaN(vLog)) { state.researchPredictSpLog = vLog; saveGame(); updateResearchUI(); }
+    if (isNaN(vLog)) { // 拒绝无效输入：状态栏提示并恢复当前有效值
+      setAutosaveStatus("预测总奇点格式无效");
+      predict.value = state.researchPredictSpLog > NLOG + 1 ? fmtNum(Math.pow(10, Math.min(state.researchPredictSpLog, 308)), state.researchPredictSpLog) : "";
+      return;
+    }
+    state.researchPredictSpLog = vLog; saveGame(); updateResearchUI();
   });
   document.getElementById("research-start-btn").addEventListener("click", () => {
     // 动作按钮双功能：实验中=结束（Sp 拐点上）/放弃，实验外=开始
@@ -4740,11 +4745,11 @@ function updateResearchUI() {
     el.card.classList.toggle("selected", n >= 1);
     el.card.classList.toggle("running", !!run);
   }
-  // 三乘数实时显示（实验外预测/附加为 0，只算难度分）
+  // 三乘数实时显示（实验外预测/附加为 0，只算难度分）；整数不带小数、非整数量级 <100 保留两位
   const m = researchMultipliers();
-  const f0 = (v) => (v > 0 && isFinite(v)) ? fmt(v) : "0";
+  const fM = (v) => !isFinite(v) ? "∞" : (v >= 100 ? fmt(v) : (Number.isInteger(v) ? String(v) : v.toFixed(2)));
   document.getElementById("research-mult-line").innerHTML =
-    `<span class="research-num">${f0(m.difficulty)}</span>(难度)*<span class="research-num">${f0(m.pred)}</span>(预测)*<span class="research-num">${f0(m.bonus)}</span>(附加)=<span class="research-total">${m.total > 0 ? fmtNum(m.total, researchEDGainLog()) : "0"}</span>`;
+    `<span class="research-num">${fM(m.difficulty)}</span>(难度)*<span class="research-num">${fM(m.pred)}</span>(预测)*<span class="research-num">${fM(m.bonus)}</span>(附加)=<span class="research-total">${m.total > 0 ? fmtNum(m.total, researchEDGainLog()) : "0"}</span>`;
   // 预测输入与动作按钮（实验中具备与顶栏替换按钮相同的结束/放弃功能）
   const predict = document.getElementById("research-predict");
   if (document.activeElement !== predict) {
@@ -4752,7 +4757,7 @@ function updateResearchUI() {
       : (state.researchPredictSpLog > NLOG + 1 ? fmtNum(Math.pow(10, Math.min(state.researchPredictSpLog, 308)), state.researchPredictSpLog) : "");
   }
   const startBtn = document.getElementById("research-start-btn");
-  startBtn.classList.remove("research-abandon");
+  startBtn.classList.remove("research-exit", "research-abandon");
   if (run) {
     if (researchExitReady()) {
       startBtn.textContent = `结束实验（获得 ${researchExitDiffText()} 实验数据）`;
