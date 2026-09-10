@@ -2143,7 +2143,9 @@ function pushCompHistory(entry) {
 }
 
 // 大重置：回到波长1m波速10，重置所有升级购买；里程碑决定保留项
-function doAnnihilation() {
+// skipRender=true（自动湮灭路径）：跳过末尾的 renderAll——调用方所在 tick/rAF 随后会
+// 统一渲染，免去每次湮灭的全页重建（含存档槽 base64 解码），25ms CD 下才能跑满
+function doAnnihilation(skipRender) {
   if (!annihilationReady()) return;
   const inDistortMode = !!state.distortActive;
   const dUniverse = inDistortMode ? DISTORT_UNIVERSES.find(x => x.id === state.distortActive) : null;
@@ -2262,7 +2264,7 @@ function doAnnihilation() {
   applyAnnihilationVisibility();
   checkAchievements();
   saveGame();
-  renderAll();
+  if (!skipRender) renderAll();
   return true; // 成功执行（wasFirst 语义不再需要，首次流程由 confirmFirstAnnihilation 单独处理）
 }
 
@@ -5483,25 +5485,25 @@ function autoAnnTick() {
     // 扭曲宇宙：达标即自动湮灭该宇宙（无 CD——「能湮灭时尽快湮灭」为承诺行为）。
     // 防正反馈说明：湮灭后回到主宇宙，主宇宙侧的 autoAnnCD 与 Sp 阈值仍生效，
     // 自动化不会自动再进入扭曲宇宙，故不会无 CD 连环
-    if (annihilationReady()) doAnnihilation();
+    if (annihilationReady()) doAnnihilation(true);
     return;
   }
   if (auOwned("au22") && state.autoAnnMode === "time") {
     // 时间模式：距上次自动湮灭超过设定真实秒且达标
     if (gameNow() - state.lastAutoAnnAt >= state.autoAnnInterval * 1000 && annihilationReady()) {
-      if (doAnnihilation()) state.lastAutoAnnAt = gameNow();
+      if (doAnnihilation(true)) state.lastAutoAnnAt = gameNow();
     }
   } else if (auOwned("au22") && state.autoAnnMode === "heldsp") {
     // 持有倍率模式（卷缩里程碑 14）：可获取量 ≥ 当前持有奇点 × 倍率（log 域；持有为 0 不触发）。
     // 持有判定用 state.sp > 0（sp 的零哨兵是字面 0，sp=1 时 getLogSp()=0 与零值同形）
     if (state.sp > 0 && gameNow() - state.lastAutoAnnAt >= autoAnnCD()
       && annihilationReady() && spGainLog() >= clampLog(getLogSp() + state.autoAnnHeldMultLog)) {
-      if (doAnnihilation()) state.lastAutoAnnAt = gameNow();
+      if (doAnnihilation(true)) state.lastAutoAnnAt = gameNow();
     }
   } else if (gameNow() - state.lastAutoAnnAt >= autoAnnCD() && annihilationReady() && spGainLog() >= state.autoAnnSpLog) {
     // Sp 模式：阈值以 log10 权威比较（可输入超 double 的阈值；spGainLog 与 spGainExact 同口径），
     // CD 防抖（基础 1s，A42 星标 200ms，A44 升级进一步缩减，最低 25ms）
-    if (doAnnihilation()) state.lastAutoAnnAt = gameNow();
+    if (doAnnihilation(true)) state.lastAutoAnnAt = gameNow();
   }
 }
 // 自动湮灭 CD（ms）：基础 1000ms；A42 星标奖励 200ms；A42 解锁的升级每级 ÷2，最低 25ms
@@ -5762,6 +5764,7 @@ function runAutomation() {
   if (state.annihilations < 1) return;
   // 狭窄宇宙：购买类自动化禁用（升级限购 10 次是挑战规则），自动湮灭照常工作
   const narrow = inDistort("narrow");
+  autoAnnTick(); // 自动湮灭先行：达标立即湮灭（skipRender），同 tick 的购买循环随即服务新纪元
   if (!narrow && state.autoOn.wave && state.autoWaveUpg) {
     autoBuyWaveLoop();
   }
@@ -6727,6 +6730,7 @@ function tick() {
   state.lastTick = now;
   state.realTime += realDt;
   applyProduction(realDt);
+  autoAnnTick(); // 生产后立即检查自动湮灭（同 tick 反应，不必等渲染与购买自动化段）
 
   // 虚空升级 tick：SVU1 填充（真实时间，任意位置可运转）；
   // SVU2 能标偏移仅在虚空外增长（进入虚空不增长、不清零）
@@ -7306,9 +7310,10 @@ function init() {
       if (state.phUnlocked && !document.getElementById("sub-phonon").classList.contains("hidden")) {
         renderPhononFast();
       }
-      // 自动湮灭高频检查：走统一入口（含时间模式节流与时间戳更新，防双执行）
-      autoAnnTick();
     }
+    // 自动湮灭每帧检查（rAF ≈60Hz，不受界面刷新频率限制）：检查本身只是几次 log 比较；
+    // 触发走 doAnnihilation(true) 跳过 renderAll，由随后的常规渲染承接
+    autoAnnTick();
     requestAnimationFrame(uiLoop);
   };
   requestAnimationFrame(uiLoop);
