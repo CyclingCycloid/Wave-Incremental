@@ -6856,8 +6856,8 @@ function tick() {
 }
 
 // ---------- 快捷键（v0.5.0.3 QoL，所有玩家可用）----------
-// ←/→ 大标签、↑/↓ 子标签、U 湮灭前升级全买、R 湮灭后升级全买、A 湮灭、L 升级3、
-// 按住 B+1/2/3 黑洞状态、Shift+1~8 进扭曲、Shift+A/R/L/M 自动化开关
+// ←/→ 大标签、↑/↓ 子标签、U 湮灭前升级全买、R 湮灭后升级全买、A 湮灭、L 升级3、C 卷缩、
+// 按住 B+1/2/3 黑洞状态、Shift+1~8 进扭曲、Shift+A/T/L/M 自动化开关
 let bhHotkeyArmed = false; // 按住 B 的武装状态（松开 B 或窗口失焦解除；按住时可连续切换 1/2/3）
 function buyAllPreAnnihilation() {
   // 湮灭前升级：最大购买——循环买到底（升级间有依赖/价格联动，等级无变化即收敛）。
@@ -6977,6 +6977,12 @@ function handleGameHotkey(e) {
     case "l": case "L":
       buyUp3();
       break;
+    case "c": case "C": {
+      // 卷缩：仅按钮可见（A55 + 测试开关）时触发，确认与条件判定由 compactify 自带
+      const cBtn = document.getElementById("compactify-btn");
+      if (cBtn && !cBtn.classList.contains("hidden")) cBtn.click();
+      break;
+    }
     case "b": case "B":
       bhHotkeyArmed = true; // 按住期间保持武装（keyup B 或窗口失焦解除），可连续按 1/2/3 顺滑切换
       break;
