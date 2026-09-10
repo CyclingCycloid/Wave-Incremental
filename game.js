@@ -612,6 +612,8 @@ function up3Exp() {
   // 研究·双缝干涉实验（v0.6.3）：实验中波长效果指数变为 1/(1+等级)²
   const slit = researchSlitLevel();
   if (slit >= 1) return 1 / ((1 + slit) * (1 + slit));
+  // v0.6.2：指数超过 3 后按 2+log₂(e−1) 放缓（e=3 处 2+log₂2=3 恰好连续，此后每翻倍只 +1）
+  if (e > 3) e = 2 + Math.log2(e - 1);
   return e;
 }
 // ---------- e100 软上限 ----------
