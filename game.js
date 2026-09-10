@@ -676,11 +676,11 @@ function up3WavelengthFromFLog(lf) {
     w = e * 100 + e * scale * (lf - 100);
   }
   // 二次软上限（v0.6.2）：波长 < 1e-100000（缩减量 w > 1e5）时，超出部分按
-  // (lg(lg(1/L)+1)/5)^0.5 缩放——lg(1/L)=w，故 p = 0.85/(lg(w+1)/5)^0.5（节点41 0.85→0.9）。
-  // w=1e5 处 lg(w+1)/5 ≈ 1 → p ≈ 0.85，excess→0 时 w→1e5，拐点连续；
-  // w 越大 base 越大、p 越小（恒 <0.85），削弱渐强。实际购买与「下次重置」预览共用本函数
+  // ((5+lg(lg(1/L)))/10)^0.1 缩放——lg(1/L)=w，故 p = 0.85/((5+lg(w))/10)^0.1
+  //（节点41 0.85→0.9）。w=1e5 处 (5+lg w)/10 = 1 → p = 0.85，excess→0 时 w→1e5，
+  // 拐点连续；w 越大 base 越大、p 越小（恒 <0.85），削弱渐强。实际购买与「下次重置」预览共用本函数
   if (w > 100000) {
-    const p = (theoryOwned("41") ? 0.9 : 0.85) / Math.sqrt(Math.log10(w + 1) / 5);
+    const p = (theoryOwned("41") ? 0.9 : 0.85) / Math.pow((5 + Math.log10(w)) / 10, 0.1);
     w = 100000 + Math.pow(w - 100000, p);
   }
   return w;
@@ -3260,11 +3260,11 @@ function bhVPGainLog() {
   // 大质量时 10^x−1 ≈ 10^x（log ≈ x）；小质量直接算，避免精度损失
   const inner = x > 15 ? x : Math.log10(Math.max(Math.pow(10, x) - 1, 1e-300));
   const raw = clampLog(inner + sbu3Eff() * Math.log10(2) + vfVPMultLog()); // VF 加成
-  // v0.6.2：VP 获取超过 1e60 的部分按 min(0.5, 1/(lg(VP)−60)^0.1) 幂缩放（各加成后生效；
-  // raw=60 处输出恒为 60，拐点连续；raw>1084 后指数由 0.5 起缓降）
-  if (raw > 60) {
-    const exp = Math.min(0.5, 1 / Math.pow(raw - 60, 0.1));
-    return clampLog(60 + (raw - 60) * exp);
+  // v0.6.2：VP 获取超过 1e100 的部分按 min(0.5, 1/lg(VP)^0.135) 幂缩放（各加成后生效；
+  // raw=100 处 excess=0 → 输出恒为 100，拐点连续；raw≈169.7 后指数由 0.5 起缓降）
+  if (raw > 100) {
+    const exp = Math.min(0.5, 1 / Math.pow(raw, 0.135));
+    return clampLog(100 + (raw - 100) * exp);
   }
   return raw;
 }
