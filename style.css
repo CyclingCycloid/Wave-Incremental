@@ -763,7 +763,7 @@ body[data-theme="white"] .tree-viewport { border-color: #c9c9d2; }
 
 /* ===== 研究（v0.6.3，天蓝色主题）===== */
 .research-subtab { color: #8fd3ff; }
-.subtab.research-subtab.active { color: #b5e2ff; }
+#page-compact .subtab.research-subtab.active { color: #8fd3ff; border-color: #8fd3ff; }
 .research-res-line { text-align: center; font-size: 15px; color: #9fd8ff; margin: 10px 0; font-family: var(--font-num); }
 .research-desc { font-size: 13px; color: var(--text-dim); margin: 8px 0; }
 .research-mult-line { text-align: center; font-size: 14px; margin: 10px 0; font-family: var(--font-num); }
