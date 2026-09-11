@@ -7306,6 +7306,7 @@ function applyTestModeUIGlobal() {
   const clearVpBtn = document.getElementById("clear-vp-btn");
   const clearVoidBtn = document.getElementById("clear-void-btn");
   const clearResearchBtn = document.getElementById("clear-research-btn");
+  const resetInsBtn = document.getElementById("reset-ins-btn");
   const forceAnnBtn = document.getElementById("force-ann-btn");
   const verEl = document.getElementById("version-label");
   if (enterBtn) {
@@ -7316,6 +7317,7 @@ function applyTestModeUIGlobal() {
   if (clearVpBtn) clearVpBtn.classList.toggle("hidden", !state.testMode);
   if (clearVoidBtn) clearVoidBtn.classList.toggle("hidden", !state.testMode);
   if (clearResearchBtn) clearResearchBtn.classList.toggle("hidden", !state.testMode);
+  if (resetInsBtn) resetInsBtn.classList.toggle("hidden", !state.testMode);
   if (forceAnnBtn) forceAnnBtn.classList.toggle("hidden", !state.testMode);
   const forceCompactBtn = document.getElementById("force-compact-btn");
   if (forceCompactBtn) forceCompactBtn.classList.toggle("hidden", !state.testMode);
@@ -7580,6 +7582,14 @@ function setupUI() {
     saveGame();
     updateResearchUI();
     setAutosaveStatus("实验数据与推论已清零");
+  });
+  // 测试工具：重置可用灵感并清空理论树（不执行卷缩重置）
+  document.getElementById("reset-ins-btn").addEventListener("click", () => {
+    if (!confirm("确定重置灵感并清空理论树吗？（不执行卷缩重置）")) return;
+    state.ins = 0; state.logDins = NLOG;
+    state.theoryNodes = {};
+    updateCompactUI();
+    setAutosaveStatus("灵感已重置，理论树已清空");
   });
   // 湮灭按钮（首次湮灭后显示；点击直接湮灭，不强制切换选项卡）
   document.getElementById("annihilate-btn").addEventListener("click", () => {
