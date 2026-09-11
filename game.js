@@ -3652,6 +3652,16 @@ function addTotalInsLog(addLog) {
   const nLog = logAddLogs(getLogTotalIns(), addLog);
   state.logDtotalIns = nLog;
   state.totalIns = nLog <= NLOG + 1 ? 0 : (nLog > 308 ? Infinity : Math.pow(10, nLog));
+  snapTotalIns();
+}
+// 总灵感为整数货币：log 域累加的浮点残差吸附回整数（否则显示层四舍五入成 55 而
+// 可购判定用原始值 54.99…，节点51 等总灵感门槛会被边界残差卡住）
+function snapTotalIns() {
+  const r = snapIntCurrency(state.totalIns);
+  if (r !== state.totalIns) {
+    if (r > 0) { state.totalIns = r; state.logDtotalIns = clampLog(Math.log10(r)); }
+    else { state.totalIns = 0; state.logDtotalIns = NLOG; }
+  }
 }
 function getLogCM() {
   if (state.logCM !== undefined && isFinite(state.logCM)) return clampLog(state.logCM);
@@ -3850,7 +3860,7 @@ function theoryAvailable(def) {
   if (theoryOwned(def.id) || def.placeholder) return false;
   if (+def.id[0] > state.theoryDepth) return false; // 理论深度：更深层的节点暂不可购（显示？？？）
   if (def.hiddenUntilIns && getLogTotalIns() < Math.log10(def.hiddenUntilIns)) return false; // 节点51：总灵感 <50 隐藏
-  if (def.reqIns && getLogTotalIns() < Math.log10(def.reqIns)) return false; // 节点51：总灵感门槛
+  if (def.reqIns && getLogTotalIns() < Math.log10(def.reqIns) - 1e-9) return false; // 节点51：总灵感门槛（含浮点容差）
   if (def.reqA63 && !state.ach.normal.includes("A63")) return false;
   return def.parents.length === 0 || def.parents.some(p => theoryOwned(p));
 }
