@@ -7583,13 +7583,16 @@ function setupUI() {
     updateResearchUI();
     setAutosaveStatus("实验数据与推论已清零");
   });
-  // 测试工具：重置可用灵感并清空理论树（不执行卷缩重置）
+  // 测试工具：重置灵感并清空理论树（不执行卷缩重置）
   document.getElementById("reset-ins-btn").addEventListener("click", () => {
-    if (!confirm("确定重置灵感并清空理论树吗？（不执行卷缩重置）")) return;
+    if (!confirm("确定重置灵感（总灵感与可用均归 0、购买价格回初始）并清空理论树吗？（不执行卷缩重置）")) return;
     state.ins = 0; state.logDins = NLOG;
+    state.totalIns = 0; state.logDtotalIns = NLOG;
+    state.insFromF = 0; state.insFromSp = 0; state.insFromSS = 0; // 各途径购买价格回初始
     state.theoryNodes = {};
+    saveGame();
     updateCompactUI();
-    setAutosaveStatus("灵感已重置，理论树已清空");
+    setAutosaveStatus("灵感已重置（总灵感/价格回初始），理论树已清空");
   });
   // 湮灭按钮（首次湮灭后显示；点击直接湮灭，不强制切换选项卡）
   document.getElementById("annihilate-btn").addEventListener("click", () => {
