@@ -691,7 +691,7 @@ function up3WavelengthFromFLog(lf) {
   // excess→0 时 w→1e5，拐点连续；w 越大 base 越大、p 越小（恒 <1），削弱渐强。
   // 实际购买与「下次重置」预览共用本函数
   if (w > 100000) {
-    const p = (theoryOwned("41") ? 0.915 : 0.85) / Math.pow((5 + Math.log10(w)) / 10, 0.3);
+    const p = (theoryOwned("41") ? 0.95 : 0.85) / Math.pow((5 + Math.log10(w)) / 10, 0.3);
     w = 100000 + Math.pow(w - 100000, p);
   }
   // 研究·双缝干涉实验（v0.6.3）：波长缩减效果 ×0.6^等级（如波长 1e-90000 → 1e-54000）
