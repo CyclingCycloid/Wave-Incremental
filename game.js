@@ -4086,7 +4086,7 @@ function researchMultipliers() {
     const lgP1 = lg1FromLog(run.predictSpLog);
     pred = lgP1 <= 0 ? (lgR1 <= 0 ? 100 : 0) : 100 * (1 - Math.min(1, Math.abs(lgR1 - lgP1) / lgP1));
     const effR1 = Math.min(lgR1, lgP1); // 总奇点超过预测时，附加分按预测值计算
-    bonus = Math.pow(Math.max(effR1, 0), 0.25);
+    bonus = Math.min(10, Math.pow(Math.max(effR1, 0), 0.25)); // 硬上限 10
   }
   const total = run ? difficulty * pred * bonus : 0;
   return { difficulty, pred, bonus, total };
