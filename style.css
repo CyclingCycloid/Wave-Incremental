@@ -835,5 +835,7 @@ body[data-theme="white"] .inf-line .research-res-val { color: #3050b0; }
 .color-research { color: #8fd3ff; }
 .research-text { color: #5fb8e6; }
 .tn-node.research-node { border-color: rgba(143, 211, 255, 0.4); }
+.tn-node.research-node.available { border-color: rgba(143, 211, 255, 0.55); }
+.tn-node.research-node.available:hover { border-color: #8fd3ff; background: rgba(126, 200, 247, 0.1); }
 .tn-node.research-node.bought { border-color: #8fd3ff; box-shadow: 0 0 10px rgba(126, 200, 247, 0.4); }
 .tn-node.research-node.bought .tn-name { color: #8fd3ff; }
