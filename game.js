@@ -2670,7 +2670,7 @@ function totalEffectText(id) {
       const eff = sbu3Eff();
       const multLog = eff * Math.log10(2);
       const mult = multLog > 308 ? Infinity : Math.pow(10, multLog);
-      return { text: `总效果：虚粒子获取 ×${fmtNum(mult, multLog)}`, capped: n("sbu3") > 10, eff };
+      return { text: `总效果：虚粒子获取 ×${fmtNum(mult, multLog)}`, capped: n("sbu3") > 16, eff };
     }
     case "svpu1": {
       // v0.6.2：质量指数超 1 开平方——显示合并后的有效指数
