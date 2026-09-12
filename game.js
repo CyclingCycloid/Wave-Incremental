@@ -3783,17 +3783,48 @@ function tpNextCostValue() {
   const lg = n * Math.log10(1.5);
   return lg < 15 ? Math.floor(Math.pow(1.5, n)) : null; // null：小数位已无意义，走 log 口径
 }
-function buyTP() {
-  const v = tpNextCostValue();
-  const cLog = clampLog((tpTotal() + 1) * Math.log10(1.5));
-  if (v !== null) {
-    if (cmpLT(state.ss, v, getLogSS(), Math.log10(Math.max(v, 1)))) return;
-    subSSLog(Math.log10(Math.max(v, 1)));
-  } else {
-    if (!ssAffordLog(cLog)) return;
-    subSSLog(cLog);
+// 最大购买信息（UI 显示用，不改状态）：逐个累加「第 n 个」价格直到买不动——
+// 数值域走整数精确比较（snapSS 保证 state.ss 为整数），跨入 log 域后走 ssAffordLog 累计口径；
+// costV 为整数总价（一旦跨入 log 域为 null，仅供显示），costLog 为总价 log10（log 域权威）
+function tpMaxBuyInfo() {
+  const n0 = tpTotal();
+  let k = 0, spent = 0, spentLog = NLOG, lastValue = true;
+  for (let guard = 0; guard < 1e5; guard++) {
+    const n = n0 + k + 1;
+    const lg = n * Math.log10(1.5);
+    const v = lg < 15 ? Math.floor(Math.pow(1.5, n)) : null;
+    const stepLog = v !== null ? Math.log10(Math.max(v, 1)) : lg;
+    const totalLog = logAddLogs(spentLog, stepLog);
+    if (v !== null && Number.isFinite(state.ss)) {
+      if (spent + v > state.ss) break;
+      spent += v;
+    } else {
+      if (!ssAffordLog(totalLog)) break;
+      lastValue = false;
+    }
+    spentLog = totalLog;
+    k++;
   }
-  state.tp++;
+  return { count: k, costLog: clampLog(spentLog), costV: lastValue && Number.isFinite(state.ss) ? spent : null };
+}
+// 购买拓扑节点（点击一次买满可负担的最大数量）：第 n 个花费 floor(1.5^n) SS（n 从 1 起，按**总节点数**计——
+// 含已转换为点/边/面的部分，否则转换后再购买会重新从第 1 个的价钱起算）
+function buyTP() {
+  let bought = 0;
+  for (let guard = 0; guard < 1e5; guard++) {
+    const v = tpNextCostValue();
+    const cLog = clampLog((tpTotal() + 1) * Math.log10(1.5));
+    if (v !== null) {
+      if (cmpLT(state.ss, v, getLogSS(), Math.log10(Math.max(v, 1)))) break;
+      subSSLog(Math.log10(Math.max(v, 1)));
+    } else {
+      if (!ssAffordLog(cLog)) break;
+      subSSLog(cLog);
+    }
+    state.tp++;
+    bought++;
+  }
+  return bought;
 }
 // 转换 / 退回：kind 为 "V"/"E"/"F"，dir=+1 消耗 1 TP 转换，dir=-1 退回 1 TP
 function convertTP(kind, dir) {
@@ -3867,33 +3898,55 @@ function theoryAvailable(def) {
 // 灵感（Ins）购买价格（第 n 次，n=已购次数+1）：F：10^(25000n)，价格超过 1e200000
 //（第 8 次起）加快为每级 +1e50000（拐点连续：10^(50000n−200000)，n=8 时仍为 1e200000）；
 // Sp：10^(200(n-1))；SS：2^(n-1)
-function insCostLogF() {
-  const n = state.insFromF + 1;
-  return clampLog(n <= 8 ? 25000 * n : 50000 * n - 200000);
+function insCostLogAt(src, n) {
+  if (src === "F") return clampLog(n <= 8 ? 25000 * n : 50000 * n - 200000);
+  if (src === "Sp") return clampLog(200 * (n - 1));
+  return clampLog((n - 1) * Math.log10(2));
 }
-function insCostLogSp() { return clampLog(200 * state.insFromSp); }          // 首次 10^0 = 1 Sp
-function insCostLogSS() { return clampLog(state.insFromSS * Math.log10(2)); } // 首次 2^0 = 1 SS
-// 购买灵感：src 为 "F"/"Sp"/"SS"（F 途径沿用既有约定：价格以 F 计，支付扣 U−cost·L）
-function buyIns(src) {
-  if (src === "F") {
-    const cLog = insCostLogF();
-    if (cmpLT(F(), Math.pow(10, Math.min(cLog, 308)), FLog(), cLog)) return;
-    subULog(cLog);
-  } else if (src === "Sp") {
-    const cLog = insCostLogSp();
-    if (!spAffordLog(cLog)) return;
-    subSpLog(cLog);
-  } else {
-    // SS 途径需拥有维度折叠器（至少 1 个拓扑节点）——第一个 SS 必须花在折叠器上
-    if (tpTotal() < 1) return;
-    const cLog = insCostLogSS();
-    if (!ssAffordLog(cLog)) return;
-    subSSLog(cLog);
+function insCostLogF() { return insCostLogAt("F", state.insFromF + 1); }
+function insCostLogSp() { return insCostLogAt("Sp", state.insFromSp + 1); }          // 首次 10^0 = 1 Sp
+function insCostLogSS() { return insCostLogAt("SS", state.insFromSS + 1); } // 首次 2^0 = 1 SS
+// 最大购买信息（UI 显示用，不改状态）：余额按 log 域逐次扣减（F 途径扣 U−cost·L^e 后 F 恰好
+// 线性下降 balLog−cLog，与真实扣款同口径），返回可购次数与总价 log10
+function insMaxBuyInfo(src) {
+  if (src === "SS" && tpTotal() < 1) return { count: 0, costLog: NLOG };
+  let balLog = src === "F" ? FLog() : src === "Sp" ? getLogSp() : getLogSS();
+  let k = 0, cumLog = NLOG;
+  for (let guard = 0; guard < 1e5; guard++) {
+    const cLog = insCostLogAt(src, state["insFrom" + src] + k + 1);
+    if (balLog < cLog) break;
+    balLog = logAddSigned(balLog, 1, cLog, -1).log;
+    cumLog = logAddLogs(cumLog, cLog);
+    k++;
   }
-  state["insFrom" + src]++;
-  addInsLog(0);        // 每次 +1 Ins（log10(1)=0）
-  addTotalInsLog(0);
-  setAutosaveStatus("获得 1 灵感（" + src + " 途径）");
+  return { count: k, costLog: clampLog(cumLog) };
+}
+// 购买灵感（点击一次买满可负担的最大数量）：src 为 "F"/"Sp"/"SS"（F 途径沿用既有约定：
+// 价格以 F 计，支付扣 U−cost·(有效波长)^e）
+function buyIns(src) {
+  let bought = 0;
+  for (let guard = 0; guard < 1e5; guard++) {
+    if (src === "F") {
+      const cLog = insCostLogF();
+      if (cmpLT(F(), Math.pow(10, Math.min(cLog, 308)), FLog(), cLog)) break;
+      subULog(cLog);
+    } else if (src === "Sp") {
+      const cLog = insCostLogSp();
+      if (!spAffordLog(cLog)) break;
+      subSpLog(cLog);
+    } else {
+      // SS 途径需拥有维度折叠器（至少 1 个拓扑节点）——第一个 SS 必须花在折叠器上
+      if (tpTotal() < 1) break;
+      const cLog = insCostLogSS();
+      if (!ssAffordLog(cLog)) break;
+      subSSLog(cLog);
+    }
+    state["insFrom" + src]++;
+    addInsLog(0);        // 每次 +1 Ins（log10(1)=0）
+    addTotalInsLog(0);
+    bought++;
+  }
+  if (bought > 0) setAutosaveStatus("获得 " + bought + " 灵感（" + src + " 途径）");
 }
 function buyTheoryNode(id) {
   const def = THEORY_NODES.find(n => n.id === id);
@@ -4398,8 +4451,8 @@ function buildCompactOnce() {
     msGrid.appendChild(cell);
     compMsEls.push({ cell, statusEl: status });
   }
-  // 拓扑节点购买
-  document.getElementById("comp-tp-buy").addEventListener("click", buyTP);
+  // 拓扑节点购买（买完立即刷新：×N 与花费随余额变化）
+  document.getElementById("comp-tp-buy").addEventListener("click", () => { buyTP(); updateCompactUI(); });
   // 几何转换按钮（点/边/面 各一对 −/+）
   const geoRow = document.getElementById("comp-geo-row");
   geoRow.innerHTML = "";
@@ -4435,7 +4488,7 @@ function buildCompactOnce() {
     const s1 = document.createElement("span"); s1.className = "cis-src"; s1.textContent = INS_SRC_NAMES[src];
     const s2 = document.createElement("span"); s2.className = "cis-cost";
     b.append(s1, s2);
-    b.addEventListener("click", () => buyIns(src));
+    b.addEventListener("click", () => { buyIns(src); updateCompactUI(); });
     insCells.appendChild(b);
     compactEls.ins[src] = { btn: b, cost: s2 };
   }
@@ -4601,15 +4654,19 @@ function updateCompactUI() {
     `波速获取 ×${fmtLog(cmGainMultLog())}\n`
     + `波长公式内指数: ${wavelengthExp().toFixed(4)}\n`
     + `奇点获取 ×${fmtLog(cmSpMultLog())}`;
-  // 拓扑节点（价格按总节点数计）
-  const tpCostV = tpNextCostValue();
-  const tpCostLogV = clampLog((tpTotal() + 1) * Math.log10(1.5));
-  const tpCostTxt = tpCostV !== null ? `${fmtInt(tpCostV)} SS` : `${fmtLog(tpCostLogV)} SS`;
+  // 拓扑节点（价格按总节点数计；点击一次买满可负担的最大数量）
+  const tpInfo = tpMaxBuyInfo();
   const tpBuy = document.getElementById("comp-tp-buy");
-  tpBuy.textContent = `购买拓扑节点（花费 ${tpCostTxt}）`;
-  tpBuy.disabled = tpCostV !== null
-    ? cmpLT(state.ss, tpCostV, getLogSS(), Math.log10(Math.max(tpCostV, 1)))
-    : !ssAffordLog(tpCostLogV);
+  if (tpInfo.count > 0) {
+    const tpCostTxt = tpInfo.costV !== null ? `${fmtInt(tpInfo.costV)} SS` : `${fmtLog(tpInfo.costLog)} SS`;
+    tpBuy.textContent = `购买拓扑节点 ×${tpInfo.count}（花费 ${tpCostTxt}）`;
+  } else {
+    const tpNextV = tpNextCostValue();
+    const tpNextLog = clampLog((tpTotal() + 1) * Math.log10(1.5));
+    const tpNextTxt = tpNextV !== null ? `${fmtInt(tpNextV)} SS` : `${fmtLog(tpNextLog)} SS`;
+    tpBuy.textContent = `购买拓扑节点（花费 ${tpNextTxt}）`;
+  }
+  tpBuy.disabled = tpInfo.count < 1;
   document.getElementById("comp-tp-line").textContent =
     `拓扑节点：${tpTotal()}（可用 ${state.tp} ｜ 点 ${state.tpV} · 边 ${state.tpE} · 面 ${state.tpF}）`;
   // 几何格子计数回填（此前从未刷新过，span 一直空白）与 A64 自动分配按钮显隐
@@ -4621,18 +4678,16 @@ function updateCompactUI() {
   // 灵感大框：总灵感（可用）+ 三途径格子
   document.getElementById("comp-ins-line").textContent =
     `总灵感：${fmtIntRound(state.totalIns, getLogTotalIns())}（可用 ${fmtIntRound(state.ins, getLogIns())}）`;
-  const insCant = {
-    F: cmpLT(F(), Math.pow(10, Math.min(insCostLogF(), 308)), FLog(), insCostLogF()),
-    Sp: !spAffordLog(insCostLogSp()),
-    SS: tpTotal() < 1 || !ssAffordLog(insCostLogSS()), // 需先购买拓扑节点（第一个 SS 必须花在折叠器上）
-  };
   const insHint = { F: "", Sp: "", SS: tpTotal() < 1 ? "（需先购买拓扑节点）" : "" };
-  const insCostLogs = { F: insCostLogF(), Sp: insCostLogSp(), SS: insCostLogSS() };
   for (const src of ["F", "Sp", "SS"]) {
     const el = compactEls.ins[src];
     if (!el) continue;
-    el.cost.textContent = fmtLog(insCostLogs[src]) + insHint[src];
-    el.btn.disabled = insCant[src];
+    const info = insMaxBuyInfo(src);
+    // 可购时显示总价与「×N」；买不动时显示下一级价格（沿用旧显示）
+    el.cost.textContent = (info.count > 0
+      ? `${fmtLog(info.costLog)}（×${info.count}）`
+      : fmtLog(insCostLogAt(src, state["insFrom" + src] + 1))) + insHint[src];
+    el.btn.disabled = info.count < 1;
   }
   // 理论树工具：重置开关文案 + 预设按钮名
   const respecBtn = document.getElementById("theory-respec-btn");
