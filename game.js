@@ -3,7 +3,7 @@
 // ---------- Save schema ----------
 function defaultState() {
   return {
-    version: "0.6.3",
+    version: "0.6.3.2",
     // 物理资源
     U: 10,                 // 波速 m/s (默认国际单位制，double 缓存；极端值看 logU10)
     logU10: 1,             // log10(U) 权威表示（防溢出/下溢；U=0 时为 NLOG 哨兵）
@@ -40,6 +40,7 @@ function defaultState() {
     annHistory: [],        // 最近十次湮灭记录
     annGameElapsed: 0,     // 本次湮灭的游戏时长（double 缓存，超 double 时封顶 MAX_VALUE）
     annGameElapsedLog: NLOG, // 本次湮灭游戏时长的 log10 权威（时间倍率超 double 时持续累积）
+    annMaxTLog: NLOG,      // R4 热焓极点回溯：本次湮灭的最高有效温度 log10（各湮灭类重置清零）
     // 扭曲系统（v0.4.2.1 测试）
     distortActive: "",     // 当前所在扭曲宇宙 id（空=普通宇宙）
     distortDone: [],       // 已湮灭的扭曲宇宙 id（每宇宙只计一次奖励）
@@ -76,11 +77,14 @@ function defaultState() {
     voidVF: 0,             // 虚空泡沫（double 缓存；极端值看 logVoidVF10）
     logVoidVF10: NLOG,     // log10(虚空泡沫) 权威表示（选满削弱时 VF 可超 double）
     voidBestRules: 0,      // 虚空里程碑：已完成的虚空最大同时生效削弱数（0=未完成过）
+    logVoidVFBest10: NLOG, // 历史最高持有的虚空泡沫 log10（里程碑3 latch，只增不减）
     svu1SpLog: NLOG,       // SVU1 虚空共振：累计投入的 Sp（log10；投入持久）
     svu1VpLog: NLOG,       // SVU1：累计投入的 VP（log10）
     svu1VfLog: NLOG,       // SVU1：累计投入的 VF（log10）
     svu1Filling: false,    // SVU1：填充开关（开启时每真实秒投入现有资源 1%）
     svu2Level: 0,          // SVU2 能标偏移等级（虚空外增长，不清零不重置）
+    svu3Rho: 0,            // SVU3 虚数相变：虚数密度 ρ（任何重置不清；相变时归 0）
+    svu3N: 0,              // SVU3：相变数 N（任何重置不清；无序化清 N 与 ρ，虚空内不可无序化）
 
     // 卷缩层（v0.6.0.0 测试：第三重置层；SS=超弦 / Ins=灵感 / CM=卡拉比-丘流形）
     compactions: 0,        // 卷缩次数
@@ -113,6 +117,10 @@ function defaultState() {
     researchSel: [],       // 实验选择（未激活时可编辑）[{ id, level }]
     researchRun: null,     // 进行中的实验 { exps: [{ id, level }], predictSpLog }
     researchPredictSpLog: NLOG, // 预测的总奇点（log10）
+    // 研究项目（v0.6.3.2 测试）：A71「乌云」解锁；每购买一个理论深度 +1/3
+    researchBought: [],    // 已购研究项目 id（如 "R1"，按购买顺序）
+    researchBest: {},      // 各实验完成的最高等级（id→等级，结束实验时记录）
+    researchDone: 0,       // 完成的实验次数（结束实验计数，放弃不计）
     compStartReal: 0,      // 本次卷缩开始（真实时间戳 ms）
     compGameElapsed: 0,    // 本次卷缩的游戏时长（double 缓存，超 double 封顶 MAX_VALUE）
     compGameElapsedLog: NLOG, // 本次卷缩游戏时长的 log10 权威
@@ -260,6 +268,8 @@ const DISTORT_UNIVERSES = [
 let distortEnterAt = 0;
 
 function inDistort(id) {
+  // 里程碑3「度规塌缩」：定向的削弱在虚空中不再生效（VF 结算的乘数与生效数仍按 voidRules 保留）
+  if (id === "directed" && state.voidActive && voidMilestone3()) return false;
   // 虚空挑战：选中的扭曲宇宙削弱同时生效（多削弱叠加）
   return state.distortActive === id || (state.voidActive && state.voidRules.includes(id));
 }
@@ -468,10 +478,13 @@ function cmSpMultLog() {
   if (c <= 0) return 0;
   return clampLog(Math.max(Math.log10(1 + c * c), 0.1 * getLogCM()));
 }
-// 效果②：波长效果指数 e
+// 效果②：波长效果指数 e。
+// 节点71「光学-粒子说 II」：公式变为 1 + lg(1+lg(1+CM))/7（更好）；
+// 节点72「光学-波动说 II」：基础公式结果 +0.1。两系列互斥，不会叠加
 function wavelengthExp() {
-  const c = cmLg1();
-  return 1 + Math.log10(1 + c / 3) / 10;
+  if (theoryOwned("71")) return 1 + Math.log10(1 + cmLg1()) / 7;
+  const e = wavelengthExpBase();
+  return theoryOwned("72") ? e + 0.1 : e;
 }
 // Hz/s 的 log10（log10(gain/L^e)，膨胀宇宙的波长倍率计入指数底数）——
 // 累计频率、获取显示与 S19 判定共用的唯一实现
@@ -757,7 +770,8 @@ function vpSpMultLog() {
 // 三段连续：T<1e50 为 1~10 线性（1 Sp @ T_P0）；1e50≤T<1e100 为 lg(T)/5（10~20）；
 // T≥1e100 为 2·T^0.01（在 1e50 与 1e100 处值与导数均连续）
 function spGainBaseLog() {
-  const tLog = temperatureCappedLog();
+  // R4「热焓极点回溯」：改用本次湮灭的最高有效温度（与公式同口径的时间最大值）
+  const tLog = researchBought("R4") ? Math.max(temperatureCappedLog(), state.annMaxTLog) : temperatureCappedLog();
   if (tLog < 50) {
     // baseSpGain 在 1~10 区间，直接数值计算后取 log
     const frac = (tLog - Math.log10(T_P0)) / (50 - Math.log10(T_P0));
@@ -883,7 +897,7 @@ function gainRate() {
 // gainRate 的 log10 版本（完整乘法链在 log 域，永不溢出）。
 // 仅在 gainRate() 的 double 链因中间项溢出而饱和（Infinity）时由 tick 调用，
 // 故 normal-play 下不参与计算（零回归）。返回 {log: log10(|g|), sign}。
-function gainRateLog() {
+function gainRateLog(uncapped) {
   let log, sign = 1;
   if (inDistort("simple")) {
     log = 0; // 基础固定 1
@@ -941,9 +955,17 @@ function gainRateLog() {
   log += cmGainMultLog();
   // 超级软上限（仅虚空内）：获取超过 1e20000 的部分变为原来的 0.5 次方——
   // SVU1 幂次加成过强会让获取远超外部；20000 处连续（输入=输出）。
-  // double 路径（gainRate）最高 1e308，不会触及此阈值，无需处理
-  if (state.voidActive && log > 20000) log = 20000 + Math.pow(log - 20000, 0.5);
+  // double 路径（gainRate）最高 1e308，不会触及此阈值，无需处理。
+  // uncapped=true 返回未封顶值（仅 SVU3 的 ρ 增长需要 w=超出软上限的部分）
+  if (!uncapped) log = voidGainSoftcap(log);
   return { log: clampLog(log), sign };
+}
+// 虚空内波速获取的超级软上限（阈值 20000，可被 SVU3「虚数相变」推迟，见 svu3CapDelay）
+function voidGainSoftcap(log) {
+  if (!state.voidActive) return log;
+  const cap = 20000 + svu3CapDelay();
+  if (log > cap) log = cap + Math.pow(log - cap, 0.5);
+  return log;
 }
 // 获取速率的显示口径 log：gain 为 0（gainRateLog 返回 NLOG 哨兵）时保持 NLOG（语义零）。
 // 哨兵上直接累加 timeRateLog 等修正会产生 NLOG+noise 噪声（如 -1e9+18.9），
@@ -1383,6 +1405,24 @@ function migrateState() {
   }
   if (state.compFastest === null || state.compFastest === undefined || !isFinite(state.compFastest) || state.compFastest < 0) state.compFastest = 0;
   if (!Array.isArray(state.compHistory)) state.compHistory = [];
+  // v0.6.3.2：研究项目 / SVU3 / 本次湮灭最高温度 / 历史最高 VF 回填
+  if (!Array.isArray(state.researchBought)) state.researchBought = [];
+  state.researchBought = state.researchBought.filter(x => typeof x === "string");
+  if (state.researchBest === null || state.researchBest === undefined || typeof state.researchBest !== "object") state.researchBest = {};
+  if (state.researchDone === undefined || state.researchDone === null || !isFinite(state.researchDone) || state.researchDone < 0) state.researchDone = 0;
+  if (state.svu3Rho === undefined || state.svu3Rho === null || !isFinite(state.svu3Rho) || state.svu3Rho < 0) state.svu3Rho = 0;
+  if (state.svu3N === undefined || state.svu3N === null || !isFinite(state.svu3N) || state.svu3N < 0) state.svu3N = 0;
+  if (state.annMaxTLog === undefined || !isFinite(state.annMaxTLog)) state.annMaxTLog = NLOG;
+  // 历史最高持有 VF：老档无记录，以当前持有量初始化（此后在 setVoidVFLog 内 latch 只增不减）
+  {
+    const curVFLog = (state.logVoidVF10 !== undefined && isFinite(state.logVoidVF10)) ? state.logVoidVF10 : NLOG;
+    if (state.logVoidVFBest10 === undefined || !isFinite(state.logVoidVFBest10) || state.logVoidVFBest10 < curVFLog) state.logVoidVFBest10 = curVFLog;
+  }
+  // 补发 A71「乌云」：更新前已完成过实验（ED>0 或拥有 S29 均证明结束过实验）的玩家直接获得
+  if (!state.ach.normal.includes("A71")
+    && ((state.logED !== undefined && isFinite(state.logED) && state.logED > NLOG + 1) || state.ach.hidden.includes("S29"))) {
+    state.ach.normal.push("A71");
+  }
   // v0.6.0.0：自动化新键合并（旧档 autoOn 缺 sau/sbu/svpu/comp）与阈值 log 权威回填
   state.autoOn = Object.assign(defaultAutoOn(), state.autoOn || {});
   if (state.autoAnnHeldMultLog === undefined || !isFinite(state.autoAnnHeldMultLog)) {
@@ -1764,10 +1804,13 @@ function buyUp3() {
   state.logL10 = -wLog;
   state.L = wLog < 308 ? 1 / Math.pow(10, wLog) : 0; // 超 double 下溢为 0（读取走 log）
   if (-wLog < getLogMinL()) { state.logMinL = -wLog; state.minL = state.L; } // 极值走 log（新波长 log 为 -wLog）
-  setU(resetU());
-  // 卷缩里程碑 20：升级3不再重置升级1的等级
-  if (!compMilestone(20)) state.up1 = 0;
-  if (!auOwned("au23")) state.up2 = 0; // AU23 声纹记忆：购买升级3不再重置升级2
+  // R5「态矢量相干保持」：缩短波长不再重置任何东西（波速、升级1/2 全部保留）
+  if (!researchBought("R5")) {
+    setU(resetU());
+    // 卷缩里程碑 20：升级3不再重置升级1的等级
+    if (!compMilestone(20)) state.up1 = 0;
+    if (!auOwned("au23")) state.up2 = 0; // AU23 声纹记忆：购买升级3不再重置升级2
+  }
   markPurchase();
   state.up3++;
   checkAchievements();
@@ -1892,6 +1935,8 @@ function updateUpgradesUI() {
   const vis = up3Visible();
   if (vis && !up3Card) {
     up3Card = buildUpgradeCard({ name: "缩短波长，但重置波速", desc: "重置波速与基础/加成升级；按峰值频率更新波长", buyFn: buyUp3 });
+    up3Card.nameEl = up3Card.root.querySelector(".up-name");
+    up3Card.descEl = up3Card.root.querySelector(".up-desc");
     document.getElementById("upgrades-list").appendChild(up3Card.root);
   } else if (!vis && up3Card) {
     up3Card.root.remove();
@@ -1920,10 +1965,14 @@ function updateUpgradesUI() {
     const affordable3 = FLog() > lastLog;
     const wLog2 = up3WavelengthFromFLog(FLog());
     const multLog = getLogL10() + wLog2;
+    // R5「态矢量相干保持」：卡片名称/描述随研究动态切换
+    const r5 = researchBought("R5");
+    up3Card.nameEl.textContent = r5 ? "缩短波长" : "缩短波长，但重置波速";
+    up3Card.descEl.textContent = r5 ? "按峰值频率更新波长（不再重置任何东西）" : "重置波速与基础/加成升级；按峰值频率更新波长";
     up3Card.update({
       level: `上次峰值: ${lastLog > NLOG + 1 ? fmtLog(lastLog) + " Hz" : "—"}`,
       effect: affordable3
-        ? `下次重置: ×${fmtNum(Math.pow(10, multLog), multLog)}`
+        ? `下次${r5 ? "缩减" : "重置"}: ×${fmtNum(Math.pow(10, multLog), multLog)}`
         : `当前波长: ${fmtNum(Math.pow(10, getLogL10()), getLogL10())} m`,
       cost: lastLog > NLOG + 1 ? `需 F > ${fmtLog(lastLog)}` : "首次",
       affordable: affordable3,
@@ -2299,7 +2348,7 @@ function doAnnihilation(skipRender) {
 
   // 湮灭计时重置
   state.annStartReal = realNow;
-  state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG;
+  state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG; state.annMaxTLog = NLOG;
 
   updateDispAnchor();
   applyPhononVisibility();
@@ -2335,7 +2384,7 @@ function enterDistort(id) {
   if (id === "narrow") state.narrowPurchases = 0; // 狭窄宇宙：进入时购买次数强制重置（防残留）
   startCooldownRamp(); // 冷却宇宙：进入时视为已完全生效（k=0.75）
   state.annStartReal = gameNow();
-  state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG;
+  state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG; state.annMaxTLog = NLOG;
   applyAnnihilationVisibility(); // 重设按钮为扭曲模式文案
   updateDistortUI();
   switchTab("wave");
@@ -2415,7 +2464,7 @@ function applyAnnihilationResetBody(realNow) {
   if (hasMilestone(8)) state.autoUp3 = 1;
   if (hasMilestone(10)) state.autoAnn = 1;
   state.annStartReal = realNow;
-  state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG;
+  state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG; state.annMaxTLog = NLOG;
   applyPhononVisibility();
   applyAnnihilationVisibility();
   checkAchievements();
@@ -2449,7 +2498,7 @@ function retryDistort() {
   distortEnterAt = gameNow();
   startCooldownRamp(); // 冷却宇宙：进入时视为已完全生效（k=0.75）
   state.annStartReal = gameNow();
-  state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG;
+  state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG; state.annMaxTLog = NLOG;
   applyAnnihilationVisibility();
   updateDistortUI();
   switchTab("wave");
@@ -2489,7 +2538,7 @@ function exitDistort() {
   state.pg1 = 0; state.pg2 = 0; state.pg3 = 0;
   state.lastPurchaseAt = 0; state.narrowPurchases = 0;
   state.annStartReal = gameNow();
-  state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG;
+  state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG; state.annMaxTLog = NLOG;
   applyPhononVisibility();
   applyAnnihilationVisibility();
   renderAll();
@@ -2596,6 +2645,9 @@ function applyHelpVisibility() {
   document.getElementById("help-vpu-extra").classList.toggle("hidden", !state.ach.normal.includes("A45"));
   document.getElementById("help-svpu-extra").classList.toggle("hidden", !vpuOwned("vpu5"));
   document.getElementById("help-void").classList.toggle("hidden", !state.ach.normal.includes("A52"));
+  // 虚空 II 章节：购买研究 R2「虚空探测器」后显示（介绍里程碑 3 与 SVU3）
+  const helpVoid2 = document.getElementById("help-void2");
+  if (helpVoid2) helpVoid2.classList.toggle("hidden", !researchBought("R2"));
   // 卷缩章节：测试模式下首次卷缩后显示
   // 卷缩相关帮助章节（卷缩/里程碑/维度/理论树/研究）：首次卷缩后显示
   for (const id of ["help-compact", "help-compact-ms", "help-compact-dim", "help-compact-theory", "help-compact-research"]) {
@@ -2754,6 +2806,33 @@ function buildVoidOnce() {
       card.appendChild(fillBtn);
       voidSvuEls.fillBtn = fillBtn;
     }
+    if (def.id === "svu3") {
+      // SVU3「虚数相变」：相变按钮（达标高亮）+ 无序化按钮 + 等级模式悬浮说明（小黑框）
+      const tip = document.createElement("span");
+      tip.className = "svu3-tip";
+      tip.textContent = "ⓘ 等级模式";
+      tip.setAttribute("data-tip",
+        "等级模式：ρ（虚数密度）只在全扭曲虚空（8 种削弱全开）内按真实时间增长，不受时间倍率影响"
+        + "——每秒获取 w/(1+ρ)^(1+N/3)，w 为超出波速软上限部分的波速获取对数值。\n"
+        + "ρ 达到 500+100N 可「相变」：相变数 +1、ρ 清零，获取更难但推迟更强。"
+        + "「无序化」清零 ρ 与相变数（虚空中不可用）。\n"
+        + "效果：波速软上限起始点推迟 10^(3(1+N)^1.5·ρ)，并使能标偏移获取 ×(1+N)·max(1, ρ/50)。详见帮助页「虚空 II」。");
+      card.appendChild(tip);
+      const row = document.createElement("div");
+      row.className = "svu3-btns";
+      const phaseBtn = document.createElement("button");
+      phaseBtn.className = "void-svu-fill svu3-phase-btn";
+      phaseBtn.textContent = "相变";
+      phaseBtn.addEventListener("click", svu3Phase);
+      const disorderBtn = document.createElement("button");
+      disorderBtn.className = "void-svu-fill svu3-disorder-btn";
+      disorderBtn.textContent = "无序化";
+      disorderBtn.addEventListener("click", svu3Disorder);
+      row.append(phaseBtn, disorderBtn);
+      card.appendChild(row);
+      voidSvuEls.phaseBtn = phaseBtn;
+      voidSvuEls.disorderBtn = disorderBtn;
+    }
     upg.appendChild(card);
     voidSvuEls[def.id] = { card, nm, ds, ct };
   }
@@ -2801,28 +2880,46 @@ function updateVoidUI() {
       + (m1 ? `\n黑洞吸积 ×${fmtLog(clampLog((2 / 3) * state.logVoidVF10))}` : "")
       + (m2 ? `\n波速获取 ^${fmt(vfGainExp())}` : "")
     : "虚空泡沫（VF）：尚无";
-  // 虚空里程碑显示（每个里程碑一个独立格子）
+  // 虚空里程碑显示（每个里程碑一个独立格子）；M1/M2 按削弱种数、M3 按历史最高 VF、M4 占位
+  const m3 = voidMilestone3();
   for (let i = 0; i < VOID_MILESTONES.length; i++) {
     const def = VOID_MILESTONES[i];
     const el = voidMsEls[i];
     if (!el) continue;
-    const done = def.n === 1 ? voidMilestone1() : voidMilestone2();
+    const done = def.n === 1 ? voidMilestone1() : def.n === 2 ? voidMilestone2() : def.n === 3 ? m3 : false;
+    // R2「虚空探测器」解锁更多里程碑：购买前 M3/M4 整格隐藏
+    if (def.n >= 3) el.cell.classList.toggle("hidden", !researchBought("R2"));
     el.cell.classList.toggle("done", done);
-    el.statusEl.textContent = done ? "✓ 已完成" : "进行中";
-    el.progEl.textContent = `进度：历史最高 ${state.voidBestRules} / ${def.need} 种`;
+    el.statusEl.textContent = def.n === 4 ? "？？？" : (done ? "✓ 已完成" : "进行中");
+    el.progEl.textContent = def.n <= 2
+      ? `进度：历史最高 ${state.voidBestRules} / ${def.need} 种`
+      : def.n === 3
+        ? (researchBought("R2")
+          ? `进度：历史最高 VF ${fmtLog(state.logVoidVFBest10)} / 1e22`
+          : "进度：需先购买研究「虚空探测器」")
+        : "进度：？？？";
   }
-  // SVU 卡片状态
+  // SVU 卡片状态（SVU1/2 由里程碑 1 解锁；SVU3 由里程碑 3 解锁）
   for (const def of SVU_DEFS) {
     const el = voidSvuEls[def.id];
     if (!el) continue;
-    el.card.classList.toggle("locked", !m1);
-    if (!m1) {
-      el.ds.textContent = "??? —— 完成虚空里程碑 1 后解锁";
+    const unlocked = def.id === "svu3" ? m3 : m1;
+    el.card.classList.toggle("locked", !unlocked);
+    if (!unlocked) {
+      el.ds.textContent = def.id === "svu3"
+        ? "??? —— 完成虚空里程碑 3「度规塌缩」后解锁"
+        : "??? —— 完成虚空里程碑 1 后解锁";
       el.ct.textContent = "";
     } else {
       el.ds.textContent = def.desc;
       el.ct.textContent = def.effect();
     }
+  }
+  if (voidSvuEls.phaseBtn) {
+    const ready = svu3PhaseReady();
+    voidSvuEls.phaseBtn.classList.toggle("ready", ready);
+    voidSvuEls.phaseBtn.disabled = !ready;
+    voidSvuEls.disorderBtn.disabled = state.voidActive || !m3;
   }
   if (voidSvuEls.fillBtn) {
     voidSvuEls.fillBtn.classList.toggle("on", state.svu1Filling);
@@ -3088,6 +3185,11 @@ function voidMilestone1() { return state.voidBestRules >= 4; }
 // 虚空里程碑 2：完成至少同时 7 种扭曲生效的虚空。
 // 效果：解锁虚空泡沫第三效果——波速获取速率 ^(1+min(0.2, lg(VF+1)/300))
 function voidMilestone2() { return state.voidBestRules >= 7; }
+// 虚空里程碑 3「度规塌缩」（v0.6.3.2）：购买研究 R2「虚空探测器」后出现；
+// 条件=历史最高持有 VF ≥ 1e22（logVoidVFBest10 在 setVoidVFLog 内 latch，只增不减）。
+// 效果：定向削弱在虚空中失效（乘数与生效数保留）、解锁 SVU3「虚数相变」、
+// 前三个 VF 效果按 VF^1.1 计算、维度折叠器速度 ×max(1, VF^0.1)
+function voidMilestone3() { return researchBought("R2") && state.logVoidVFBest10 >= 22; }
 // 虚空里程碑列表（虚空页每个里程碑一个独立格子）
 const VOID_MILESTONES = [
   { n: 1, title: "聚合浪潮", need: 4,
@@ -3096,11 +3198,19 @@ const VOID_MILESTONES = [
   { n: 2, title: "七重湮灭", need: 7,
     desc: "完成至少同时 7 种扭曲生效的虚空",
     reward: "解锁虚空泡沫第三效果" },
+  { n: 3, title: "度规塌缩", need: 22,
+    desc: "购买研究「虚空探测器」后，持有的虚空泡沫达到 1e22",
+    reward: "虚空内定向的削弱不再生效（乘数与生效数保留）；解锁虚空升级「虚数相变」——推迟虚空内的波速软上限；前三个虚空泡沫效果按 VF 的 1.1 次方计算；维度折叠器速度 ×max(1, VF^0.1)" },
+  { n: 4, title: "???", need: 0, // TODO(内容待定)：占位里程碑，实装时补条件与奖励
+    desc: "？？？",
+    reward: "？？？" },
 ];
-// 虚空泡沫第三效果的幂次（未解锁里程碑 2 或无 VF 时为 1，即无影响）
+// 虚空泡沫第三效果的幂次（未解锁里程碑 2 或无 VF 时为 1，即无影响）。
+// 里程碑3「度规塌缩」：前三个 VF 效果按真实数量的 ^1.1 计算（log 域 = lgVF ×1.1）
+function vfEffectVFLog(lg) { return voidMilestone3() ? lg * 1.1 : lg; }
 function vfGainExp() {
   if (!voidMilestone2() || !(state.logVoidVF10 > NLOG + 1)) return 1;
-  return 1 + Math.min(0.2, lg1FromLog(state.logVoidVF10) / 300);
+  return 1 + Math.min(0.2, lg1FromLog(vfEffectVFLog(state.logVoidVF10)) / 300);
 }
 // 吸积的软上限前 Gain（log10）——bhAccretionRateLog 与 bhMassSoftcapped 共用的唯一实现。
 // AU44 已购买时不含 SBU1 倍率（SBU1 移到软上限之后乘；软上限未触发时正常生效）。
@@ -3118,7 +3228,9 @@ function bhAccretionGainLog() {
     ? 0.01 * (fLog - 200)
     : 18 + (fLog - 2000) * Math.pow(0.1 / fLog, 0.6);
   // 虚空里程碑 1：吸积速率 ×VF^(2/3)（软上限前）
-  const vfPart = voidMilestone1() && state.logVoidVF10 > NLOG + 1 ? (2 / 3) * state.logVoidVF10 : 0;
+  const vfPart = voidMilestone1() && state.logVoidVF10 > NLOG + 1
+    ? (2 / 3) * vfEffectVFLog(state.logVoidVF10) // 里程碑3 后按 VF^1.1 计算
+    : 0;
   return clampLog(bhAccretionMassExp() * mLog + freqPartLog + accMultLog + vfPart);
 }
 function bhAccretionRateLog() {
@@ -3155,19 +3267,23 @@ function voidVFLog(fLog) {
   const expo = Math.min(0.0003, Math.sqrt(0.0009 / (fLog + 1)));
   return clampLog(multLog + expo * (fLog - target));
 }
-// 虚空泡沫写入（log 权威；double 缓存超 double 时置 Infinity，存档为 null 后由 log 回填）
+// 虚空泡沫写入（log 权威；double 缓存超 double 时置 Infinity，存档为 null 后由 log 回填）。
+// 同时更新历史最高持有 VF（里程碑 3 的 latch，只增不减——VF 可被花费，不能用当前值判里程碑）
 function setVoidVFLog(lg) {
   state.logVoidVF10 = clampLog(lg);
   state.voidVF = state.logVoidVF10 <= NLOG + 1 ? 0
     : (state.logVoidVF10 > 308 ? Infinity : Math.pow(10, state.logVoidVF10));
+  if (state.logVoidVF10 > (state.logVoidVFBest10 ?? NLOG)) state.logVoidVFBest10 = state.logVoidVF10;
 }
-// VF 对虚粒子获取的加成（log10）：×(1+VF^((lg(VF+1)+3)/(4lg(VF+1)+6)))。无 VF 时 0
+// VF 对虚粒子获取的加成（log10）：×(1+VF^((lg(VF+1)+3)/(4lg(VF+1)+6)))。无 VF 时 0。
+// 里程碑3 后按 VF^1.1 计算（lg 与幂次均放大 1.1 倍）
 function vfVPMultLog() {
-  const lg = state.logVoidVF10;
-  if (!(lg > NLOG + 1)) return 0;
-  // lg(VF+1)：VF 在 double 范围内用 double 精确算；超出后 +1 可忽略
-  const lgVF1 = lg <= 15 && isFinite(state.voidVF) ? Math.log10(state.voidVF + 1) : lg;
-  if (!(lgVF1 > 0)) return 0;
+  const lg0 = state.logVoidVF10;
+  if (!(lg0 > NLOG + 1)) return 0;
+  const lg = vfEffectVFLog(lg0);
+  if (!(lg > 0)) return 0;
+  // lg(VF'+1)（VF' 为里程碑3 后的等效值）：≤1e15 用 double 精确算 +1，超出后 +1 可忽略
+  const lgVF1 = lg <= 15 ? Math.log10(Math.pow(10, lg) + 1) : lg;
   const e = (lgVF1 + 3) / (4 * lgVF1 + 6);
   const inner = Math.min(lg * e, 300);
   return clampLog(Math.log10(1 + Math.pow(10, inner)));
@@ -3194,7 +3310,7 @@ function enterVoid(ids) {
   distortEnterAt = gameNow(); // 膨胀削弱的时间基
   startCooldownRamp(); // 冷却削弱：进入时视为已完全生效（k=0.75）
   state.annStartReal = gameNow();
-  state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG;
+  state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG; state.annMaxTLog = NLOG;
   updateDispAnchor();
   applyAnnihilationVisibility();
   renderAll();
@@ -3246,9 +3362,12 @@ function svu1Level() {
   const vf = lg1FromLog(state.svu1VfLog) / 6 + 1;
   return sp * vp * vf - 1;
 }
-// SVU2 能标偏移的等级增速（仅虚空外，每真实秒）：SVU1_level/(1+SVU2_level)^1.5
+// SVU2 能标偏移的等级增速（仅虚空外，每真实秒）：SVU1_level/(1+SVU2_level)^1.5。
+// SVU3「虚数相变」解锁后（里程碑3）额外提供倍率 (1+N)·max(1, ρ/50)——按约定不在 UI 显示
 function svu2GainRate() {
-  return svu1Level() / Math.pow(1 + state.svu2Level, 1.5);
+  let rate = svu1Level() / Math.pow(1 + state.svu2Level, 1.5);
+  if (voidMilestone3()) rate *= (1 + state.svu3N) * Math.max(1, state.svu3Rho / 50);
+  return rate;
 }
 // SVU1 效果：虚空内波速获取速率的幂次 ^= 1 + min(level/6, √(2·level)/6)（虚空外恒 1）
 // SVU1 效果幂次：等级换算的指数（仅依赖等级）；应用与否由调用方按 voidActive 判定
@@ -3309,7 +3428,60 @@ const SVU_DEFS = [
   { id: "svu2", name: "能标偏移", fill: false,
     desc: "削弱温度的软上限（热能超载有效等级增加），并降低虚空内热寂的惩罚；在虚空外随时间自动增长（虚空内不增长）",
     effect: () => `等级 ${fmt(state.svu2Level)}（虚空外 +${fmt(svu2GainRate())}/s）\n热能超载有效等级 +${fmt(svu2Svpu4Bonus())}${state.voidActive ? " · 热寂削弱指数 " + fmt(svu2AdiabaticExp()) : ""}` },
+  // v0.6.3.2：里程碑3「度规塌缩」解锁；等级模式（相变数 N 即等级），机制见帮助页「虚空 II」
+  { id: "svu3", name: "虚数相变", fill: false,
+    desc: "推迟虚空内的波速软上限",
+    effect: () => svu3EffectText() },
 ];
+// ---------- SVU3「虚数相变」（v0.6.3.2）----------
+// 软上限起始点推迟量（log10）：3·(1+N)^1.5·ρ（任意虚空生效）
+function svu3CapDelay() {
+  if (!voidMilestone3()) return 0;
+  return 3 * Math.pow(1 + state.svu3N, 1.5) * state.svu3Rho;
+}
+function svu3CapStart() { return 20000 + svu3CapDelay(); }       // 软上限起始点（log10）
+function svu3PhaseThreshold() { return 500 + 100 * state.svu3N; } // 相变阈值：ρ ≥ 500+100N
+function svu3PhaseReady() { return voidMilestone3() && state.svu3Rho >= svu3PhaseThreshold(); }
+// 卡片显示：ρ / 相变数 / 当前软上限起始点 / 相变阈值
+function svu3EffectText() {
+  const capStart = svu3CapStart();
+  const rhoTxt = state.svu3Rho > 0 ? fmtNum(state.svu3Rho, Math.log10(state.svu3Rho)) : "0";
+  return `ρ=${rhoTxt}　相变数：${state.svu3N}`
+    + `\n效果：当前软上限起始点：${fmtNum(Math.pow(10, Math.min(capStart, 308)), capStart)}`
+    + `\n相变阈值：ρ ≥ ${fmt(svu3PhaseThreshold())}${state.voidActive ? "（虚空中无法无序化）" : ""}`;
+}
+// ρ 增长（applyProduction 调用，真实时间 realDt 原始值，不受时间倍率影响）：
+// 条件=里程碑3 且虚空中且 8 种削弱全开；w = 超出软上限部分的波速获取 log10；
+// 每秒获取 w/(1+ρ)^(1+N/3)
+function svu3RhoTick(realDt) {
+  if (!voidMilestone3() || !state.voidActive) return;
+  if (state.voidRules.length < DISTORT_UNIVERSES.length) return;
+  if (!(realDt > 0)) return;
+  const w = gainRateLog(true).log - svu3CapStart();
+  if (!(w > 0)) return;
+  const rho = state.svu3Rho + w / Math.pow(1 + state.svu3Rho, 1 + state.svu3N / 3) * realDt;
+  if (isFinite(rho)) state.svu3Rho = rho;
+}
+// 相变：相变数 +1、ρ 清零（之后 ρ 获取更难，但推迟效果更强）
+function svu3Phase() {
+  if (!svu3PhaseReady()) return;
+  state.svu3N++;
+  state.svu3Rho = 0;
+  saveGame();
+  updateVoidUI();
+  setAutosaveStatus("虚数相变完成：相变数 " + state.svu3N + "（ρ 已重置，软上限推迟更强）");
+}
+// 无序化：清零 ρ 与相变数；虚空中不可用，需退出虚空后操作
+function svu3Disorder() {
+  if (state.voidActive) { setAutosaveStatus("虚空中无法无序化，请先退出虚空"); return; }
+  if (!voidMilestone3() || !(state.svu3N > 0 || state.svu3Rho > 0)) return;
+  if (!confirm("确定无序化吗？（虚数密度 ρ 与相变数全部清零）")) return;
+  state.svu3Rho = 0;
+  state.svu3N = 0;
+  saveGame();
+  updateVoidUI();
+  setAutosaveStatus("已无序化：ρ 与相变数已清零");
+}
 // 脉冲状态：虚粒子获取速率（每秒）= floor(mult × (M^0.1 − 1))；M=1 时自然为 0。返回 log10
 function bhVPGainLog() {
   const mLog = getLogBhMass();
@@ -3686,12 +3858,29 @@ function ssAffordLog(costLog) {
 function tpTotal() { return state.tp + state.tpV + state.tpE + state.tpF; }
 function betti1() { return Math.max(0, state.tpE - state.tpV + 1); }
 function betti2() { return Math.max(0, Math.min(state.tpF, Math.floor(2 * state.tpE / 3)) - state.tpE + state.tpV); }
-// 基础 CM 获取速率的 log10（TP=0 时为 NLOG 零哨兵）
+// 基础 CM 获取速率的 log10（TP=0 时为 NLOG 零哨兵）；
+// R1「托特管状折叠」：基础获取变为 ×100 或 ^1.03 的更大值（log 域 = max(+2, ×1.03)）
 function cmRateLog() {
   const n = tpTotal();
   if (n <= 0) return NLOG;
   const sLog = Math.sqrt(3 * betti1() * betti2()) * Math.log10(3);
-  return clampLog(2 * Math.log10(n) + sLog);
+  let rateLog = 2 * Math.log10(n) + sLog;
+  if (researchBought("R1")) rateLog = Math.max(rateLog + 2, rateLog * 1.03);
+  return clampLog(rateLog);
+}
+// 折叠器速度的附加乘数（log10，加在速率上）：R6「Ricci流预解算」×min(10^√lg(Inf+1), Inf^0.25)
+// + 里程碑3「度规塌缩」的第四虚空泡沫效果 ×max(1, VF^0.1)（+0.1·lgVF）
+function cmSpeedBonusLog() {
+  let add = 0;
+  if (researchBought("R6")) {
+    const lgInf = getLogInf();
+    if (lgInf > NLOG + 1) add += Math.min(Math.sqrt(lg1FromLog(lgInf)), 0.25 * lgInf);
+  }
+  if (voidMilestone3()) {
+    const lgVF = state.logVoidVF10;
+    if (lgVF > NLOG + 1) add += 0.1 * lgVF;
+  }
+  return add;
 }
 // 理论树节点 01「最小作用量原理」：折叠器受严重削弱的时间倍率加成——
 // 折叠器时间乘数 = max((1+lg(1+Speed))/2, Speed^0.005)（未购买时乘数为 1：不受游戏速度影响）
@@ -3715,14 +3904,14 @@ function cmSpAccelMultLog() {
 }
 // 折叠器 tick：CM 按真实时间累积（挂 applyProduction，离线模拟共用）。
 // 初始不受游戏速度影响；节点 01 后乘上严重削弱的时间倍率（真实 dt × 乘数）；
-// 节点 31 后再乘上基于奇点的加速乘数
+// 节点 31 后再乘上基于奇点的加速乘数；R6 与里程碑3 第四 VF 效果再加速度乘数（cmSpeedBonusLog）
 function cmTick(realDt) {
   if (state.compactions < 1 || !state.testMode) return;
   if (tpTotal() <= 0) return;
   const rateLog = cmRateLog();
   if (rateLog <= NLOG + 1) return;
   const dtLog = Math.log10(Math.max(realDt, 1e-300)) + cmTimeMultLog();
-  setCMLog(logAddLogs(getLogCM(), rateLog + dtLog + cmSpAccelMultLog()));
+  setCMLog(logAddLogs(getLogCM(), rateLog + dtLog + cmSpAccelMultLog() + cmSpeedBonusLog()));
 }
 // 整数约束下的最佳分配（A64 奖励「自动最佳分配」的实现）。
 // 连续最优 E*=(21T−9)/48（此时 F=2E/3 边界恰好活跃）附近 ±2 的每个 E，其最优 V 只可能在
@@ -3867,8 +4056,51 @@ const THEORY_NODES = [
     desc: "拓宽“理论”的深度\n解锁“研究”",
     descHtml: "拓宽<span class=\"color-theory\">“理论”</span>的深度<br>解锁<span class=\"color-research\">“研究”</span>",
     reqIns: 55, hiddenUntilIns: 50, reqA63: true },
+  // 光学系列（v0.6.3.2）：粒子说=紫色 / 波动说=青色，两系列互斥（只能购买一种）；
+  // 拥有节点51 且理论深度达到层号后才出现在树上。
+  // TODO(数值待定)：61/62 灵感价格占位 8、71/72 占位 12，定稿后直接改这里
+  { id: "61", name: "光学-粒子说 I", parents: ["51"], cost: 8, series: "particle",
+    desc: "获得的超弦 ×100",
+    effect: () => "当前 ×100" },
+  { id: "71", name: "光学-粒子说 II", parents: ["61"], cost: 12, series: "particle",
+    desc: "CM第二效果公式变得更好",
+    effect: () => "公式差值 +" + (wavelengthExp() - wavelengthExpBase()).toFixed(4) },
+  { id: "81", name: "光学-粒子说 III", parents: ["71"], cost: 0, series: "particle", placeholder: true,
+    desc: "？？？" },
+  { id: "62", name: "光学-波动说 I", parents: ["51"], cost: 8, series: "wave",
+    desc: "基于当前超弦增加获得的超弦",
+    effect: () => "当前 ×" + fmtLog(node62MultLog()) },
+  { id: "72", name: "光学-波动说 II", parents: ["62"], cost: 12, series: "wave",
+    desc: "CM第二效果 +0.1",
+    effect: () => "公式差值 +" + (wavelengthExp() - wavelengthExpBase()).toFixed(4) },
+  { id: "82", name: "光学-波动说 III", parents: ["72"], cost: 0, series: "wave", placeholder: true,
+    desc: "？？？" },
 ];
 function theoryOwned(id) { return !!state.theoryNodes[id]; }
+// 波长公式内指数 e 的基础公式（节点71/72 改造前的原版，供「公式差值」显示）
+function wavelengthExpBase() {
+  return 1 + Math.log10(1 + cmLg1() / 3) / 10;
+}
+// 节点62「光学-波动说 I」：基于当前持有超弦的 SS 获取乘数
+// min(10^(4+√(lgSS/40)), max(5·lgSS, SS^0.1))（SS=1 时为 1 倍）
+function node62MultLog() {
+  if (!theoryOwned("62")) return 0;
+  const lgSS = Math.max(getLogSS(), 0);
+  const aLog = 4 + Math.sqrt(lgSS / 40);
+  const bLog = Math.log10(Math.max(5 * lgSS, Math.pow(10, Math.min(0.1 * lgSS, 307))));
+  return Math.min(aLog, bLog);
+}
+// 光学系列（层≥6）节点可见性：拥有节点51 且理论深度达到层号后才出现在树上（含容差）
+function theoryNodeVisible(def) {
+  if (+def.id[0] < 6) return true;
+  return theoryOwned("51") && state.theoryDepth + 1e-9 >= +def.id[0];
+}
+// 光学系列互斥：已购任一粒子说节点则波动说全部不可购（反之亦然）
+function theorySeriesLocked(def) {
+  if (def.series === "particle") return theoryOwned("62");
+  if (def.series === "wave") return theoryOwned("61");
+  return false;
+}
 // 理论树节点 21 电磁学：基于 CM 给予象限拓张（SAU1）免费等级 lg(CM+1)×4
 function theory21FreeLevel() {
   if (!theoryOwned("21")) return 0;
@@ -3889,10 +4121,11 @@ function tempCapExp() { return 10 * daExpMult() * theory11Exp(); }   // 普朗�
 function accretionExp() { return 3 * theory11Exp(); }                // 黑洞吸积效率（AU43）^exp
 function theoryAvailable(def) {
   if (theoryOwned(def.id) || def.placeholder) return false;
-  if (+def.id[0] > state.theoryDepth) return false; // 理论深度：更深层的节点暂不可购（显示？？？）
+  if (+def.id[0] > state.theoryDepth + 1e-9) return false; // 理论深度：更深层的节点暂不可购（显示？？？；1e-9 容差防浮点残差）
   if (def.hiddenUntilIns && getLogTotalIns() < Math.log10(def.hiddenUntilIns)) return false; // 节点51：总灵感 <50 隐藏
   if (def.reqIns && getLogTotalIns() < Math.log10(def.reqIns) - 1e-9) return false; // 节点51：总灵感门槛（含浮点容差）
   if (def.reqA63 && !state.ach.normal.includes("A63")) return false;
+  if (theorySeriesLocked(def)) return false; // 光学系列互斥：另一系列已购则本系列不可购
   return def.parents.length === 0 || def.parents.some(p => theoryOwned(p));
 }
 // 灵感（Ins）购买价格（第 n 次，n=已购次数+1）：F：10^(25000n)，价格超过 1e200000
@@ -3962,7 +4195,7 @@ function buyTheoryNode(id) {
 // ---------- 理论树导出/导入/预设（v0.6.0.0 测试）----------
 // 格式：层用「;」分隔、同层节点用「,」、末尾固定「0d」段。例：01;11;21,22;31;41;0d
 function exportTheoryTree() {
-  const layers = ["", "", "", "", ""];
+  const layers = []; // 稀疏数组：空层 join 时自动为空段（层数随实装节点扩展，当前最深 8）
   for (const def of THEORY_NODES) {
     if (theoryOwned(def.id)) {
       const li = +def.id[0];
@@ -3972,12 +4205,13 @@ function exportTheoryTree() {
   return layers.join(";") + ";0d";
 }
 // 解析理论树字符串：返回按「从上往下、从左往右」排序的节点 id 数组；格式有误返回 null。
-// 格式：层用「;」分隔、同层节点用「,」、末尾固定「0d」段（如 01;11;21,22;31;41;0d）；
-// 末尾的空层可省略（0d 恒为最后一段）；每个节点的层号必须与其所在段位置一致
+// 格式：层用「;」分隔、同层节点用「,」、末尾固定「0d」段（如 01;11;21,22;31;41;51;0d）；
+// 末尾的空层可省略（0d 恒为最后一段）；每个节点的层号必须与其所在段位置一致。
+// 段数上限 = 最深层号（8）+ 1 层 + 0d 段 = 10（旧版写死 6，节点51 的导出串会无法导回）
 function parseTheoryTree(str) {
   if (typeof str !== "string") return null;
   const segs = str.trim().split(";");
-  if (segs.length < 1 || segs.length > 6 || segs[segs.length - 1] !== "0d") return null;
+  if (segs.length < 1 || segs.length > 10 || segs[segs.length - 1] !== "0d") return null;
   const out = [];
   for (let li = 0; li < segs.length - 1; li++) {
     if (segs[li] === "") continue;
@@ -4114,6 +4348,16 @@ function setInfLog(lg) {
   state.inf = (lg <= NLOG + 1) ? 0 : (lg > 308 ? Infinity : Math.pow(10, lg));
 }
 function addInfLog(addLog) { setInfLog(logAddLogs(getLogInf(), addLog)); }
+// inf -= 10^costLog（调用前须已确认可负担；推论为整数货币，浮点残差吸附回整数）
+function subInfLog(costLog) {
+  const r = logAddSigned(getLogInf(), 1, costLog, -1);
+  setInfLog(r.sign < 0 ? NLOG : r.log);
+  const snapped = snapIntCurrency(state.inf);
+  if (snapped !== state.inf) {
+    if (snapped > 0) { state.inf = snapped; state.logDinf = clampLog(Math.log10(snapped)); }
+    else { state.inf = 0; state.logDinf = NLOG; }
+  }
+}
 // 实验定义：解锁来自理论树节点（各有需求）；每个实验对应一种削弱
 const RESEARCH_EXPS = [
   { id: "slit", name: "双缝干涉实验", unlock: () => theoryOwned("51"),
@@ -4126,6 +4370,66 @@ function researchSlitLevel() {
   if (!state.researchRun) return 0;
   const e = state.researchRun.exps.find(x => x.id === "slit");
   return e ? e.level : 0;
+}
+// ---------- 研究项目（v0.6.3.2：A71「乌云」解锁；消耗推论购买，每个理论深度 +1/3）----------
+// TODO(数值待定)：R6 的需求/价格为占位值，定稿后直接改这里
+const RESEARCH_DEFS = [
+  { id: "R1", name: "托特管状折叠", reqED: 1e3, costInf: 2e4, desc: "维度折叠器效果更好" },
+  { id: "R2", name: "虚空探测器", reqED: 1e3, costInf: 5e4, desc: "解锁新的虚空内容" },
+  { id: "R3", name: "动态调整LLM", reqED: 1e3, costInf: 1e5, desc: "引理加成自身获取" },
+  { id: "R4", name: "热焓极点回溯", reqED: 4e3, costInf: 3e7, desc: "奇点改为使用此次湮灭最高温度计算" },
+  { id: "R5", name: "态矢量相干保持", reqED: 4e3, costInf: 1e8, desc: "缩短波长不再重置任何东西" },
+  { id: "R6", name: "Ricci流预解算", reqED: 4e3, costInf: 5e8, desc: "基于推论增加维度折叠器速度" },
+];
+function researchDef(id) { return RESEARCH_DEFS.find(x => x.id === id); }
+function researchBought(id) { return state.researchBought.includes(id); }
+// 需求（ED）与价格（推论）的可负担判定（含 1e-9 浮点容差，口径与显示一致）
+function researchReqMet(def) { return getLogED() >= Math.log10(def.reqED) - 1e-9; }
+function researchCostMet(def) { return getLogInf() >= Math.log10(def.costInf) - 1e-9; }
+function buyResearch(id) {
+  const def = researchDef(id);
+  if (!def || researchBought(id)) return;
+  if (!state.ach.normal.includes("A71")) return; // 研究项目由 A71「乌云」解锁
+  if (!researchReqMet(def)) { setAutosaveStatus("实验数据不足（需求 " + fmtNum(def.reqED, Math.log10(def.reqED)) + " ED）"); return; }
+  if (!researchCostMet(def)) { setAutosaveStatus("推论不足"); return; }
+  subInfLog(Math.log10(def.costInf));
+  state.researchBought.push(id);
+  state.theoryDepth += 1 / 3; // 每购买一个研究，理论深度 +1/3
+  if (id === "R1") grantHidden("S30");
+  saveGame();
+  updateResearchUI();
+  updateCompactUI(); // 理论深度变化影响理论树节点可见性
+  updateAchievementsUI();
+  setAutosaveStatus("研究完成：" + def.name + "（理论深度 +1/3）");
+}
+// 已完成研究浮动框（查看/隐藏切换；点遮罩空白处关闭）
+function toggleResearchModal(force) {
+  const overlay = document.getElementById("research-modal-overlay");
+  if (!overlay) return;
+  const show = force !== undefined ? force : overlay.classList.contains("hidden");
+  overlay.classList.toggle("hidden", !show);
+  if (show) renderResearchDone();
+}
+function renderResearchDone() {
+  const grid = document.getElementById("research-modal-grid");
+  if (!grid) return;
+  grid.innerHTML = "";
+  const done = RESEARCH_DEFS.filter(d => researchBought(d.id));
+  if (!done.length) {
+    const empty = document.createElement("div");
+    empty.className = "rp-desc";
+    empty.textContent = "暂无已完成的研究";
+    grid.appendChild(empty);
+    return;
+  }
+  for (const def of done) {
+    const card = document.createElement("div");
+    card.className = "research-proj-card";
+    const nm = document.createElement("div"); nm.className = "rp-name"; nm.textContent = def.name;
+    const ds = document.createElement("div"); ds.className = "rp-desc"; ds.textContent = def.desc;
+    card.append(nm, ds);
+    grid.appendChild(card);
+  }
 }
 // 三乘数（线性值，显示与结算共用的单一实现）：实验外预测/附加为 0、只算难度分
 function researchMultipliers() {
@@ -4184,6 +4488,12 @@ function researchExit() {
   const gained = gainLog > NLOG + 1 && gainLog > before;
   if (gained) setEDLog(gainLog);
   else { grantHidden("S29"); updateAchievementsUI(); }
+  // 统计：完成实验计数与各实验最高完成等级（四舍五入去浮点残差；放弃不记）
+  state.researchDone++;
+  for (const x of state.researchRun.exps) {
+    if (!(x.level > 0)) continue;
+    state.researchBest[x.id] = Math.max(state.researchBest[x.id] || 0, Math.round(x.level));
+  }
   state.researchRun = null;
   researchResetBody();
   setAutosaveStatus(gained ? "实验结束：获得 " + fmtLog(gainLog) + " 实验数据" : "实验结束：未获得实验数据");
@@ -4194,8 +4504,14 @@ function researchAbandon() {
   researchResetBody();
   setAutosaveStatus("已放弃实验（无实验数据）");
 }
-// 推论产出：Multi(占位 1) × ED^0.8 每秒（真实时间）
-function infRateLog() { const lg = getLogED(); return lg <= NLOG + 1 ? NLOG : clampLog(lg * 0.8); }
+// 推论产出：Multi × ED^0.8 每秒（真实时间）；R3「动态调整LLM」后 Multi 含 lg(Inf+1)^1.5（引理加成自身获取）
+function infRateLog() {
+  const lg = getLogED();
+  if (lg <= NLOG + 1) return NLOG;
+  let rateLog = lg * 0.8;
+  if (researchBought("R3")) rateLog += 1.5 * lg1FromLog(getLogInf()); // ×lg(Inf+1)^1.5（Inf=0 时为 0）
+  return clampLog(rateLog);
+}
 function infTick(realDt) {
   if (!theoryOwned("51")) return;
   const rateLog = infRateLog();
@@ -4234,11 +4550,15 @@ function canCompactify() {
     && state.voidBestRules >= 8
     && getLogSp() >= SP_SOFTCAP_PIVOT_LOG;
 }
-// SS 获取公式：SS = floor(((VP/1e36)^(1/30)×(Sp/1.79e308)^(1/300))^0.8)
+// SS 获取公式：SS = floor(((VP/1e36)^(1/30)×(Sp/1.79e308)^(1/300))^0.8)；
+// 节点61「光学-粒子说 I」：×100（+2）；节点62「光学-波动说 I」：×node62MultLog()（基于当前持有 SS）
 function compactSSGainLog() {
   const vp = getLogVP(), sp = getLogSp();
   if (vp < 36 || sp < SP_SOFTCAP_PIVOT_LOG) return NLOG;
-  return clampLog(((vp - 36) / 30 + (sp - SP_SOFTCAP_PIVOT_LOG) / 300) * 0.8);
+  let lg = ((vp - 36) / 30 + (sp - SP_SOFTCAP_PIVOT_LOG) / 300) * 0.8;
+  if (theoryOwned("61")) lg += 2;
+  if (theoryOwned("62")) lg += node62MultLog();
+  return clampLog(lg);
 }
 function compactSSGain() {
   const lg = compactSSGainLog();
@@ -4403,7 +4723,7 @@ function applyCompactionResetBody(realNow) {
   }
   // —— 计时 ——
   state.annStartReal = realNow;
-  state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG;
+  state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG; state.annMaxTLog = NLOG;
   state.compStartReal = realNow; state.compGameElapsed = 0; state.compGameElapsedLog = NLOG;
   updateDispAnchor();
   applyPhononVisibility();
@@ -4521,6 +4841,7 @@ function buildCompactOnce() {
   svg.setAttribute("height", TREE_WORLD_H);
   svg.innerHTML = "";
   const SVG_NS = "http://www.w3.org/2000/svg";
+  compactEls.lines = {};
   for (const def of THEORY_NODES) {
     for (const p of def.parents) {
       const a = TREE_LAYOUT[p], b = TREE_LAYOUT[def.id];
@@ -4529,6 +4850,7 @@ function buildCompactOnce() {
       line.setAttribute("x2", b.x + TREE_NODE_W / 2); line.setAttribute("y2", b.y);
       line.setAttribute("class", "tree-line");
       svg.appendChild(line);
+      compactEls.lines[def.id] = line; // 子节点隐藏时连线一并隐藏
     }
   }
   const world = document.getElementById("tree-world");
@@ -4536,7 +4858,10 @@ function buildCompactOnce() {
   for (const def of THEORY_NODES) {
     const pos = TREE_LAYOUT[def.id];
     const node = document.createElement("div");
-    node.className = "tn-node" + (def.research ? " research-node" : ""); // 实验类节点：已购后天蓝色光
+    // 实验类节点：已购后天蓝色光；光学系列：粒子说=紫色、波动说=青色（两系列互斥）
+    node.className = "tn-node" + (def.research ? " research-node" : "")
+      + (def.series === "particle" ? " particle-node" : "")
+      + (def.series === "wave" ? " wave-node" : "");
     node.style.left = pos.x + "px"; node.style.top = pos.y + "px";
     node.style.width = TREE_NODE_W + "px"; node.style.height = TREE_NODE_H + "px";
     const nm = document.createElement("div"); nm.className = "tn-name"; nm.textContent = def.name;
@@ -4551,7 +4876,8 @@ function buildCompactOnce() {
   treeResetView();
   compactBuilt = true;
 }
-// 理论树固定布局（世界坐标；节点 150×92，层间距 150）
+// 理论树固定布局（世界坐标；节点 150×92，层间距 150）。
+// 51 下方向左右分出光学两系列（粒子说左/紫色、波动说右/青色）
 const TREE_LAYOUT = {
   "01": { x: 445, y: 70 },
   "11": { x: 185, y: 220 }, "12": { x: 705, y: 220 },
@@ -4559,9 +4885,12 @@ const TREE_LAYOUT = {
   "31": { x: 185, y: 520 }, "32": { x: 695, y: 520 },
   "41": { x: 445, y: 670 },
   "51": { x: 445, y: 820 },
+  "61": { x: 295, y: 970 }, "62": { x: 595, y: 970 },
+  "71": { x: 295, y: 1120 }, "72": { x: 595, y: 1120 },
+  "81": { x: 295, y: 1270 }, "82": { x: 595, y: 1270 },
 };
 const TREE_NODE_W = 150, TREE_NODE_H = 92;
-const TREE_WORLD_W = 1100, TREE_WORLD_H = 950;
+const TREE_WORLD_W = 1100, TREE_WORLD_H = 1450;
 let treeView = { x: 0, y: 0, z: 1 }; // 平移/缩放状态
 function treeApplyView() {
   document.getElementById("tree-world").style.transform =
@@ -4640,7 +4969,7 @@ function updateCompactUI() {
   document.getElementById("comp-cm-value").textContent = fmtIntRes(state.cm, getLogCM());
   const rateLog = cmRateLog();
   // 每秒获取写最终值：基础产量 × 折叠器时间乘数（节点 01 削弱加成）× 节点31 奇点加速（全部计入）
-  const finalRateLog = rateLog <= NLOG + 1 ? NLOG : clampLog(rateLog + cmTimeMultLog() + cmSpAccelMultLog());
+  const finalRateLog = rateLog <= NLOG + 1 ? NLOG : clampLog(rateLog + cmTimeMultLog() + cmSpAccelMultLog() + cmSpeedBonusLog());
   const rateTxt = finalRateLog <= NLOG + 1 ? "0" : fmtNum(Math.pow(10, Math.min(finalRateLog, 308)), finalRateLog);
   document.getElementById("comp-cm-rate").textContent = `每秒 +${rateTxt}`;
   const baseTxt = rateLog <= NLOG + 1 ? "0" : fmtNum(Math.pow(10, Math.min(rateLog, 308)), rateLog);
@@ -4701,10 +5030,15 @@ function updateCompactUI() {
       if (b && state.theoryPresets[i]) b.textContent = state.theoryPresets[i].name || ("PR" + (i + 1));
     }
   }
-  // 理论树节点状态（框内写效果文本）
+  // 理论树节点状态（框内写效果文本）；光学系列（层≥6）在节点51+理论深度达标前整体隐藏
   for (const def of THEORY_NODES) {
     const el = compactEls.nodes[def.id];
     if (!el) continue;
+    const visible = theoryNodeVisible(def);
+    el.node.classList.toggle("hidden", !visible);
+    const line = (compactEls.lines || {})[def.id];
+    if (line) line.setAttribute("visibility", visible ? "visible" : "hidden");
+    if (!visible) continue;
     const owned = theoryOwned(def.id);
     el.node.classList.toggle("bought", owned);
     el.node.classList.toggle("available", theoryAvailable(def));
@@ -4789,6 +5123,24 @@ function buildResearchOnce() {
     }
     startResearch();
   });
+  // 研究项目（R 系列）：待办最多显示 3 个（定义顺序）；已完成的进浮动框
+  const projRow = document.getElementById("research-proj-row");
+  projRow.innerHTML = "";
+  researchEls.projs = {};
+  for (const def of RESEARCH_DEFS) {
+    const b = document.createElement("button");
+    b.className = "research-proj-card";
+    const nm = document.createElement("div"); nm.className = "rp-name"; nm.textContent = def.name;
+    const ds = document.createElement("div"); ds.className = "rp-desc"; ds.textContent = def.desc;
+    const ct = document.createElement("div"); ct.className = "rp-cost";
+    b.append(nm, ds, ct);
+    b.addEventListener("click", () => buyResearch(def.id));
+    projRow.appendChild(b);
+    researchEls.projs[def.id] = { btn: b, cost: ct };
+  }
+  const overlay = document.getElementById("research-modal-overlay");
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) toggleResearchModal(false); });
+  document.getElementById("research-done-toggle").addEventListener("click", () => toggleResearchModal());
   researchBuilt = true;
 }
 function updateResearchUI() {
@@ -4806,6 +5158,26 @@ function updateResearchUI() {
     ? "（每秒 +0）"
     : `（每秒 +${fmtNum(Math.pow(10, Math.min(rateLog, 308)), rateLog)}）`;
   document.getElementById("research-depth").textContent = fmt(state.theoryDepth);
+  // 研究项目（R 系列）：A71 解锁；待办按定义顺序最多显示 3 个，已购的消失（进浮动框）
+  const rUnlocked = state.ach.normal.includes("A71");
+  const projWrap = document.getElementById("research-projects");
+  if (projWrap) projWrap.classList.toggle("hidden", !rUnlocked);
+  if (rUnlocked) {
+    let shown = 0;
+    for (const def of RESEARCH_DEFS) {
+      const el = researchEls.projs && researchEls.projs[def.id];
+      if (!el) continue;
+      const visible = !researchBought(def.id) && shown < 3;
+      el.btn.classList.toggle("hidden", !visible);
+      if (!visible) continue;
+      shown++;
+      const reqOk = researchReqMet(def), costOk = researchCostMet(def);
+      el.btn.disabled = !(reqOk && costOk);
+      el.cost.textContent = "需求 " + fmtNum(def.reqED, Math.log10(def.reqED)) + " ED ｜ 价格 "
+        + fmtNum(def.costInf, Math.log10(def.costInf)) + " 推论" + (reqOk ? "" : "（ED 不足）");
+    }
+    // 浮动框开着时保持内容同步（资源变化影响不了已购列表，但首次打开前已渲染）
+  }
   // 实验卡片（实验中显示快照等级并锁定编辑）
   const run = state.researchRun;
   for (const def of RESEARCH_EXPS) {
@@ -6385,10 +6757,17 @@ function renderStats() {
       document.getElementById("stat-best-ss-rate").textContent = (bsrLog > NLOG + 1 ? fmtLog(bsrLog) : "0") + " SS/分";
     }
   }
-  // 挑战选项卡：各扭曲宇宙最佳完成时间与总完成时间
+  // 挑战选项卡：分「扭曲宇宙」（红）与「实验项目」（天蓝）两组
   const chList = document.getElementById('challenge-list');
   if (chList) {
     chList.innerHTML = '';
+    // —— 扭曲宇宙（红色小标题，与扭曲主题色一致）——
+    const dGroup = document.createElement('div');
+    dGroup.className = 'stat-group';
+    const dTitle = document.createElement('h3');
+    dTitle.className = 'sg-title sg-title-distort';
+    dTitle.textContent = '扭曲宇宙';
+    dGroup.appendChild(dTitle);
     for (const u of DISTORT_UNIVERSES) {
       const best = state.distortBest[u.id];
 
@@ -6399,7 +6778,7 @@ function renderStats() {
       const val = document.createElement('span'); val.className = 'stat-value';
       val.textContent = '最佳 ' + (best ? fmtTime(best, true) : '—');
       row.append(label, val);
-      chList.appendChild(row);
+      dGroup.appendChild(row);
     }
     // 总和行：各宇宙最佳完成时间之和（而非历史累计 distortTotal）
     const sumRow = document.createElement('div');
@@ -6412,7 +6791,34 @@ function renderStats() {
     const bestSum = DISTORT_UNIVERSES.reduce((s, u) => s + (state.distortBest[u.id] || 0), 0);
     sumVal.textContent = allDone ? fmtTime(bestSum, true) : "+∞";
     sumRow.append(sumLabel, sumVal);
-    chList.appendChild(sumRow);
+    dGroup.appendChild(sumRow);
+    chList.appendChild(dGroup);
+    // —— 实验项目（天蓝色小标题）：已解锁实验与各自完成的最高等级 ——
+    const eGroup = document.createElement('div');
+    eGroup.className = 'stat-group';
+    const eTitle = document.createElement('h3');
+    eTitle.className = 'sg-title sg-title-research';
+    eTitle.textContent = '实验项目';
+    eGroup.appendChild(eTitle);
+    const unlockedExps = RESEARCH_EXPS.filter(def => def.unlock());
+    if (!unlockedExps.length) {
+      const row = document.createElement('div');
+      row.className = 'stat-row muted';
+      row.innerHTML = "<span class='stat-label'>尚未解锁任何实验</span><span class='stat-value'>—</span>";
+      eGroup.appendChild(row);
+    }
+    for (const def of unlockedExps) {
+      const best = state.researchBest[def.id] || 0;
+      const row = document.createElement('div');
+      row.className = 'stat-row' + (best > 0 ? '' : ' muted');
+      const label = document.createElement('span'); label.className = 'stat-label';
+      label.textContent = def.name;
+      const val = document.createElement('span'); val.className = 'stat-value';
+      val.textContent = best > 0 ? '最高完成等级 ' + best : '未完成';
+      row.append(label, val);
+      eGroup.appendChild(row);
+    }
+    chList.appendChild(eGroup);
   }
   // 最近十次湮灭（重置子页）
   const hList = document.getElementById("ann-history-list");
@@ -6541,6 +6947,10 @@ const NORMAL_ACH = [
   { id: "A63", name: "里程", desc: "获得所有卷缩里程碑", check: () => COMP_MILESTONES.every(m => state.compactions >= m.n) },
   { id: "A64", name: "几何", desc: "基础CM获取超过 4e6/s", star: true, reward: "解锁「自动最佳分配」按钮", check: () => cmRateLog() > Math.log10(4e6) },
   { id: "A65", name: "研究", desc: "解锁研究选项卡", check: () => theoryOwned("51") },
+  // 第 7 行 (A71-…)
+  { id: "A71", name: "乌云", desc: "完成一次实验", star: true, reward: "解锁研究项目",
+    // 更新前完成过实验的老玩家由 migrateState 补发（ED>0 或 S29 均证明结束过实验）
+    check: () => state.researchDone >= 1 || getLogED() > NLOG + 1 || state.ach.hidden.includes("S29") },
 ];
 const ACH_PER_ROW = 5;
 // 已定义行数；之后整行为未解锁 ???
@@ -6580,6 +6990,7 @@ const HIDDEN_ACH = [
   { id: "S27", name: "几何学不存在了", check: () => state.tpF > state.tpE && state.tpE > 0 }, // 维度折叠器的面 F > 边 E > 0（几何上不可能：面数超过边数）
   { id: "S28", name: "增量神秘数字", check: () => false }, // 在理论树导入框输入 69（doImportTheoryTree 内授予）
   { id: "S29", name: "我想做的前人们都做过了", check: () => false }, // 结束一次获得 0 实验数据的实验（researchExit 内授予）
+  { id: "S30", name: "人类完蛋了，欸不对走错片场了", check: () => false }, // 购买研究 R1「托特管状折叠」（buyResearch 内授予）
 ];
 // S5 目标序列：S1,S1,S4,S5,S1,S4
 const S5_SEQUENCE = ["S1", "S1", "S4", "S5", "S1", "S4"];
@@ -7009,6 +7420,12 @@ function applyProduction(realDt) {
     }
   }
 
+  // R4 热焓极点回溯：记录本次湮灭的最高有效温度（与奇点公式同口径；各湮灭类重置清零）
+  if (researchBought("R4")) {
+    const tLog = temperatureCappedLog();
+    if (tLog > state.annMaxTLog) state.annMaxTLog = tLog;
+  }
+
   // 本次卷缩的游戏时长独立累计（与 annGameElapsed 同款：double 缓存封顶 MAX_VALUE，
   // log 权威持续累积用于显示；统计-通用的「本次卷缩所花费时间」读取）
   if (state.compactions >= 1) {
@@ -7100,6 +7517,7 @@ function applyProduction(realDt) {
   // 挂在 applyProduction 内 → 离线模拟自动兼容
   cmTick(realDt);
   infTick(realDt); // 研究：推论产出（真实时间，拥有节点51 后）
+  svu3RhoTick(realDt); // SVU3 虚数密度：全扭曲虚空中按真实时间增长（不受时间倍率影响，里程碑3 后）
 }
 
 function tick() {
@@ -7389,7 +7807,7 @@ function applyTestModeUIGlobal() {
   const forceCompactBtn = document.getElementById("force-compact-btn");
   if (forceCompactBtn) forceCompactBtn.classList.toggle("hidden", !state.testMode);
   if (verEl) verEl.textContent = state.testMode
-    ? "v0.6.3 The Research Update（测试）"
+    ? "v0.6.3.2 The Research Update（测试）"
     : "v0.5.1 The Void Update";
 }
 
@@ -7730,7 +8148,7 @@ function init() {
   updateCompactButton();
   if (state.annihilations >= 1 && !state.annStartReal) {
     state.annStartReal = gameNow();
-    state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG;
+    state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG; state.annMaxTLog = NLOG;
   }
   // 恢复上次所在的大标签（无记录默认波动页）；子标签由 switchTab 内部恢复默认
   //（不得再无条件 switchSubtab("main")——非波动页上它会把子页全部隐藏，内容不渲染）

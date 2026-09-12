@@ -739,7 +739,7 @@ body[data-theme="white"] #sub-ann-void {
 }
 .tree-viewport.grabbing { cursor: grabbing; }
 body[data-theme="white"] .tree-viewport { border-color: #c9c9d2; }
-.tree-world { position: absolute; top: 0; left: 0; width: 1100px; height: 800px; transform-origin: 0 0; }
+.tree-world { position: absolute; top: 0; left: 0; width: 1100px; height: 1450px; transform-origin: 0 0; }
 #tree-lines { position: absolute; top: 0; left: 0; pointer-events: none; }
 .tree-line { stroke: #7a5a2e; stroke-width: 2; }
 /* 树节点：名称在框外左上角（白色粗体），框内为编号与效果文本 */
@@ -839,3 +839,71 @@ body[data-theme="white"] .inf-line .research-res-val { color: #3050b0; }
 .tn-node.research-node.available:hover { border-color: #8fd3ff; background: rgba(126, 200, 247, 0.1); }
 .tn-node.research-node.bought { border-color: #8fd3ff; box-shadow: 0 0 10px rgba(126, 200, 247, 0.4); }
 .tn-node.research-node.bought .tn-name { color: #8fd3ff; }
+
+/* ===== v0.6.3.2：统计页挑战分组小标题 ===== */
+.sg-title-distort { color: var(--darkred); }
+.sg-title-research { color: #5fb8e6; }
+
+/* ===== v0.6.3.2：研究项目（R 系列）===== */
+.research-projects-title { color: #7ec8f7; font-size: 15px; margin: 14px 0 8px; }
+.research-projects-hint { font-size: 12px; opacity: 0.75; margin: 6px 0; }
+.research-proj-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.research-proj-card {
+  flex: 1 1 30%; min-width: 220px; text-align: left; cursor: pointer;
+  border: 1px solid rgba(95, 184, 230, 0.45); border-radius: 8px;
+  background: rgba(95, 184, 230, 0.06); color: inherit; padding: 8px 10px; font: inherit;
+}
+.research-proj-card .rp-name { color: #7ec8f7; font-weight: bold; }
+.research-proj-card .rp-desc { font-size: 12px; margin: 4px 0; }
+.research-proj-card .rp-cost { font-size: 12px; opacity: 0.85; }
+.research-proj-card:disabled { opacity: 0.5; cursor: not-allowed; }
+.research-proj-card:not(:disabled) { border-color: #7ec8f7; box-shadow: 0 0 6px rgba(126, 200, 247, 0.25); }
+.research-done-toggle { margin-top: 8px; }
+/* 已完成研究浮动框：全屏遮罩（主游戏背景变暗）+ 天蓝边框面板 */
+.research-modal-overlay {
+  position: fixed; inset: 0; z-index: 90;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex; align-items: center; justify-content: center;
+}
+.research-modal {
+  width: min(680px, 92vw); max-height: 76vh; overflow-y: auto;
+  border: 1px solid #7ec8f7; border-radius: 10px;
+  background: var(--panel, #16161d); padding: 14px;
+  box-shadow: 0 0 18px rgba(126, 200, 247, 0.35);
+}
+.research-modal h3 { color: #7ec8f7; margin-top: 0; }
+.research-modal-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+.research-modal-grid .research-proj-card { flex: 1 1 46%; cursor: default; }
+
+/* ===== v0.6.3.2：理论树光学系列（粒子说=紫色、波动说=青色；两系列互斥）===== */
+/* TODO(视觉待定)：青色具体色值可直接改这里 */
+.tn-node.particle-node { border-color: rgba(139, 92, 246, 0.4); }
+.tn-node.particle-node.available { border-color: rgba(139, 92, 246, 0.7); }
+.tn-node.particle-node.available:hover { border-color: #a78bfa; background: rgba(139, 92, 246, 0.12); }
+.tn-node.particle-node.bought { border-color: #a78bfa; box-shadow: 0 0 10px rgba(139, 92, 246, 0.45); }
+.tn-node.particle-node.bought .tn-name { color: #a78bfa; }
+.tn-node.wave-node { border-color: rgba(46, 200, 200, 0.4); }
+.tn-node.wave-node.available { border-color: rgba(46, 200, 200, 0.7); }
+.tn-node.wave-node.available:hover { border-color: #5fd8d8; background: rgba(46, 200, 200, 0.12); }
+.tn-node.wave-node.bought { border-color: #5fd8d8; box-shadow: 0 0 10px rgba(46, 200, 200, 0.45); }
+.tn-node.wave-node.bought .tn-name { color: #5fd8d8; }
+
+/* ===== v0.6.3.2：SVU3 虚数相变（按钮 + 等级模式悬浮小黑框）===== */
+.svu3-btns { display: flex; gap: 8px; margin-top: 6px; }
+.svu3-phase-btn.ready { border-color: #7ec8f7; color: #7ec8f7; box-shadow: 0 0 8px rgba(126, 200, 247, 0.5); }
+.svu3-phase-btn:disabled { opacity: 0.55; }
+.svu3-tip {
+  position: relative; display: inline-block; margin-top: 6px; cursor: help;
+  font-size: 11px; opacity: 0.7; border-bottom: 1px dotted currentColor;
+}
+.svu3-tip::after {
+  content: attr(data-tip);
+  display: none;
+  position: absolute; left: 0; top: 130%; z-index: 40;
+  width: min(420px, 72vw);
+  background: #111; color: #ddd; border: 1px solid #444; border-radius: 6px;
+  padding: 8px 10px; font-size: 12px; line-height: 1.6;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+  white-space: pre-line;
+}
+.svu3-tip:hover::after { display: block; }

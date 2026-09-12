@@ -544,8 +544,22 @@
           <div class="research-predict-row">
             <label>预测总奇点：<input type="text" id="research-predict" class="research-predict" placeholder="如 1e300" /></label>
           </div>
+          <!-- 研究项目（v0.6.3.2 测试；成就 A71「乌云」解锁） -->
+          <div id="research-projects" class="hidden">
+            <h3 class="research-projects-title">研究项目</h3>
+            <div id="research-proj-row" class="research-proj-row"></div>
+            <div class="research-projects-hint">购买研究可以增加你的理论深度</div>
+            <button id="research-done-toggle" class="comp-btn small research-done-toggle">查看/隐藏已经完成的研究</button>
+          </div>
           <h3 class="research-sub">实验列表</h3>
           <div id="research-list" class="research-list"></div>
+          <!-- 已完成研究浮动框（全屏遮罩变暗主游戏背景，天蓝边框面板） -->
+          <div id="research-modal-overlay" class="research-modal-overlay hidden">
+            <div class="research-modal">
+              <h3>已完成的研究</h3>
+              <div id="research-modal-grid" class="research-modal-grid"></div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -694,6 +708,20 @@
           </div>
         </details>
 
+        <details class="help-section hidden" id="help-void2">
+          <summary>虚空 II <span class="help-ver research-text">v0.6.3.2（测试）</span></summary>
+          <div class="help-body">
+            <p>购买研究<strong>「虚空探测器」（R2）</strong>后解锁新内容：<strong>虚空里程碑 3「度规塌缩」</strong>（条件：持有的虚空泡沫达到 <strong>1e22</strong>，按历史最高判定，花费不算）与占位的里程碑 4。里程碑 3 的奖励：<strong>定向的削弱在虚空中不再生效</strong>（VF 结算的乘数与「生效削弱数」照常保留）；解锁虚空升级 <strong>SVU3「虚数相变」</strong>；<strong>前三个虚空泡沫效果按 VF 的 1.1 次方计算</strong>（VP 获取、黑洞吸积、波速获取幂次）；<strong>维度折叠器速度 ×max(1, VF^0.1)</strong>。</p>
+            <p><strong>SVU3「虚数相变」（等级模式，相变数 N 即等级）</strong>：</p>
+            <ul>
+              <li><strong>虚数密度 ρ</strong>：只在<strong>全扭曲虚空</strong>（8 种削弱全开）内按<strong>真实时间</strong>增长（<strong>不受时间倍率影响</strong>）——设 w 为<strong>超出波速软上限部分</strong>的波速获取对数值（软上限起点 1e20000，如波速获取达 1e21000 时 w=1000），ρ 每秒获取 <strong>w/(1+ρ)^(1+N/3)</strong>。</li>
+              <li><strong>相变</strong>：ρ 达到 <strong>500+100N</strong> 时可点击「相变」——相变数 +1、ρ 清零；之后 ρ 获取更难（分母指数 1+N/3 变大），但效果更强。</li>
+              <li><strong>无序化</strong>：清零 ρ <strong>与</strong>相变数（按钮在虚空中禁用，需退出虚空后使用）。</li>
+              <li><strong>效果</strong>：虚空内的波速软上限起始点推迟 <strong>10^(3·(1+N)^1.5·ρ)</strong>（例如推迟量取对数后直接加在 20000 上）；此外使<strong>能标偏移（SVU2）的获取速率 ×(1+N)·max(1, ρ/50)</strong>（此项不在升级卡显示）。</li>
+            </ul>
+          </div>
+        </details>
+
         <details class="help-section hidden" id="help-compact">
           <summary>卷缩 <span class="help-ver orange-text">v0.6.1（测试）</span></summary>
           <div class="help-body">
@@ -727,16 +755,18 @@
         </details>
 
         <details class="help-section hidden" id="help-compact-theory">
-          <summary>理论树 <span class="help-ver orange-text">v0.6.1–v0.6.3（测试）</span></summary>
+          <summary>理论树 <span class="help-ver orange-text">v0.6.1–v0.6.3.2（测试）</span></summary>
           <div class="help-body">
-            <p><strong>理论树</strong>（理论树子页）：通过 F（第 n 次 10<sup>25000n</sup>，价格超过 1e200000 后加快为每级 +1e50000——第 9 次起 10<sup>50000n−200000</sup>）、Sp（第 n 次 10<sup>200(n-1)</sup>）或 SS（第 n 次 2<sup>n-1</sup>，需先购买至少 1 个拓扑节点——第一个 SS 必须花在维度折叠器上）购买<strong>灵感（Ins）</strong>——点击一次购买可负担的最大数量（花费行显示总价与「×N」）。Ins 用于解锁理论树节点；更下方的节点需要其<strong>任意一个父节点</strong>已购买。已实装节点：01「最小作用量原理」（1 灵感，维度折叠器受严重削弱的时间倍率加成）、11「经典场论」（2 灵感，湮灭次数加成奇点效果）、12「质点力学」（2 灵感，削弱奇点获取软上限）、21「电磁学」（6 灵感，基于 CM 给予象限拓张免费等级 lg(CM+1)×4，并略微削弱其软上限——指数 0.7 → 0.8）、22「刚体力学」（2 灵感，共轭湮灭的效果变为原来的十次方）、23「分析力学」（2 灵感，略微增强虚幻凝聚的效果——效果 ^1.2，指数 0.4 → 0.48）、31「电动力学」（4 灵感，基于奇点加速维度折叠器——CM 产量 ×(1+lg(Sp+1))^0.8，与游戏速度无关）、32「几何光学」（3 灵感，获得的奇点 ×1e15）、41「波动光学」（7 灵感，增强热能超载的效果——每一级都相当于之前的 2 级，并削弱奇点凝聚的软上限——超出 10 级部分的指数 ^1/3 → ^0.7，并略微削弱波长二次软上限——指数 0.85 → 0.95）、51「双缝干涉实验」（不消耗灵感，需求拥有 A63 与总灵感 ≥55——<span class="color-theory">“理论”</span>为橙色、<span class="color-research">“研究”</span>为天蓝色：拓宽理论深度并解锁研究子页）——折叠器的时间乘数变为 max((1+lg(1+时间倍率))/2, 时间倍率^0.005)。其余节点为占位（后续版本实装）。<strong>理论深度</strong>（当前 5）决定可购买的最深节点层级，更深层的节点显示？？？。</p>
+            <p><strong>理论树</strong>（理论树子页）：通过 F（第 n 次 10<sup>25000n</sup>，价格超过 1e200000 后加快为每级 +1e50000——第 9 次起 10<sup>50000n−200000</sup>）、Sp（第 n 次 10<sup>200(n-1)</sup>）或 SS（第 n 次 2<sup>n-1</sup>，需先购买至少 1 个拓扑节点——第一个 SS 必须花在维度折叠器上）购买<strong>灵感（Ins）</strong>——点击一次购买可负担的最大数量（花费行显示总价与「×N」）。Ins 用于解锁理论树节点；更下方的节点需要其<strong>任意一个父节点</strong>已购买。已实装节点：01「最小作用量原理」（1 灵感，维度折叠器受严重削弱的时间倍率加成）、11「经典场论」（2 灵感，湮灭次数加成奇点效果）、12「质点力学」（2 灵感，削弱奇点获取软上限）、21「电磁学」（6 灵感，基于 CM 给予象限拓张免费等级 lg(CM+1)×4，并略微削弱其软上限——指数 0.7 → 0.8）、22「刚体力学」（2 灵感，共轭湮灭的效果变为原来的十次方）、23「分析力学」（2 灵感，略微增强虚幻凝聚的效果——效果 ^1.2，指数 0.4 → 0.48）、31「电动力学」（4 灵感，基于奇点加速维度折叠器——CM 产量 ×(1+lg(Sp+1))^0.8，与游戏速度无关）、32「几何光学」（3 灵感，获得的奇点 ×1e15）、41「波动光学」（7 灵感，增强热能超载的效果——每一级都相当于之前的 2 级，并削弱奇点凝聚的软上限——超出 10 级部分的指数 ^1/3 → ^0.7，并略微削弱波长二次软上限——指数 0.85 → 0.95）、51「双缝干涉实验」（不消耗灵感，需求拥有 A63 与总灵感 ≥55——<span class="color-theory">“理论”</span>为橙色、<span class="color-research">“研究”</span>为天蓝色：拓宽理论深度并解锁研究子页）——折叠器的时间乘数变为 max((1+lg(1+时间倍率))/2, 时间倍率^0.005)。其余节点为占位（后续版本实装）。<strong>理论深度</strong>（初始 5，每购买一个研究项目 +1/3）决定可购买的最深节点层级，更深层的节点显示？？？。</p>
+            <p><strong>光学系列</strong>（v0.6.3.2 测试）：节点 51 之下分出两支互斥的系列——<strong>粒子说</strong>（<span style="color:#a78bfa">紫色</span>：61「光学-粒子说 I」获得的超弦 ×100 → 71「光学-粒子说 II」CM 第二效果公式变为 1+lg(1+lg(1+CM))/7（更好）→ 81 占位）与<strong>波动说</strong>（<span style="color:#5fd8d8">青色</span>：62「光学-波动说 I」基于当前超弦增加获得的超弦 ×min(10<sup>4+√(lgSS/40)</sup>, max(5lgSS, SS<sup>0.1</sup>)) → 72「光学-波动说 II」CM 第二效果 +0.1 → 82 占位）。<strong>两系列只能购买一种</strong>：购入任一侧后另一侧永久不可购。系列节点在拥有节点 51 且理论深度达到其层号后才出现在树上（价格待定）。</p>
           </div>
         </details>
 
         <details class="help-section hidden" id="help-compact-research">
-          <summary>研究 <span class="help-ver research-text">v0.6.3（测试）</span></summary>
+          <summary>研究 <span class="help-ver research-text">v0.6.3–v0.6.3.2（测试）</span></summary>
           <div class="help-body">
             <p><strong>研究</strong>（天蓝色子页，购买节点51 解锁）：选择实验与等级（1–10，每个实验对应一种削弱）并预测总奇点后开始实验。开始与结束都会执行一次卷缩重置（不计次数，并重置虚粒子与黑洞质量）；持有奇点达到 1.79e308 后可结束实验，获得<strong>实验数据（ED）</strong>＝难度分×预测分×附加分：难度分＝3<sup>选择级别总和</sup>×10<sup>实验个数−1</sup>；预测分＝100×(1−|lg(实际+1)−lg(预测+1)|/lg(预测+1))；附加分＝lg(min(实际,预测)+1)<sup>0.25</sup>。ED 只记录历史最高的一次，并按每秒 Multi×ED<sup>0.8</sup> 产出<strong>推论（Inf）</strong>。</p>
+            <p><strong>研究项目</strong>（v0.6.3.2 测试）：成就 <strong>A71「乌云」</strong>（完成一次实验）解锁。研究项目按顺序以「待办」形式出现（最多同时 3 个），满足 ED 需求并花费推论购买；<strong>每购买一个研究，理论深度 +1/3</strong>（理论深度决定可解锁的理论树最深节点层，「查看/隐藏已经完成的研究」可随时回看）。已实装：<strong>R1 托特管状折叠</strong>（需求 1e3 ED，价格 2e4 推论）——维度折叠器的基础 CM 获取变为 ×100 或 ^1.03 的更大值；<strong>R2 虚空探测器</strong>（1e3 ED，5e4）——解锁新的虚空内容（见「虚空 II」）；<strong>R3 动态调整LLM</strong>（1e3 ED，1e5）——引理加成自身获取：推论获取速度 ×lg(推论+1)<sup>1.5</sup>；<strong>R4 热焓极点回溯</strong>（4e3 ED，3e7）——奇点改为使用此次湮灭的最高温度计算；<strong>R5 态矢量相干保持</strong>（4e3 ED，1e8）——缩短波长不再重置任何东西；<strong>R6 Ricci流预解算</strong>（需求/价格待定）——基于推论增加维度折叠器速度：×min(10<sup>√lg(推论+1)</sup>, 推论<sup>1/4</sup>)。</p>
           </div>
         </details>
 
