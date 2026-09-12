@@ -4196,32 +4196,32 @@ function buyTheoryNode(id) {
 // ---------- 理论树导出/导入/预设（v0.6.0.0 测试）----------
 // 格式：层用「;」分隔、同层节点用「,」、末尾固定「0d」段。例：01;11;21,22;31;41;0d
 function exportTheoryTree() {
-  const layers = []; // 稀疏数组：空层 join 时自动为空段（层数随实装节点扩展，当前最深 8）
-  for (const def of THEORY_NODES) {
-    if (theoryOwned(def.id)) {
-      const li = +def.id[0];
-      layers[li] = layers[li] ? layers[li] + "," + def.id : def.id;
-    }
+  // 紧凑格式（v0.6.3.2）：空层不输出占位分号，如只购 11/21/31/41 → "11;21;31;41;0d"
+  const segs = [];
+  for (let li = 0; li <= 8; li++) {
+    const ids = THEORY_NODES.filter(n => +n.id[0] === li && theoryOwned(n.id)).map(n => n.id);
+    if (ids.length) segs.push(ids.join(","));
   }
-  return layers.join(";") + ";0d";
+  return (segs.length ? segs.join(";") + ";" : "") + "0d";
 }
 // 解析理论树字符串：返回按「从上往下、从左往右」排序的节点 id 数组；格式有误返回 null。
-// 格式：层用「;」分隔、同层节点用「,」、末尾固定「0d」段（如 01;11;21,22;31;41;51;0d）；
-// 末尾的空层可省略（0d 恒为最后一段）；每个节点的层号必须与其所在段位置一致。
-// 段数上限 = 最深层号（8）+ 1 层 + 0d 段 = 10（旧版写死 6，节点51 的导出串会无法导回）
+// 格式：层与层用「;」分隔、同层节点用「,」、末尾固定「0d」段。
+// v0.6.3.2 起节点 id 自带层号、段位不再参与校验——空层不占位的紧凑串与旧版带空层
+// 占位的串（如 ";11;21;31;41;;0d"、"01;11;21,22;31;41;51;0d"）均可导入
 function parseTheoryTree(str) {
   if (typeof str !== "string") return null;
   const segs = str.trim().split(";");
   if (segs.length < 1 || segs.length > 10 || segs[segs.length - 1] !== "0d") return null;
   const out = [];
   for (let li = 0; li < segs.length - 1; li++) {
-    if (segs[li] === "") continue;
+    if (segs[li] === "") continue; // 兼容旧版空层占位
     for (const tok of segs[li].split(",")) {
       const def = THEORY_NODES.find(n => n.id === tok);
-      if (!def || +def.id[0] !== li) return null; // id 不存在或层号与位置不符
+      if (!def) return null; // id 不存在
       if (!out.includes(tok)) out.push(tok);
     }
   }
+  out.sort((a, b) => +a[0] - +b[0]); // 跨层排序；同层保持段内顺序
   return out;
 }
 // 在已购基础上（不清退）按给定顺序尽可能购买：父节点规则与灵感限额逐个判定
