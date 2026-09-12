@@ -7372,6 +7372,7 @@ function applyTestModeUIGlobal() {
   const clearVoidBtn = document.getElementById("clear-void-btn");
   const clearResearchBtn = document.getElementById("clear-research-btn");
   const resetInsBtn = document.getElementById("reset-ins-btn");
+  const resetTpCmBtn = document.getElementById("reset-tp-cm-btn");
   const forceAnnBtn = document.getElementById("force-ann-btn");
   const verEl = document.getElementById("version-label");
   if (enterBtn) {
@@ -7383,6 +7384,7 @@ function applyTestModeUIGlobal() {
   if (clearVoidBtn) clearVoidBtn.classList.toggle("hidden", !state.testMode);
   if (clearResearchBtn) clearResearchBtn.classList.toggle("hidden", !state.testMode);
   if (resetInsBtn) resetInsBtn.classList.toggle("hidden", !state.testMode);
+  if (resetTpCmBtn) resetTpCmBtn.classList.toggle("hidden", !state.testMode);
   if (forceAnnBtn) forceAnnBtn.classList.toggle("hidden", !state.testMode);
   const forceCompactBtn = document.getElementById("force-compact-btn");
   if (forceCompactBtn) forceCompactBtn.classList.toggle("hidden", !state.testMode);
@@ -7658,6 +7660,15 @@ function setupUI() {
     saveGame();
     updateCompactUI();
     setAutosaveStatus("灵感已重置（总灵感/价格回初始），理论树已清空");
+  });
+  // 测试工具：重置拓扑节点（TP 与点/边/面配置）与 CM（不执行卷缩重置）
+  document.getElementById("reset-tp-cm-btn").addEventListener("click", () => {
+    if (!confirm("确定重置拓扑节点（TP 与点/边/面全部归 0）与卡拉比-丘流形（CM 归 0）吗？（不执行卷缩重置）")) return;
+    state.tp = 0; state.tpV = 0; state.tpE = 0; state.tpF = 0;
+    setCMLog(NLOG); // 与卷缩重置的 CM 清零同口径
+    saveGame();
+    updateCompactUI();
+    setAutosaveStatus("拓扑节点与 CM 已归零");
   });
   // 湮灭按钮（首次湮灭后显示；点击直接湮灭，不强制切换选项卡）
   document.getElementById("annihilate-btn").addEventListener("click", () => {
