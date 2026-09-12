@@ -2815,7 +2815,7 @@ function buildVoidOnce() {
         "等级模式：ρ（虚数密度）只在全扭曲虚空（8 种削弱全开）内按真实时间增长，不受时间倍率影响"
         + "——每秒获取 w/(1+ρ)^(1+N/3)，w 为超出波速软上限部分的波速获取对数值。\n"
         + "ρ 达到 500+100N 可「相变」：相变数 +1、ρ 清零，获取更难但推迟更强。"
-        + "「无序化」清零 ρ 与相变数（虚空中不可用）。\n"
+        + "相变与「无序化」（清零 ρ 与相变数）都只能在虚空外操作。\n"
         + "效果：波速软上限起始点推迟 10^(3(1+N)^1.5·ρ)，并使能标偏移获取 ×(1+N)·max(1, ρ/50)。详见帮助页「虚空 II」。");
       card.appendChild(tip);
       const row = document.createElement("div");
@@ -2917,8 +2917,8 @@ function updateVoidUI() {
   }
   if (voidSvuEls.phaseBtn) {
     const ready = svu3PhaseReady();
-    voidSvuEls.phaseBtn.classList.toggle("ready", ready);
-    voidSvuEls.phaseBtn.disabled = !ready;
+    voidSvuEls.phaseBtn.classList.toggle("ready", ready); // 达标仍高亮，提示退出虚空后可相变
+    voidSvuEls.phaseBtn.disabled = state.voidActive || !ready; // 相变与无序化均需虚空外
     voidSvuEls.disorderBtn.disabled = state.voidActive || !m3;
   }
   if (voidSvuEls.fillBtn) {
@@ -3448,7 +3448,7 @@ function svu3EffectText() {
   const rhoTxt = state.svu3Rho > 0 ? fmtNum(state.svu3Rho, Math.log10(state.svu3Rho)) : "0";
   return `ρ=${rhoTxt}　相变数：${state.svu3N}`
     + `\n效果：当前软上限起始点：${fmtNum(Math.pow(10, Math.min(capStart, 308)), capStart)}`
-    + `\n相变阈值：ρ ≥ ${fmt(svu3PhaseThreshold())}${state.voidActive ? "（虚空中无法无序化）" : ""}`;
+    + `\n相变阈值：ρ ≥ ${fmt(svu3PhaseThreshold())}${state.voidActive ? "（虚空中无法相变/无序化）" : ""}`;
 }
 // ρ 增长（applyProduction 调用，真实时间 realDt 原始值，不受时间倍率影响）：
 // 条件=里程碑3 且虚空中且 8 种削弱全开；w = 超出软上限部分的波速获取 log10；
@@ -3462,8 +3462,9 @@ function svu3RhoTick(realDt) {
   const rho = state.svu3Rho + w / Math.pow(1 + state.svu3Rho, 1 + state.svu3N / 3) * realDt;
   if (isFinite(rho)) state.svu3Rho = rho;
 }
-// 相变：相变数 +1、ρ 清零（之后 ρ 获取更难，但推迟效果更强）
+// 相变：相变数 +1、ρ 清零（之后 ρ 获取更难，但推迟效果更强）；虚空中不可用，需退出虚空后操作
 function svu3Phase() {
+  if (state.voidActive) { setAutosaveStatus("虚空中无法相变，请先退出虚空"); return; }
   if (!svu3PhaseReady()) return;
   state.svu3N++;
   state.svu3Rho = 0;
