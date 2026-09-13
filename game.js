@@ -4134,7 +4134,7 @@ const THEORY_NODES = [
   { id: "61", name: "光学-粒子说 I", parents: ["51"], cost: 40, series: "particle",
     desc: "获得的超弦 ×1000",
     effect: () => "当前 ×1000" },
-  { id: "71", name: "光学-粒子说 II", parents: ["61"], priceTBD: true, series: "particle",
+  { id: "71", name: "光学-粒子说 II", parents: ["61"], cost: 50, series: "particle",
     desc: "波长二次软上限削弱1%",
     effect: () => "当前削弱指数 0.96" },
   { id: "81", name: "光学-粒子说 III", parents: ["71"], cost: 0, series: "particle", placeholder: true,
