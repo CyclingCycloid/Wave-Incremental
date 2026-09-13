@@ -122,6 +122,9 @@ function defaultState() {
     researchBought: [],    // 已购研究项目 id（如 "R1"，按购买顺序）
     researchBest: {},      // 各实验完成的最高等级（id→等级，结束实验时记录）
     researchDone: 0,       // 完成的实验次数（结束实验计数，放弃不计）
+    insFromVP: 0,          // R8 后新增：虚粒子购买灵感的次数（价格 1e60·1e15^n）
+    sr1InvestLog: NLOG,    // SR1 晶格弛豫调制：累计投入的推论 log10（消耗计入、只增不减）
+    srActiveId: "",        // 当前激活的课题 id（""=未激活；一次只能研究一个课题）
     compStartReal: 0,      // 本次卷缩开始（真实时间戳 ms）
     compGameElapsed: 0,    // 本次卷缩的游戏时长（double 缓存，超 double 封顶 MAX_VALUE）
     compGameElapsedLog: NLOG, // 本次卷缩游戏时长的 log10 权威
@@ -624,7 +627,10 @@ function up3Exp() {
   if (inDistort("simple")) e *= 0.5; // 简洁：升级3效果变为原来的平方根
   // v0.6.2：指数超过 3 后按 2+log₂(e−1) 放缓（e=3 处 2+log₂2=3 恰好连续，此后每翻倍只 +1）
   //（双缝干涉实验的削弱不再作用于指数，而是作用于最终波长缩减效果，见 up3WavelengthFromFLog）
-  if (e > 3) e = 2 + Math.log2(e - 1);
+  // SR1「晶格弛豫调制」（v0.6.3.2）：软上限起点每级推迟 0.1（st=3+0.1·等级），
+  // 超出部分公式随之平移（st−1+log₂(e−st+2)，st 处 st−1+log₂2=st 仍连续）
+  const st = 3 + 0.1 * sr1Level();
+  if (e > st) e = st - 1 + Math.log2(e - st + 2);
   return e;
 }
 // ---------- e100 软上限 ----------
@@ -1410,6 +1416,9 @@ function migrateState() {
   state.researchBought = state.researchBought.filter(x => typeof x === "string");
   if (state.researchBest === null || state.researchBest === undefined || typeof state.researchBest !== "object") state.researchBest = {};
   if (state.researchDone === undefined || state.researchDone === null || !isFinite(state.researchDone) || state.researchDone < 0) state.researchDone = 0;
+  if (state.insFromVP === undefined || state.insFromVP === null || !isFinite(state.insFromVP) || state.insFromVP < 0) state.insFromVP = 0;
+  if (state.sr1InvestLog === undefined || !isFinite(state.sr1InvestLog)) state.sr1InvestLog = NLOG;
+  if (state.srActiveId === undefined || state.srActiveId === null || typeof state.srActiveId !== "string") state.srActiveId = "";
   if (state.svu3Rho === undefined || state.svu3Rho === null || !isFinite(state.svu3Rho) || state.svu3Rho < 0) state.svu3Rho = 0;
   if (state.svu3N === undefined || state.svu3N === null || !isFinite(state.svu3N) || state.svu3N < 0) state.svu3N = 0;
   // 节点51「曾购买过」闩锁：defaultState 已给默认 0，老档不会出现 undefined——
@@ -4201,7 +4210,7 @@ function tempCapExp() { return 10 * daExpMult() * theory11Exp() * node72SpBoostE
 function accretionExp() { return 3 * theory11Exp() * node72SpBoostExpMult(); }                // 黑洞吸积效率（AU43）^exp
 function theoryAvailable(def) {
   if (theoryOwned(def.id) || def.placeholder) return false;
-  if (+def.id[0] > state.theoryDepth + 1e-9) return false; // 理论深度：更深层的节点暂不可购（显示？？？；1e-9 容差防浮点残差）
+  if (+def.id[0] > theoryDepthEff() + 1e-9) return false; // 理论深度：更深层的节点暂不可购（显示？？？；1e-9 容差防浮点残差）
   if (def.hiddenUntilIns && getLogTotalIns() < Math.log10(def.hiddenUntilIns)) return false; // 节点51：总灵感 <50 隐藏
   if (def.reqIns && getLogTotalIns() < Math.log10(def.reqIns) - 1e-9) return false; // 节点51：总灵感门槛（含浮点容差）
   if (def.reqA63 && !state.ach.normal.includes("A63")) return false;
@@ -4215,6 +4224,7 @@ function theoryAvailable(def) {
 function insCostLogAt(src, n) {
   if (src === "F") return clampLog(n <= 8 ? 25000 * n : 50000 * n - 200000);
   if (src === "Sp") return clampLog(200 * (n - 1));
+  if (src === "VP") return clampLog(60 + 15 * (n - 1)); // R8：初始 1e60，每级 ×1e15
   return clampLog((n - 1) * Math.log10(2));
 }
 function insCostLogF() { return insCostLogAt("F", state.insFromF + 1); }
@@ -4224,7 +4234,8 @@ function insCostLogSS() { return insCostLogAt("SS", state.insFromSS + 1); } // �
 // 线性下降 balLog−cLog，与真实扣款同口径），返回可购次数与总价 log10
 function insMaxBuyInfo(src) {
   if (src === "SS" && tpTotal() < 1) return { count: 0, costLog: NLOG };
-  let balLog = src === "F" ? FLog() : src === "Sp" ? getLogSp() : getLogSS();
+  if (src === "VP" && !researchBought("R8")) return { count: 0, costLog: NLOG };
+  let balLog = src === "F" ? FLog() : src === "Sp" ? getLogSp() : src === "VP" ? getLogVP() : getLogSS();
   let k = 0, cumLog = NLOG;
   for (let guard = 0; guard < 1e5; guard++) {
     const cLog = insCostLogAt(src, state["insFrom" + src] + k + 1);
@@ -4248,6 +4259,12 @@ function buyIns(src) {
       const cLog = insCostLogSp();
       if (!spAffordLog(cLog)) break;
       subSpLog(cLog);
+    } else if (src === "VP") {
+      // R8「启发式假说萃取」：虚粒子购买灵感
+      if (!researchBought("R8")) break;
+      const cLog = insCostLogAt("VP", state.insFromVP + 1);
+      if (getLogVP() < cLog) break;
+      subVPLog(cLog);
     } else {
       // SS 途径需拥有维度折叠器（至少 1 个拓扑节点）——第一个 SS 必须花在折叠器上
       if (tpTotal() < 1) break;
@@ -4471,17 +4488,33 @@ const RESEARCH_DEFS = [
   { id: "R5", name: "热焓极点回溯", reqED: 3.5e3, costInf: 3e7, desc: "奇点改为使用此次湮灭最高温度计算" },
   { id: "R6", name: "态矢量相干保持", reqED: 3.5e3, costInf: 1e8, desc: "缩短波长不再重置任何东西" },
   { id: "R7", name: "Ricci流预解算", reqED: 3.5e3, costInf: 2.5e8, desc: "基于推论增加维度折叠器速度" },
+  { id: "R8", name: "启发式假说萃取", reqTotalIns: 140, costInf: 2e9, desc: "增加一个新的灵感购买途径" },
+  { id: "R9", name: "渐进推演范式 I", reqFLog: Math.log10(3e6), costInf: 1e10, desc: "解锁一个课题" },
 ];
 function researchDef(id) { return RESEARCH_DEFS.find(x => x.id === id); }
 function researchBought(id) { return state.researchBought.includes(id); }
-// 需求（ED）与价格（推论）的可负担判定（含 1e-9 浮点容差，口径与显示一致）
-function researchReqMet(def) { return getLogED() >= Math.log10(def.reqED) - 1e-9; }
+// 需求（可多项）与价格（推论）的可负担判定（含 1e-9 浮点容差，口径与显示一致）。
+// 需求类型：reqED（实验数据）/ reqTotalIns（总灵感）/ reqFLog（历史最高频率）
+function researchReqMet(def) {
+  if (def.reqED !== undefined && getLogED() < Math.log10(def.reqED) - 1e-9) return false;
+  if (def.reqTotalIns !== undefined && getLogTotalIns() < Math.log10(def.reqTotalIns) - 1e-9) return false;
+  if (def.reqFLog !== undefined && getLogMaxF() < def.reqFLog - 1e-9) return false;
+  return true;
+}
+// 需求显示文本（按类型拼接）
+function researchReqText(def) {
+  const parts = [];
+  if (def.reqED !== undefined) parts.push("需求 " + fmtNum(def.reqED, Math.log10(def.reqED)) + " ED");
+  if (def.reqTotalIns !== undefined) parts.push("需求 " + fmtNum(def.reqTotalIns, Math.log10(def.reqTotalIns)) + " 总灵感");
+  if (def.reqFLog !== undefined) parts.push("需求 达到 " + fmtLog(def.reqFLog) + " Hz");
+  return parts.join(" ｜ ");
+}
 function researchCostMet(def) { return getLogInf() >= Math.log10(def.costInf) - 1e-9; }
 function buyResearch(id) {
   const def = researchDef(id);
   if (!def || researchBought(id)) return;
   if (!state.ach.normal.includes("A71")) return; // 研究项目由 A71「乌云」解锁
-  if (!researchReqMet(def)) { setAutosaveStatus("实验数据不足（需求 " + fmtNum(def.reqED, Math.log10(def.reqED)) + " ED）"); return; }
+  if (!researchReqMet(def)) { setAutosaveStatus("需求未满足：" + researchReqText(def)); return; }
   if (!researchCostMet(def)) { setAutosaveStatus("推论不足"); return; }
   subInfLog(Math.log10(def.costInf));
   state.researchBought.push(id);
@@ -4521,6 +4554,46 @@ function renderResearchDone() {
     card.append(nm, ds);
     grid.appendChild(card);
   }
+}
+// ---------- 课题（SR，v0.6.3.2：A72「立论」解锁区块，R9 解锁第一个课题）----------
+// SR1 等级（小数）：由累计投入的推论计算 √(lg(累计投入+1))/2（消耗计入、只增不减）
+function sr1Level() {
+  return Math.sqrt(lg1FromLog(state.sr1InvestLog)) / 2;
+}
+// 课题总等级（当前仅 SR1，未来新课题累加）
+function srTotalLevel() { return sr1Level(); }
+// 课题提供的理论深度加成：min(n, 5√n)/20（n=总课题等级）
+function theoryDepthSrBonus() {
+  const n = srTotalLevel();
+  if (n <= 0) return 0;
+  return Math.min(n, 5 * Math.sqrt(n)) / 20;
+}
+// 有效理论深度 = 基础深度（研究项目 +1/3 累计）+ 课题加成（判定与显示统一走此函数）
+function theoryDepthEff() { return state.theoryDepth + theoryDepthSrBonus(); }
+// SR1 效果：up3 指数软上限起点 = 3 + 0.1×等级
+function sr1SoftcapStart() { return 3 + 0.1 * sr1Level(); }
+// SR1 投入 tick（applyProduction 调用，真实时间 realDt 原始值，不受时间倍率影响）：
+// 激活时每秒消耗当前持有推论的 1%（frac = 1−0.99^dt，复用 SVU1 手法）并累计
+function sr1Tick(realDt) {
+  if (state.srActiveId !== "SR1") return;
+  if (!(realDt > 0) || !(state.inf > 0)) return;
+  const frac = 1 - Math.pow(0.99, realDt);
+  const useLog = clampLog(getLogInf() + Math.log10(frac));
+  if (useLog <= NLOG + 1) return;
+  subInfLog(useLog);
+  state.sr1InvestLog = clampLog(logAddLogs(state.sr1InvestLog, useLog));
+}
+// 开始/停止研究（互斥：一次只能激活一个课题——当前仅 SR1，未来在此扩展）
+function toggleSR1() {
+  if (state.srActiveId === "SR1") {
+    state.srActiveId = "";
+    setAutosaveStatus("已停止课题：晶格弛豫调制");
+  } else {
+    state.srActiveId = "SR1";
+    setAutosaveStatus("开始研究课题：晶格弛豫调制（每秒投入当前推论的 1%）");
+  }
+  saveGame();
+  updateResearchUI();
 }
 // 三乘数（线性值，显示与结算共用的单一实现）：实验外预测/附加为 0、只算难度分
 function researchMultipliers() {
@@ -4893,14 +4966,16 @@ function buildCompactOnce() {
     autoBtn.addEventListener("click", applyAutoAlloc);
     compactEls.autoBtn = autoBtn;
   }
-  // 灵感三格子（大框内：频率 / 奇点 / 超弦，各自花费）
+  // 灵感购买格子（大框内：频率 / 奇点 / 超弦 / 虚粒子[R8 后]，各自花费）
   const insCells = document.getElementById("comp-ins-cells");
   insCells.innerHTML = "";
   compactEls.ins = {};
-  const INS_SRC_NAMES = { F: "频率", Sp: "奇点", SS: "超弦" };
-  for (const src of ["F", "Sp", "SS"]) {
+  const INS_SRC_NAMES = { F: "频率", Sp: "奇点", SS: "超弦", VP: "虚粒子" };
+  const INS_SRCS = ["F", "Sp", "SS", "VP"];
+  for (const src of INS_SRCS) {
     const b = document.createElement("button");
     b.className = "comp-ins-cell";
+    if (src === "VP") b.classList.add("hidden"); // R8 未购时隐藏：三等分 → 购买后四等分
     const s1 = document.createElement("span"); s1.className = "cis-src"; s1.textContent = INS_SRC_NAMES[src];
     const s2 = document.createElement("span"); s2.className = "cis-cost";
     b.append(s1, s2);
@@ -5105,13 +5180,20 @@ function updateCompactUI() {
     if (g) g.cnt.textContent = state["tp" + key];
   }
   if (compactEls.autoBtn) compactEls.autoBtn.classList.toggle("hidden", !state.ach.normal.includes("A64"));
-  // 灵感大框：总灵感（可用）+ 三途径格子
+  // 灵感大框：总灵感（可用）+ 购买途径格子（R8 后三变四）
   document.getElementById("comp-ins-line").textContent =
     `总灵感：${fmtIntRound(state.totalIns, getLogTotalIns())}（可用 ${fmtIntRound(state.ins, getLogIns())}）`;
-  const insHint = { F: "", Sp: "", SS: tpTotal() < 1 ? "（需先购买拓扑节点）" : "" };
-  for (const src of ["F", "Sp", "SS"]) {
+  const insCellsBox = document.getElementById("comp-ins-cells");
+  if (insCellsBox) insCellsBox.classList.toggle("four", researchBought("R8")); // R8 后三等分 → 四等分
+  const insHint = { F: "", Sp: "", SS: tpTotal() < 1 ? "（需先购买拓扑节点）" : "", VP: "" };
+  for (const src of ["F", "Sp", "SS", "VP"]) {
     const el = compactEls.ins[src];
     if (!el) continue;
+    if (src === "VP") {
+      const vpUnlocked = researchBought("R8");
+      el.btn.classList.toggle("hidden", !vpUnlocked);
+      if (!vpUnlocked) continue;
+    }
     const info = insMaxBuyInfo(src);
     // 可购时显示总价与「×N」；买不动时显示下一级价格（沿用旧显示）
     el.cost.textContent = (info.count > 0
@@ -5247,6 +5329,30 @@ function buildResearchOnce() {
     researchEls.projs[def.id] = { btn: b, cost: ct };
   }
   document.getElementById("research-done-toggle").addEventListener("click", () => toggleResearchDone());
+  // 课题（SR）：A72 解锁区块、R9 解锁第一个课题；SR1 点击切换投入
+  const srRow = document.getElementById("research-sr-row");
+  srRow.innerHTML = "";
+  researchEls.sr = {};
+  {
+    const b = document.createElement("button");
+    b.className = "research-proj-card";
+    const nm = document.createElement("div"); nm.className = "rp-name"; nm.textContent = "晶格弛豫调制";
+    const ds = document.createElement("div"); ds.className = "rp-desc"; ds.textContent = "推迟声子升级3的软上限（每级 0.1）";
+    const lv = document.createElement("div"); lv.className = "rp-cost";
+    b.append(nm, ds, lv);
+    b.addEventListener("click", toggleSR1);
+    srRow.appendChild(b);
+    researchEls.sr.SR1 = { btn: b, lv };
+  }
+  // 研究项目占位卡：待办不足 3 个时补满一行（标题下不留空）
+  researchEls.placeholders = [];
+  for (let i = 0; i < 3; i++) {
+    const ph = document.createElement("div");
+    ph.className = "research-proj-card hidden";
+    ph.innerHTML = "？？？<br>（后续版本实装）";
+    projRow.appendChild(ph);
+    researchEls.placeholders.push(ph);
+  }
   researchBuilt = true;
 }
 function updateResearchUI() {
@@ -5263,7 +5369,7 @@ function updateResearchUI() {
   document.getElementById("research-inf-rate").textContent = rateLog <= NLOG + 1
     ? "（每秒 +0）"
     : `（每秒 +${fmtNum(Math.pow(10, Math.min(rateLog, 308)), rateLog)}）`;
-  document.getElementById("research-depth").textContent = fmt(state.theoryDepth);
+  document.getElementById("research-depth").textContent = fmt(theoryDepthEff());
   // 研究项目（R 系列）：A71 解锁；待办按定义顺序最多显示 3 个，已购的消失（进浮动框）
   const rUnlocked = state.ach.normal.includes("A71");
   const projWrap = document.getElementById("research-projects");
@@ -5279,8 +5385,18 @@ function updateResearchUI() {
       shown++;
       const reqOk = researchReqMet(def), costOk = researchCostMet(def);
       el.btn.disabled = !(reqOk && costOk);
-      el.cost.textContent = "需求 " + fmtNum(def.reqED, Math.log10(def.reqED)) + " ED ｜ 价格 "
-        + fmtNum(def.costInf, Math.log10(def.costInf)) + " 推论" + (reqOk ? "" : "（ED 不足）");
+      el.cost.textContent = researchReqText(def) + " ｜ 价格 "
+        + fmtNum(def.costInf, Math.log10(def.costInf)) + " 推论" + (reqOk ? "" : "（需求未满足）");
+    }
+    // 占位卡补满一行（待办不足 3 个时）
+    researchEls.placeholders.forEach((ph, i) => { if (ph) ph.classList.toggle("hidden", i < shown); });
+    // SR1 课题卡：等级/当前软上限起点/投入状态
+    const srEl = researchEls.sr && researchEls.sr.SR1;
+    if (srEl) {
+      const lv = sr1Level(), st = sr1SoftcapStart(), active = state.srActiveId === "SR1";
+      srEl.lv.textContent = "等级 " + fmt(lv) + " ｜ 当前软上限起点 " + fmt(st)
+        + (active ? "\n研究中：每秒投入当前推论的 1%" : "");
+      srEl.btn.textContent = active ? "停止研究" : "开始研究";
     }
     // 已完成研究列表展开时保持同步（购买后即时反映）
     const doneGrid = document.getElementById("research-done-grid");
@@ -7065,6 +7181,8 @@ const NORMAL_ACH = [
   { id: "A71", name: "乌云", desc: "完成一次实验", star: true, reward: "解锁研究项目",
     // 更新前完成过实验的老玩家由 migrateState 补发（ED>0 或 S29 均证明结束过实验）
     check: () => state.researchDone >= 1 || getLogED() > NLOG + 1 || state.ach.hidden.includes("S29") },
+  { id: "A72", name: "立论", desc: "购买研究「渐进推演范式 I」", star: true, reward: "解锁课题",
+    check: () => researchBought("R9") },
 ];
 const ACH_PER_ROW = 5;
 // 已定义行数；之后整行为未解锁 ???
@@ -7632,6 +7750,7 @@ function applyProduction(realDt) {
   cmTick(realDt);
   infTick(realDt); // 研究：推论产出（真实时间，拥有节点51 后）
   svu3RhoTick(realDt); // SVU3 虚数密度：全扭曲虚空中按真实时间增长（不受时间倍率影响，里程碑3 后）
+  sr1Tick(realDt); // 课题 SR1：投入推论（真实时间，R9 后激活时）
 }
 
 function tick() {
