@@ -106,6 +106,7 @@ function defaultState() {
     tp: 0,                 // 未转换的拓扑节点（可转换为点/边/面；卷缩重置保留）
     tpV: 0, tpE: 0, tpF: 0, // 已转换的点 V / 边 E / 面 F（各消耗 1 TP，可退回）
     theoryNodes: {},       // 理论树已购节点（id→1，如 "01"）
+    theory51Bought: 0,     // 节点51「曾购买过」闩锁（重置理论树不清；光学系列节点以此保持可见）
     theoryRespec: false,   // 理论树重置开关：下次卷缩重置时清空已购理论并返还灵感
     theoryPresets: [1, 2, 3, 4, 5, 6].map(n => ({ name: "PR" + n, tree: "" })), // 理论树预设（右键管理）
     theoryDepth: 5,        // 理论深度：层号 ≤ TD 的理论树节点可购（v0.6.3）
@@ -1412,6 +1413,9 @@ function migrateState() {
   if (state.researchDone === undefined || state.researchDone === null || !isFinite(state.researchDone) || state.researchDone < 0) state.researchDone = 0;
   if (state.svu3Rho === undefined || state.svu3Rho === null || !isFinite(state.svu3Rho) || state.svu3Rho < 0) state.svu3Rho = 0;
   if (state.svu3N === undefined || state.svu3N === null || !isFinite(state.svu3N) || state.svu3N < 0) state.svu3N = 0;
+  // 节点51「曾购买过」闩锁：defaultState 已给默认 0，老档不会出现 undefined——
+  // 直接按「当前拥有 51 即置位」补记（新档购买路径必置位，不存在拥有 51 但 flag=0 的合法状态）
+  if (theoryOwned("51")) state.theory51Bought = 1;
   if (state.annMaxTLog === undefined || !isFinite(state.annMaxTLog)) state.annMaxTLog = NLOG;
   // 历史最高持有 VF：老档无记录，以当前持有量初始化（此后在 setVoidVFLog 内 latch 只增不减）
   {
@@ -4120,11 +4124,11 @@ function node62MultLog() {
   const bLog = Math.log10(Math.max(5 * lgSS, Math.pow(10, Math.min(0.1 * lgSS, 307))));
   return Math.min(aLog, bLog);
 }
-// 光学系列（层≥6）节点可见性：拥有节点51 后才出现在树上；
+// 光学系列（层≥6）节点可见性：拥有节点51 或**曾购买过**（闩锁，重置理论树不清）即出现在树上；
 // 深于当前理论深度的节点**不隐藏**，显示为名字/效果/价格全？？？（见 updateCompactUI）
 function theoryNodeVisible(def) {
   if (+def.id[0] < 6) return true;
-  return theoryOwned("51");
+  return theoryOwned("51") || !!state.theory51Bought;
 }
 // 光学系列互斥：已购任一粒子说节点则波动说全部不可购（反之亦然）
 function theorySeriesLocked(def) {
@@ -4222,6 +4226,7 @@ function buyTheoryNode(id) {
     subInsLog(cLog);
   }
   state.theoryNodes[id] = 1;
+  if (id === "51") state.theory51Bought = 1; // 曾购买过 51：光学系列节点此后一直可见
   setAutosaveStatus("理论解锁：" + def.name);
 }
 // ---------- 理论树导出/导入/预设（v0.6.0.0 测试）----------
@@ -4268,6 +4273,7 @@ function importTheoryTreeList(ids) {
       subInsLog(cLog);
     }
     state.theoryNodes[id] = 1;
+    if (id === "51") state.theory51Bought = 1;
     bought++;
   }
   return bought;
