@@ -3454,15 +3454,22 @@ function svu3EffectText() {
 }
 // ρ 增长（applyProduction 调用，真实时间 realDt 原始值，不受时间倍率影响）：
 // 条件=里程碑3 且虚空中且 8 种削弱全开；w = 超出软上限部分的波速获取 log10；
-// 每秒获取 w/(1+ρ)^(1+N/3)
+// 瞬时速率 = w/(1+ρ)^(1+N/3)。用**解析精确积分**（单 tick 内 w 视为恒定）而非逐 tick
+// 显式累加——显式法在长 realDt（挂起标签补发/离线大步长）下会严重过冲（一次冲上数万 ρ、
+// 瞬间越过相变阈值），且同样时长因 tick 切分不同结果差异巨大
 function svu3RhoTick(realDt) {
   if (!voidMilestone3() || !state.voidActive) return;
   if (state.voidRules.length < DISTORT_UNIVERSES.length) return;
   if (!(realDt > 0)) return;
   const w = gainRateLog(true).log - svu3CapStart();
   if (!(w > 0)) return;
-  const rho = state.svu3Rho + w / Math.pow(1 + state.svu3Rho, 1 + state.svu3N / 3) * realDt;
-  if (isFinite(rho)) state.svu3Rho = rho;
+  const k = 1 + state.svu3N / 3; // 阻尼指数（N=0 时恰为 1，走平方根闭式解）
+  const r0 = 1 + state.svu3Rho;
+  const r1 = k === 1
+    ? Math.sqrt(r0 * r0 + 2 * w * realDt)
+    : Math.pow(Math.pow(r0, k + 1) + (k + 1) * w * realDt, 1 / (k + 1));
+  const rho = r1 - 1;
+  if (isFinite(rho) && rho > state.svu3Rho) state.svu3Rho = rho;
 }
 // 相变：相变数 +1、ρ 清零（之后 ρ 获取更难，但推迟效果更强）；虚空中不可用，需退出虚空后操作
 function svu3Phase() {
