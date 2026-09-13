@@ -2820,7 +2820,7 @@ function buildVoidOnce() {
         + "——每秒获取 w/(1+ρ)^(1+N/3)，w 为超出波速软上限部分的波速获取对数值。\n"
         + "ρ 达到 500+100N 可「相变」：相变数 +1、ρ 清零，获取更难但推迟更强。"
         + "相变与「无序化」（清零 ρ 与相变数）都只能在虚空外操作。\n"
-        + "效果：波速软上限起始点推迟 10^(3(1+N)^1.5·ρ)，并使能标偏移获取 ×(1+N)·max(1, ρ/50)。详见帮助页「虚空 II」。");
+        + "效果：波速软上限起始点推迟 10^(3(1+N)^1.5·ρ)，并使能标偏移获取 ×N·(1+ρ)^((1+N/5)/2)。详见帮助页「虚空 II」。");
       card.appendChild(tip);
       const row = document.createElement("div");
       row.className = "svu3-btns";
@@ -3382,10 +3382,10 @@ function svu1Level() {
   return sp * vp * vf - 1;
 }
 // SVU2 能标偏移的等级增速（仅虚空外，每真实秒）：SVU1_level/(1+SVU2_level)^1.5。
-// SVU3「虚数相变」解锁后（里程碑3）额外提供倍率 (1+N)·max(1, ρ/50)——按约定不在 UI 显示
+// SVU3「虚数相变」解锁后（里程碑3）额外提供倍率 N·(1+ρ)^((1+N/5)/2)——按约定不在 UI 显示
 function svu2GainRate() {
   let rate = svu1Level() / Math.pow(1 + state.svu2Level, 1.5);
-  if (voidMilestone3()) rate *= (1 + state.svu3N) * Math.max(1, state.svu3Rho / 50);
+  if (voidMilestone3()) rate *= state.svu3N * Math.pow(1 + state.svu3Rho, (1 + state.svu3N / 5) / 2);
   return rate;
 }
 // SVU1 效果：虚空内波速获取速率的幂次 ^= 1 + min(level/6, √(2·level)/6)（虚空外恒 1）
