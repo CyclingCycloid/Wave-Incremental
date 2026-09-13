@@ -7196,7 +7196,7 @@ const NORMAL_ACH = [
   { id: "A71", name: "乌云", desc: "完成一次实验", star: true, reward: "解锁研究项目",
     // 更新前完成过实验的老玩家由 migrateState 补发（ED>0 或 S29 均证明结束过实验）
     check: () => state.researchDone >= 1 || getLogED() > NLOG + 1 || state.ach.hidden.includes("S29") },
-  { id: "A72", name: "立论", desc: "解锁课题",
+  { id: "A72", name: "立论", desc: "解锁课题", star: true, reward: "理论深度加成实验数据与推论获取",
     check: () => researchBought("R9") },
 ];
 const ACH_PER_ROW = 5;
