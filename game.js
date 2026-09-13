@@ -2899,12 +2899,14 @@ function updateVoidUI() {
           : "进度：需先购买研究「虚空探测器」")
         : "进度：？？？";
   }
-  // SVU 卡片状态（SVU1/2 由里程碑 1 解锁；SVU3 由里程碑 3 解锁）
+  // SVU 卡片状态（SVU1/2 由里程碑 1 解锁；SVU3 由里程碑 3 解锁——锁定时只调暗内容，
+  // 不给卡片整体加 opacity，保证「等级模式」tooltip 底框始终全不透明可读）
   for (const def of SVU_DEFS) {
     const el = voidSvuEls[def.id];
     if (!el) continue;
     const unlocked = def.id === "svu3" ? m3 : m1;
-    el.card.classList.toggle("locked", !unlocked);
+    el.card.classList.toggle("locked", !unlocked && def.id !== "svu3");
+    el.card.classList.toggle("locked-soft", !unlocked && def.id === "svu3");
     if (!unlocked) {
       el.ds.textContent = def.id === "svu3"
         ? "??? —— 完成虚空里程碑 3「度规塌缩」后解锁"

@@ -889,9 +889,15 @@ body[data-theme="white"] .inf-line .research-res-val { color: #3050b0; }
   display: none;
   position: absolute; left: 0; top: 130%; z-index: 40;
   width: min(420px, 72vw);
-  background: #111; color: #ddd; border: 1px solid #444; border-radius: 6px;
+  background: #000; color: #ddd; border: 1px solid #444; border-radius: 6px;
   padding: 8px 10px; font-size: 12px; line-height: 1.6;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
   white-space: pre-line;
 }
 .svu3-tip:hover::after { display: block; }
+/* SVU3 锁定态：只调暗文字与按钮，tooltip 底框保持全不透明（opacity 会连带整个子树） */
+.void-svu-card.locked-soft { cursor: default; }
+.void-svu-card.locked-soft .sau-name,
+.void-svu-card.locked-soft .sau-desc,
+.void-svu-card.locked-soft .sau-cost,
+.void-svu-card.locked-soft .svu3-btns { opacity: 0.5; }
