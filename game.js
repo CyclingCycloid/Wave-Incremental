@@ -4617,7 +4617,8 @@ function researchMultipliers() {
     const lgP1 = lg1FromLog(run.predictSpLog);
     pred = lgP1 <= 0 ? (lgR1 <= 0 ? 100 : 0) : 100 * (1 - Math.min(1, Math.abs(lgR1 - lgP1) / lgP1));
     const effR1 = Math.min(lgR1, lgP1); // 总奇点超过预测时，附加分按预测值计算
-    bonus = Math.min(10, Math.pow(Math.max(effR1, 0), 0.25)); // 硬上限 10
+    // 附加分 = 奇点相关部分（硬上限 10）× √理论深度（R9「渐进推演范式 I」奖励，理论深度部分不受 10 上限限制）
+    bonus = Math.min(10, Math.pow(Math.max(effR1, 0), 0.25)) * (researchBought("R9") ? Math.sqrt(theoryDepthEff()) : 1);
   }
   const total = run ? difficulty * pred * bonus : 0;
   return { difficulty, pred, bonus, total };
@@ -4688,6 +4689,7 @@ function infRateLog() {
     const l = lg1FromLog(getLogInf()); // lg(Inf+1)
     if (l > 0) rateLog += 3 * Math.log10(l); // ×(lg(Inf+1))^3：多对数增长，随 Inf 收敛
   }
+  if (researchBought("R9")) rateLog += Math.log10(theoryDepthEff()); // R9：推论获取 ×理论深度
   return clampLog(rateLog);
 }
 function infTick(realDt) {
