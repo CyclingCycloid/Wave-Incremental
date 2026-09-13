@@ -4041,6 +4041,7 @@ function applyAutoAlloc() {
   if (!best) { setAutosaveStatus("拓扑节点不足，暂无可行的几何分配"); return; }
   state.tpV = best.V; state.tpE = best.E; state.tpF = best.F;
   state.tp = T - best.V - best.E - best.F;
+  saveGame();
   updateCompactUI();
   saveGame();
   setAutosaveStatus(`已自动最佳分配：点 ${best.V} · 边 ${best.E} · 面 ${best.F}（3b₁b₂ = ${3 * best.score}）`);
@@ -4343,6 +4344,7 @@ function importTheoryTreeList(ids) {
     }
     state.theoryNodes[id] = 1;
     if (id === "51") state.theory51Bought = 1;
+
     saveGame();
     bought++;
   }
@@ -6256,7 +6258,7 @@ function buildAutomationOnce() {
     btn.addEventListener("click", () => {
       if (!autoUnlocked(def)) return;
       state.autoOn[def.key] = !state.autoOn[def.key];
-  saveGame();
+      saveGame();
       updateAutomationUI();
     });
     for (const el of [lock, input, timeInput, modeBtn, btn]) if (el) right.append(el);
@@ -6266,7 +6268,7 @@ function buildAutomationOnce() {
       batchBtn = document.createElement("button"); batchBtn.className = "batch-btn single hidden";
       batchBtn.addEventListener("click", () => {
         state.batchMode[def.key] = !state.batchMode[def.key];
-  saveGame();
+        saveGame();
         updateAutomationUI();
       });
       right.append(batchBtn);
