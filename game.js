@@ -1417,10 +1417,10 @@ function migrateState() {
   // 直接按「当前拥有 51 即置位」补记（新档购买路径必置位，不存在拥有 51 但 flag=0 的合法状态）
   if (theoryOwned("51")) state.theory51Bought = 1;
   if (state.annMaxTLog === undefined || !isFinite(state.annMaxTLog)) state.annMaxTLog = NLOG;
-  // 历史最高持有 VF：老档无记录，以当前持有量初始化（此后在 setVoidVFLog 内 latch 只增不减）
-  {
-    const curVFLog = (state.logVoidVF10 !== undefined && isFinite(state.logVoidVF10)) ? state.logVoidVF10 : NLOG;
-    if (state.logVoidVFBest10 === undefined || !isFinite(state.logVoidVFBest10) || state.logVoidVFBest10 < curVFLog) state.logVoidVFBest10 = curVFLog;
+  // 历史最高持有 VF：仅对缺失/损坏的字段做一次性初始化（取当前持有量）。
+  // 不得用「当前持有量」回填已清零的记录——「清空历史最高VF」测试按钮就是要把记录归 0 重测
+  if (state.logVoidVFBest10 === undefined || !isFinite(state.logVoidVFBest10)) {
+    state.logVoidVFBest10 = (state.logVoidVF10 !== undefined && isFinite(state.logVoidVF10)) ? state.logVoidVF10 : NLOG;
   }
   // 补发 A71「乌云」：更新前已完成过实验（ED>0 或拥有 S29 均证明结束过实验）的玩家直接获得
   if (!state.ach.normal.includes("A71")
@@ -3358,6 +3358,9 @@ function exitVoid() {
   const prevVFLog = state.logVoidVF10;
   const improved = achieved && vfLog > prevVFLog;
   if (improved) setVoidVFLog(vfLog);
+  // 未超过持有量（VF 不入账）时也要更新「历史最高」记录——否则清空记录后，
+  // 只要持有量卡在高位，任何新结算都写不进历史最高（清空按钮失效的根因）
+  else if (achieved && vfLog > state.logVoidVFBest10) state.logVoidVFBest10 = vfLog;
   state.voidActive = false;
   state.voidRules = [];
   forceAnnihilationReset(0);
