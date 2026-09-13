@@ -4449,9 +4449,12 @@ const RESEARCH_EXPS = [
     science: "展示光子或电子等微观粒子同时具有波动性与粒子性的经典量子力学实验，当粒子穿过双缝时会在屏上形成明暗相间的干涉条纹。",
     debuff: (n) => n >= 1 ? `波长和波速获取公式的指数变为原来的 ${slitMult(n).toFixed(4)} 倍` : "无削弱" },
 ];
-function researchExpDef(id) { return RESEARCH_EXPS.find(x => x.id === id); }
-// 双缝干涉实验的每级削弱倍数：0.6·0.8^(n-1)（等级 1 时 0.6 不变，高等级放缓；三处实现共用）
-function slitMult(n) { return 0.6 * Math.pow(0.8, n - 1); }
+// 双缝干涉实验的每级削弱倍数：等级 1–4 为 0.6·0.8^(n-1)（0.6/0.48/0.384/0.3072）；
+// 5 级起每级再 ×0.5（n=5 → 0.1536、n=6 → 0.0768……三处实现共用）
+function slitMult(n) {
+  if (n <= 4) return 0.6 * Math.pow(0.8, n - 1);
+  return 0.3072 * Math.pow(0.5, n - 4);
+}
 // 双缝干涉的等级（实验进行中返回等级，否则 0）
 function researchSlitLevel() {
   if (!state.researchRun) return 0;
