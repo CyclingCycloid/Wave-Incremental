@@ -859,20 +859,8 @@ body[data-theme="white"] .inf-line .research-res-val { color: #3050b0; }
 .research-proj-card:disabled { opacity: 0.5; cursor: not-allowed; }
 .research-proj-card:not(:disabled) { border-color: #7ec8f7; box-shadow: 0 0 6px rgba(126, 200, 247, 0.25); }
 .research-done-toggle { margin-top: 8px; }
-/* 已完成研究浮动框：全屏遮罩（主游戏背景变暗）+ 天蓝边框面板 */
-.research-modal-overlay {
-  position: fixed; inset: 0; z-index: 90;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex; align-items: center; justify-content: center;
-}
-.research-modal {
-  width: min(680px, 92vw); max-height: 76vh; overflow-y: auto;
-  border: 1px solid #7ec8f7; border-radius: 10px;
-  background: var(--panel, #16161d); padding: 14px;
-  box-shadow: 0 0 18px rgba(126, 200, 247, 0.35);
-}
-.research-modal h3 { color: #7ec8f7; margin-top: 0; }
-.research-modal-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+/* 已完成研究：研究项目区内联展开（实验列表上方，一行两个） */
+.research-modal-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
 .research-modal-grid .research-proj-card { flex: 1 1 46%; cursor: default; }
 
 /* ===== v0.6.3.2：理论树光学系列（粒子说=紫色、波动说=青色；两系列互斥）===== */

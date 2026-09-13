@@ -4058,20 +4058,19 @@ const THEORY_NODES = [
     descHtml: "拓宽<span class=\"color-theory\">“理论”</span>的深度<br>解锁<span class=\"color-research\">“研究”</span>",
     reqIns: 55, hiddenUntilIns: 50, reqA63: true },
   // 光学系列（v0.6.3.2）：粒子说=紫色 / 波动说=青色，两系列互斥（只能购买一种）；
-  // 拥有节点51 且理论深度达到层号后才出现在树上。
-  // TODO(数值待定)：61/62 灵感价格占位 8、71/72 占位 12，定稿后直接改这里
-  { id: "61", name: "光学-粒子说 I", parents: ["51"], cost: 8, series: "particle",
+  // 拥有节点51 后才出现在树上。62 定价 35 灵感；61/71/72 价格待定（priceTBD 暂不可购买）
+  { id: "61", name: "光学-粒子说 I", parents: ["51"], priceTBD: true, series: "particle",
     desc: "获得的超弦 ×100",
     effect: () => "当前 ×100" },
-  { id: "71", name: "光学-粒子说 II", parents: ["61"], cost: 12, series: "particle",
+  { id: "71", name: "光学-粒子说 II", parents: ["61"], priceTBD: true, series: "particle",
     desc: "CM第二效果公式变得更好",
     effect: () => "公式差值 +" + (wavelengthExp() - wavelengthExpBase()).toFixed(4) },
   { id: "81", name: "光学-粒子说 III", parents: ["71"], cost: 0, series: "particle", placeholder: true,
     desc: "？？？" },
-  { id: "62", name: "光学-波动说 I", parents: ["51"], cost: 8, series: "wave",
+  { id: "62", name: "光学-波动说 I", parents: ["51"], cost: 35, series: "wave",
     desc: "基于当前超弦增加获得的超弦",
     effect: () => "当前 ×" + fmtLog(node62MultLog()) },
-  { id: "72", name: "光学-波动说 II", parents: ["62"], cost: 12, series: "wave",
+  { id: "72", name: "光学-波动说 II", parents: ["62"], priceTBD: true, series: "wave",
     desc: "CM第二效果 +0.1",
     effect: () => "公式差值 +" + (wavelengthExp() - wavelengthExpBase()).toFixed(4) },
   { id: "82", name: "光学-波动说 III", parents: ["72"], cost: 0, series: "wave", placeholder: true,
@@ -4091,10 +4090,11 @@ function node62MultLog() {
   const bLog = Math.log10(Math.max(5 * lgSS, Math.pow(10, Math.min(0.1 * lgSS, 307))));
   return Math.min(aLog, bLog);
 }
-// 光学系列（层≥6）节点可见性：拥有节点51 且理论深度达到层号后才出现在树上（含容差）
+// 光学系列（层≥6）节点可见性：拥有节点51 后才出现在树上；
+// 深于当前理论深度的节点**不隐藏**，显示为名字/效果/价格全？？？（见 updateCompactUI）
 function theoryNodeVisible(def) {
   if (+def.id[0] < 6) return true;
-  return theoryOwned("51") && state.theoryDepth + 1e-9 >= +def.id[0];
+  return theoryOwned("51");
 }
 // 光学系列互斥：已购任一粒子说节点则波动说全部不可购（反之亦然）
 function theorySeriesLocked(def) {
@@ -4126,6 +4126,7 @@ function theoryAvailable(def) {
   if (def.hiddenUntilIns && getLogTotalIns() < Math.log10(def.hiddenUntilIns)) return false; // 节点51：总灵感 <50 隐藏
   if (def.reqIns && getLogTotalIns() < Math.log10(def.reqIns) - 1e-9) return false; // 节点51：总灵感门槛（含浮点容差）
   if (def.reqA63 && !state.ach.normal.includes("A63")) return false;
+  if (def.priceTBD) return false; // 价格待定：暂无法购买
   if (theorySeriesLocked(def)) return false; // 光学系列互斥：另一系列已购则本系列不可购
   return def.parents.length === 0 || def.parents.some(p => theoryOwned(p));
 }
@@ -4403,16 +4404,16 @@ function buyResearch(id) {
   updateAchievementsUI();
   setAutosaveStatus("研究完成：" + def.name + "（理论深度 +1/3）");
 }
-// 已完成研究浮动框（查看/隐藏切换；点遮罩空白处关闭）
-function toggleResearchModal(force) {
-  const overlay = document.getElementById("research-modal-overlay");
-  if (!overlay) return;
-  const show = force !== undefined ? force : overlay.classList.contains("hidden");
-  overlay.classList.toggle("hidden", !show);
+// 已完成研究列表（研究项目区内联展开/收起，位于实验列表上方，一行两个）
+function toggleResearchDone(force) {
+  const grid = document.getElementById("research-done-grid");
+  if (!grid) return;
+  const show = force !== undefined ? force : grid.classList.contains("hidden");
+  grid.classList.toggle("hidden", !show);
   if (show) renderResearchDone();
 }
 function renderResearchDone() {
-  const grid = document.getElementById("research-modal-grid");
+  const grid = document.getElementById("research-done-grid");
   if (!grid) return;
   grid.innerHTML = "";
   const done = RESEARCH_DEFS.filter(d => researchBought(d.id));
@@ -4871,7 +4872,7 @@ function buildCompactOnce() {
     node.append(nm, idl, st);
     if (!def.placeholder) node.addEventListener("click", (e) => { e.stopPropagation(); buyTheoryNode(def.id); updateCompactUI(); });
     world.appendChild(node);
-    compactEls.nodes[def.id] = { node, st };
+    compactEls.nodes[def.id] = { node, st, nm };
   }
   setupTreePanZoom();
   treeResetView();
@@ -5041,6 +5042,9 @@ function updateCompactUI() {
     if (line) line.setAttribute("visibility", visible ? "visible" : "hidden");
     if (!visible) continue;
     const owned = theoryOwned(def.id);
+    // 深于当前理论深度的节点不隐藏：名字/效果/价格全部显示？？？（td 判定含 1e-9 容差）
+    const tdGated = +def.id[0] > state.theoryDepth + 1e-9;
+    el.nm.textContent = tdGated ? "？？？" : def.name;
     el.node.classList.toggle("bought", owned);
     el.node.classList.toggle("available", theoryAvailable(def));
     el.node.classList.toggle("locked", !owned && !theoryAvailable(def));
@@ -5051,6 +5055,9 @@ function updateCompactUI() {
       const effectTxt = def.id === "01" ? "当前乘数 ×" + fmtLog(cmTimeMultLog()) : (def.effect ? def.effect() : "已解锁");
       if (def.descHtml) html = def.descHtml + "<br>" + effectTxt;
       else txt = def.desc + "\n" + effectTxt;
+    } else if (tdGated) {
+      // 理论深度不足：名字/效果/价格全？？？（编号仍可见）
+      txt = "？？？\n？？？";
     } else if (def.placeholder) {
       // 占位节点：无论上级是否已购一律显示「未实装」（信息对玩家无价值）
       txt = "未实装\n（后续版本）";
@@ -5058,7 +5065,8 @@ function updateCompactUI() {
       // 节点51：总灵感 <50 时一律显示 ？？？
       txt = "？？？\n？？？";
     } else {
-      const reqTxt = def.reqIns ? "需求：" + (def.reqA63 ? "拥有 A63、" : "") + "总灵感 " + def.reqIns + "（不消耗）" : "花费 " + def.cost + " 灵感";
+      const reqTxt = def.reqIns ? "需求：" + (def.reqA63 ? "拥有 A63、" : "") + "总灵感 " + def.reqIns + "（不消耗）"
+        : (def.priceTBD ? "价格待定（暂无法购买）" : "花费 " + def.cost + " 灵感");
       if (def.descHtml) html = def.descHtml + "<br>" + reqTxt;
       else txt = `${def.desc}\n${reqTxt}`;
     }
@@ -5139,9 +5147,7 @@ function buildResearchOnce() {
     projRow.appendChild(b);
     researchEls.projs[def.id] = { btn: b, cost: ct };
   }
-  const overlay = document.getElementById("research-modal-overlay");
-  overlay.addEventListener("click", (e) => { if (e.target === overlay) toggleResearchModal(false); });
-  document.getElementById("research-done-toggle").addEventListener("click", () => toggleResearchModal());
+  document.getElementById("research-done-toggle").addEventListener("click", () => toggleResearchDone());
   researchBuilt = true;
 }
 function updateResearchUI() {
@@ -5177,7 +5183,9 @@ function updateResearchUI() {
       el.cost.textContent = "需求 " + fmtNum(def.reqED, Math.log10(def.reqED)) + " ED ｜ 价格 "
         + fmtNum(def.costInf, Math.log10(def.costInf)) + " 推论" + (reqOk ? "" : "（ED 不足）");
     }
-    // 浮动框开着时保持内容同步（资源变化影响不了已购列表，但首次打开前已渲染）
+    // 已完成研究列表展开时保持同步（购买后即时反映）
+    const doneGrid = document.getElementById("research-done-grid");
+    if (doneGrid && !doneGrid.classList.contains("hidden")) renderResearchDone();
   }
   // 实验卡片（实验中显示快照等级并锁定编辑）
   const run = state.researchRun;
