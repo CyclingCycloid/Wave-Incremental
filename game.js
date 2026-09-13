@@ -4144,7 +4144,7 @@ const THEORY_NODES = [
   { id: "62", name: "光学-波动说 I", parents: ["51"], cost: 35, series: "wave",
     desc: "基于当前超弦增加获得的超弦",
     effect: () => "当前 ×" + fmtLog(node62MultLog()) },
-  { id: "72", name: "光学-波动说 II", parents: ["62"], priceTBD: true, series: "wave",
+  { id: "72", name: "光学-波动说 II", parents: ["62"], cost: 25, series: "wave",
     desc: "CM第二效果公式变得更好",
     effect: () => "公式差值 +" + (wavelengthExp() - wavelengthExpBase()).toFixed(4) },
   { id: "82", name: "光学-波动说 III", parents: ["72"], cost: 0, series: "wave", placeholder: true,
