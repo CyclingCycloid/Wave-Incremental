@@ -4495,7 +4495,7 @@ const RESEARCH_DEFS = [
   { id: "R6", name: "态矢量相干保持", reqED: 3.5e3, costInf: 1e8, desc: "缩短波长不再重置任何东西" },
   { id: "R7", name: "Ricci流预解算", reqED: 3.5e3, costInf: 2.5e8, desc: "基于推论增加维度折叠器速度" },
   { id: "R8", name: "启发式假说萃取", reqTotalIns: 140, costInf: 2e9, desc: "增加一个新的灵感购买途径" },
-  { id: "R9", name: "渐进推演范式 I", reqFLog: 3e6, reqVFLog: 30, costInf: 1e10, desc: "解锁一个课题" },
+  { id: "R9", name: "渐进推演范式 I", reqFLog: 3150000, reqVFLog: 30, costInf: 1e10, desc: "解锁一个课题" },
 ];
 function researchDef(id) { return RESEARCH_DEFS.find(x => x.id === id); }
 function researchBought(id) { return state.researchBought.includes(id); }
@@ -4504,7 +4504,7 @@ function researchBought(id) { return state.researchBought.includes(id); }
 function researchReqMet(def) {
   if (def.reqED !== undefined && getLogED() < Math.log10(def.reqED) - 1e-9) return false;
   if (def.reqTotalIns !== undefined && getLogTotalIns() < Math.log10(def.reqTotalIns) - 1e-9) return false;
-  if (def.reqFLog !== undefined && getLogMaxF() < def.reqFLog - 1e-9) return false;
+  if (def.reqFLog !== undefined && FLog() < def.reqFLog - 1e-9) return false;
   if (def.reqVFLog !== undefined && state.logVoidVFBest10 < def.reqVFLog - 1e-9) return false;
   return true;
 }
@@ -5398,14 +5398,17 @@ function updateResearchUI() {
     }
     // 占位卡补满一行（待办不足 3 个时）
     researchEls.placeholders.forEach((ph, i) => { if (ph) ph.classList.toggle("hidden", i < shown); });
-    // SR1 课题卡：等级/当前软上限起点/投入状态
-    const srEl = researchEls.sr && researchEls.sr.SR1;
-    if (srEl) {
-      const lv = sr1Level(), st = sr1SoftcapStart(), active = state.srActiveId === "SR1";
-      srEl.lv.textContent = "等级 " + fmt(lv) + " ｜ 当前软上限起点 " + fmt(st)
-        + (active ? "\n研究中：每秒投入当前推论的 1%" : "");
-      srEl.btn.textContent = active ? "停止研究" : "开始研究";
-    }
+  // 课题（SR）区块：购买 R9 后显示（A72「立论」为其成就）
+  const subjectsSection = document.getElementById("research-subjects");
+  if (subjectsSection) subjectsSection.classList.toggle("hidden", !researchBought("R9"));
+  // SR1 课题卡：等级/当前软上限起点/投入状态
+  const srEl = researchEls.sr && researchEls.sr.SR1;
+  if (srEl && researchBought("R9")) {
+    const lv = sr1Level(), st = sr1SoftcapStart(), active = state.srActiveId === "SR1";
+    srEl.lv.textContent = "等级 " + fmt(lv) + " ｜ 当前软上限起点 " + fmt(st)
+      + (active ? "\n研究中：每秒投入当前推论的 1%" : "");
+    srEl.btn.textContent = active ? "停止研究" : "开始研究";
+  }
     // 已完成研究列表展开时保持同步（购买后即时反映）
     const doneGrid = document.getElementById("research-done-grid");
     if (doneGrid && !doneGrid.classList.contains("hidden")) renderResearchDone();
@@ -7189,7 +7192,7 @@ const NORMAL_ACH = [
   { id: "A71", name: "乌云", desc: "完成一次实验", star: true, reward: "解锁研究项目",
     // 更新前完成过实验的老玩家由 migrateState 补发（ED>0 或 S29 均证明结束过实验）
     check: () => state.researchDone >= 1 || getLogED() > NLOG + 1 || state.ach.hidden.includes("S29") },
-  { id: "A72", name: "立论", desc: "购买研究「渐进推演范式 I」", star: true, reward: "解锁课题",
+  { id: "A72", name: "立论", desc: "解锁课题",
     check: () => researchBought("R9") },
 ];
 const ACH_PER_ROW = 5;
