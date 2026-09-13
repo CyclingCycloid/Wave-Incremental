@@ -2046,7 +2046,7 @@ function buyPG1(bulk) {
   if (!upgradesFree()) subULog(pg1CostLog());
   markPurchase();
       state.pg1++;
-  if (!bulk) { renderWave(); updatePhononUI(); }
+  if (!bulk) { saveGame(); renderWave(); updatePhononUI(); }
 }
 function buyPG2(bulk) {
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
@@ -2055,7 +2055,7 @@ function buyPG2(bulk) {
   if (!upgradesFree()) subPhononsLog(pg2CostLog());
   markPurchase();
       state.pg2++;
-  if (!bulk) updatePhononUI();
+  if (!bulk) { saveGame(); updatePhononUI(); }
 }
 function buyPG3(bulk) {
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
@@ -2066,7 +2066,7 @@ function buyPG3(bulk) {
   if (!upgradesFree()) subPhononsLog(pg3CostLog());
   markPurchase();
       state.pg3++;
-  if (!bulk) updatePhononUI();
+  if (!bulk) { saveGame(); updatePhononUI(); }
 }
 function buyFluct() {
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
@@ -3034,7 +3034,7 @@ function buySAU(id, bulk) {
   if (cmpLT(state.sp, Math.pow(10, cLog), getLogSp(), cLog)) return;
   subSpLog(cLog);
   state[u.key]++;
-  if (!bulk) { checkAchievements(); updateSpUI(); setAutosaveStatus("已购买奇点升级：" + u.name); }
+  if (!bulk) { saveGame(); checkAchievements(); updateSpUI(); setAutosaveStatus("已购买奇点升级：" + u.name); }
 }
 function buyAU(id) {
   const u = AU_DEFS.flat().find(x => x.id === id);
@@ -3042,6 +3042,7 @@ function buyAU(id) {
   if (cmpLT(state.sp, u.cost, getLogSp(), Math.log10(u.cost))) return;
   subSpLog(Math.log10(u.cost));
   state.au[id] = 1;
+  saveGame();
   checkAchievements(); // A35
   updateSpUI();
   setAutosaveStatus("已购买奇点升级：" + u.name);
@@ -3596,7 +3597,7 @@ function buySBU(id, bulk) {
   if (cmpLT(state.sp, Math.pow(10, cLog), getLogSp(), cLog)) return;
   subSpLog(cLog);
   state[u.key]++;
-  if (!bulk) { updateBlackholeUI(); setAutosaveStatus("已购买黑洞升级：" + u.name); }
+  if (!bulk) { saveGame(); updateBlackholeUI(); setAutosaveStatus("已购买黑洞升级：" + u.name); }
 }
 // 黑洞虚粒子升级（花 VP，位于黑洞页）
 const SVPU_DEFS = [
@@ -3625,7 +3626,7 @@ function buySVPU(id, bulk) {
   if (cmpLT(state.virtualParticles, c, getLogVP(), cLog)) return; // 门槛照常
   if (!vpUpgradesFree()) subVPLog(cLog);
   state[u.key]++;
-  if (!bulk) { updateBlackholeUI(); setAutosaveStatus("已购买黑洞升级：" + u.name); }
+  if (!bulk) { saveGame(); updateBlackholeUI(); setAutosaveStatus("已购买黑洞升级：" + u.name); }
 }
 // ---------- 虚粒子单次升级（VPU，A45 星标奖励解锁；2×2 方格，花 VP / VPU2 花 VF）----------
 // 达成 A45 前整区不可见；解锁条件统一由 vpuUnlocked(id) 判定。
@@ -3719,6 +3720,7 @@ function buyVPU(id) {
     subVPLog(cLog);
   }
   state.au["vpu_" + id] = 1;
+  saveGame();
   checkAchievements(); // A51 虚幻：购买第一个虚粒子单次升级
   updateBlackholeUI();
   setAutosaveStatus("已购买黑洞升级：" + u.name);
@@ -3761,6 +3763,7 @@ function up3SoftcapScale(lf) {
 function setBhState(s) {
   if (!bhUnlocked()) return;
   state.bhState = s;
+  saveGame();
   updateBlackholeUI();
 }
 // 黑洞 tick（游戏时间）：处理质量/虚粒子/时间倍率由 timeRate() 调用，此处仅处理质量与虚粒子
@@ -4028,6 +4031,7 @@ function applyAutoAlloc() {
   state.tpV = best.V; state.tpE = best.E; state.tpF = best.F;
   state.tp = T - best.V - best.E - best.F;
   updateCompactUI();
+  saveGame();
   setAutosaveStatus(`已自动最佳分配：点 ${best.V} · 边 ${best.E} · 面 ${best.F}（3b₁b₂ = ${3 * best.score}）`);
 }
 // 购买拓扑节点：第 n 个花费 floor(1.5^n) SS（n 从 1 起，按**总节点数**计——
@@ -4078,6 +4082,7 @@ function buyTP() {
     state.tp++;
     bought++;
   }
+  if (bought > 0) saveGame();
   return bought;
 }
 // 转换 / 退回：kind 为 "V"/"E"/"F"，dir=+1 消耗 1 TP 转换，dir=-1 退回 1 TP
@@ -4090,6 +4095,7 @@ function convertTP(kind, dir) {
     if (state[key] < 1) return;
     state[key]--; state.tp++;
   }
+  saveGame();
 }
 
 // ---------- 理论树（MN 编号：M=层数、N=层内从左往右序号；任意父节点已购即可购买）----------
@@ -4245,7 +4251,7 @@ function buyIns(src) {
     addTotalInsLog(0);
     bought++;
   }
-  if (bought > 0) setAutosaveStatus("获得 " + bought + " 灵感（" + src + " 途径）");
+  if (bought > 0) { saveGame(); setAutosaveStatus("获得 " + bought + " 灵感（" + src + " 途径）"); }
 }
 function buyTheoryNode(id) {
   const def = THEORY_NODES.find(n => n.id === id);
@@ -4257,6 +4263,7 @@ function buyTheoryNode(id) {
   }
   state.theoryNodes[id] = 1;
   if (id === "51") state.theory51Bought = 1; // 曾购买过 51：光学系列节点此后一直可见
+  saveGame();
   setAutosaveStatus("理论解锁：" + def.name);
 }
 // ---------- 理论树导出/导入/预设（v0.6.0.0 测试）----------
@@ -4304,6 +4311,7 @@ function importTheoryTreeList(ids) {
     }
     state.theoryNodes[id] = 1;
     if (id === "51") state.theory51Bought = 1;
+    saveGame();
     bought++;
   }
   return bought;
@@ -5636,6 +5644,7 @@ function buyAnnCDUpgrade() {
   if (cmpLT(state.sp, cost, getLogSp(), Math.log10(cost))) return;
   subSpLog(Math.log10(cost));
   state.autoAnnCDLvl++;
+  saveGame();
   updateAutomationUI();
   setAutosaveStatus("已购买：自动湮灭 CD 缩减");
 }
@@ -5648,6 +5657,7 @@ function buyBatchUpgrade() {
   subSpLog(Math.log10(cost));
   state.batchLvl++;
   state.batchMax = Math.pow(2, state.batchLvl + 1);
+  saveGame();
   updateAutomationUI();
   setAutosaveStatus("已购买：批量购买上限翻倍");
 }
@@ -5660,6 +5670,7 @@ function buySpUpgrade(id) {
     state.spu1 = 1;
     checkAchievements(); // A31
     updateSpUI();
+    saveGame();
     setAutosaveStatus("已购买湮灭升级");
     return;
   }
@@ -6086,6 +6097,7 @@ function buildAutomationOnce() {
           else if (state.autoAnnMode === "time") state.autoAnnMode = compMilestone(14) ? "heldsp" : "sp";
           else state.autoAnnMode = "sp";
         }
+        saveGame();
         updateAutomationUI();
       });
       timeInput = document.createElement("input"); timeInput.type = "text"; timeInput.classList.add("hidden"); // text 以允许 AeB 格式
@@ -6100,6 +6112,7 @@ function buildAutomationOnce() {
     btn.addEventListener("click", () => {
       if (!autoUnlocked(def)) return;
       state.autoOn[def.key] = !state.autoOn[def.key];
+  saveGame();
       updateAutomationUI();
     });
     for (const el of [lock, input, timeInput, modeBtn, btn]) if (el) right.append(el);
@@ -6109,6 +6122,7 @@ function buildAutomationOnce() {
       batchBtn = document.createElement("button"); batchBtn.className = "batch-btn single hidden";
       batchBtn.addEventListener("click", () => {
         state.batchMode[def.key] = !state.batchMode[def.key];
+  saveGame();
         updateAutomationUI();
       });
       right.append(batchBtn);
