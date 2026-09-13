@@ -482,10 +482,8 @@ function cmSpMultLog() {
 // 效果②：波长效果指数 e。
 // 节点71「光学-粒子说 II」：公式变为 1 + lg(1+lg(1+CM))/7（更好）；
 // 节点72「光学-波动说 II」：基础公式结果 +0.1。两系列互斥，不会叠加
-// 效果②：波长效果指数 e。节点72「光学-波动说 II」：公式变为 1 + lg(1+lg(CM))/5（更好）。
-//（节点71 现改为削弱波长二次软上限，不再改造本公式）
+// 效果②：波长效果指数 e（基础公式；原 72 的公式改造已移除——72 现改为增强黑洞效果）
 function wavelengthExp() {
-  if (theoryOwned("72")) return 1 + Math.log10(1 + cmLg1()) / 5;
   return wavelengthExpBase();
 }
 // Hz/s 的 log10（log10(gain/L^e)，膨胀宇宙的波长倍率计入指数底数）——
@@ -3147,20 +3145,22 @@ function setVPLog(logV) {
 function sbu2Eff() { return effLevel(state.sbu2 + vpu2FreeLevel(), 7, 0.25); }
 // SBU3 霍金辐射的有效级别（软上限：10+(n-10)^(1/2)，从原上限 10 起算；免费等级同上）
 function sbu3Eff() { return effLevel(state.sbu3 + vpu2FreeLevel(), 16, 0.5); }
-// 黑洞基础效果：M^（0.2 + sbu2 有效级别·0.05）（引力潮汐：效果指数 +0.05/级）；返回 double（扭曲状态给时间倍率）
+// 黑洞基础效果：M^（0.2 + sbu2 有效级别·0.05）（引力潮汐：效果指数 +0.05/级）；返回 double（扭曲状态给时间倍率）。
+// 节点72「光学-波动说 II」：黑洞效果改为 ^3（大幅增强）
 function bhEffect() {
   const mLog = getLogBhMass();
   if (mLog <= 0) return 1;
   const exp = 0.2 + sbu2Eff() * 0.05;
   const effLog = exp * mLog;
-  return effLog > 308 ? Infinity : Math.pow(10, effLog);
+  const v = effLog > 308 ? Infinity : Math.pow(10, effLog);
+  return theoryOwned("72") ? v * v * v : v; // ^3（Infinity 时 v³ 仍为 Infinity，安全）
 }
-// 黑洞效果 log10（log 域，防溢出）
+// 黑洞效果 log10（log 域，防溢出）；节点72 后 ×3（效果立方）
 function bhEffectLog() {
   const mLog = getLogBhMass();
   if (mLog <= 0) return 0;
   const exp = 0.2 + sbu2Eff() * 0.05;
-  return clampLog(exp * mLog);
+  return clampLog(exp * mLog * (theoryOwned("72") ? 3 : 1));
 }
 // 黑洞对时间速率的加成（仅扭曲状态）的 log10：×(1 + bhEffect)；AU34 引力扭曲：扭曲状态效果额外 ^2。
 // 扭曲效果预览（bhTimeMultPreviewLog）供黑洞页三状态常显；实际应用仍仅扭曲状态（bhTimeMultLog 门控）
@@ -4145,8 +4145,8 @@ const THEORY_NODES = [
     desc: "基于当前超弦增加获得的超弦",
     effect: () => "当前 ×" + fmtLog(node62MultLog()) },
   { id: "72", name: "光学-波动说 II", parents: ["62"], cost: 25, series: "wave",
-    desc: "CM第二效果公式变得更好",
-    effect: () => "公式差值 +" + (wavelengthExp() - wavelengthExpBase()).toFixed(4) },
+    desc: "大幅增强黑洞的效果",
+    effect: () => "当前黑洞效果 ^3" },
   { id: "82", name: "光学-波动说 III", parents: ["72"], cost: 0, series: "wave", placeholder: true,
     desc: "？？？" },
 ];
