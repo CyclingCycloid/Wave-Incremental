@@ -4495,7 +4495,7 @@ const RESEARCH_DEFS = [
   { id: "R6", name: "态矢量相干保持", reqED: 3.5e3, costInf: 1e8, desc: "缩短波长不再重置任何东西" },
   { id: "R7", name: "Ricci流预解算", reqED: 3.5e3, costInf: 2.5e8, desc: "基于推论增加维度折叠器速度" },
   { id: "R8", name: "启发式假说萃取", reqTotalIns: 140, costInf: 2e9, desc: "增加一个新的灵感购买途径" },
-  { id: "R9", name: "渐进推演范式 I", reqFLog: Math.log10(3e6), reqVFLog: 30, costInf: 1e10, desc: "解锁一个课题" },
+  { id: "R9", name: "渐进推演范式 I", reqFLog: 3e6, reqVFLog: 30, costInf: 1e10, desc: "解锁一个课题" },
 ];
 function researchDef(id) { return RESEARCH_DEFS.find(x => x.id === id); }
 function researchBought(id) { return state.researchBought.includes(id); }
