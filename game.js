@@ -4506,12 +4506,16 @@ function researchAbandon() {
   researchResetBody();
   setAutosaveStatus("已放弃实验（无实验数据）");
 }
-// 推论产出：Multi × ED^0.8 每秒（真实时间）；R3「动态调整LLM」后 Multi 含 lg(Inf+1)^1.5（引理加成自身获取）
+// 推论产出：Multi × ED^0.8 每秒（真实时间）；R3「动态调整LLM」后 Multi 为 (lg(Inf+1))^1.5——
+// 注意 1.5 是**对数值上的幂**（+1.5·lg(lg(Inf+1))），绝不能写成 +1.5·lg(Inf+1)（= ×Inf^1.5，直接发散）
 function infRateLog() {
   const lg = getLogED();
   if (lg <= NLOG + 1) return NLOG;
   let rateLog = lg * 0.8;
-  if (researchBought("R3")) rateLog += 1.5 * lg1FromLog(getLogInf()); // ×lg(Inf+1)^1.5（Inf=0 时为 0）
+  if (researchBought("R3")) {
+    const l = lg1FromLog(getLogInf()); // lg(Inf+1)
+    if (l > 0) rateLog += 1.5 * Math.log10(l); // ×(lg(Inf+1))^1.5：多对数增长，随 Inf 收敛
+  }
   return clampLog(rateLog);
 }
 function infTick(realDt) {
@@ -7798,6 +7802,8 @@ function applyTestModeUIGlobal() {
   const clearVpBtn = document.getElementById("clear-vp-btn");
   const clearVoidBtn = document.getElementById("clear-void-btn");
   const clearResearchBtn = document.getElementById("clear-research-btn");
+  const clearInfBtn = document.getElementById("clear-inf-btn");
+  const clearResearchBoughtBtn = document.getElementById("clear-research-bought-btn");
   const resetInsBtn = document.getElementById("reset-ins-btn");
   const resetTpCmBtn = document.getElementById("reset-tp-cm-btn");
   const forceAnnBtn = document.getElementById("force-ann-btn");
@@ -7810,6 +7816,8 @@ function applyTestModeUIGlobal() {
   if (clearVpBtn) clearVpBtn.classList.toggle("hidden", !state.testMode);
   if (clearVoidBtn) clearVoidBtn.classList.toggle("hidden", !state.testMode);
   if (clearResearchBtn) clearResearchBtn.classList.toggle("hidden", !state.testMode);
+  if (clearInfBtn) clearInfBtn.classList.toggle("hidden", !state.testMode);
+  if (clearResearchBoughtBtn) clearResearchBoughtBtn.classList.toggle("hidden", !state.testMode);
   if (resetInsBtn) resetInsBtn.classList.toggle("hidden", !state.testMode);
   if (resetTpCmBtn) resetTpCmBtn.classList.toggle("hidden", !state.testMode);
   if (forceAnnBtn) forceAnnBtn.classList.toggle("hidden", !state.testMode);
@@ -8076,6 +8084,24 @@ function setupUI() {
     saveGame();
     updateResearchUI();
     setAutosaveStatus("实验数据与推论已清零");
+  });
+  // 测试工具：仅清空推论（不动 ED 与已购买的研究）
+  document.getElementById("clear-inf-btn").addEventListener("click", () => {
+    setInfLog(NLOG);
+    saveGame();
+    updateResearchUI();
+    setAutosaveStatus("推论已清零");
+  });
+  // 测试工具：清空全部已购买的研究（理论深度 −1/3×数量 回退，推论不返还）
+  document.getElementById("clear-research-bought-btn").addEventListener("click", () => {
+    if (!state.researchBought.length) { setAutosaveStatus("当前没有已购买的研究"); return; }
+    if (!confirm("确定清空全部已购买的研究吗？（推论不返还，理论深度 −1/3×数量 回退）")) return;
+    state.theoryDepth -= state.researchBought.length / 3;
+    state.researchBought = [];
+    saveGame();
+    updateResearchUI();
+    updateCompactUI(); // 理论深度回退影响理论树节点显示
+    setAutosaveStatus("已清空全部已购买的研究（理论深度相应回退）");
   });
   // 测试工具：重置灵感并清空理论树（不执行卷缩重置）
   document.getElementById("reset-ins-btn").addEventListener("click", () => {
