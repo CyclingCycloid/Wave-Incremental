@@ -5007,6 +5007,11 @@ function treeZoomAt(cx, cy, factor) {
 function setupTreePanZoom() {
   const vp = document.getElementById("tree-viewport");
   let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+  // 阻止浏览器原生行为抢拖动：mousedown 默认行为（新建选区/启动原生拖拽）取消——
+  // 4px 阈值窗口内指针尚未捕获，此时按下可把页面上已有的文字选区启动为原生拖拽
+  //（表现：拖出的不是树而是拖拽图标）。click 不受 mousedown 取消影响，节点购买正常。
+  vp.addEventListener("mousedown", (e) => e.preventDefault());
+  vp.addEventListener("dragstart", (e) => e.preventDefault()); // 兜底：杀掉一切视口内起源的原生拖拽
   vp.addEventListener("pointerdown", (e) => {
     dragging = false; sx = e.clientX; sy = e.clientY; ox = treeView.x; oy = treeView.y;
   });

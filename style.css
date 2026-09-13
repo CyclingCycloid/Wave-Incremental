@@ -735,7 +735,7 @@ body[data-theme="white"] #sub-ann-void {
   background-image: radial-gradient(rgba(255,140,26,0.14) 1.2px, transparent 1.2px);
   background-size: 24px 24px;
   touch-action: none; cursor: grab; user-select: none;
-  -webkit-user-select: none;
+  -webkit-user-select: none; -webkit-user-drag: none;
 }
 .tree-viewport.grabbing { cursor: grabbing; }
 body[data-theme="white"] .tree-viewport { border-color: #c9c9d2; }
