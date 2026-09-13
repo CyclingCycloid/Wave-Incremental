@@ -4564,9 +4564,9 @@ function renderResearchDone() {
   }
 }
 // ---------- 课题（SR，v0.6.3.2：A72「立论」解锁区块，R9 解锁第一个课题）----------
-// SR1 等级（小数）：由累计投入的推论计算 √(lg(累计投入+1))/2（消耗计入、只增不减）
+// SR1 等级（小数）：由累计投入的推论计算 √(lg(累计投入+1))（消耗计入、只增不减）
 function sr1Level() {
-  return Math.sqrt(lg1FromLog(state.sr1InvestLog)) / 2;
+  return Math.sqrt(lg1FromLog(state.sr1InvestLog));
 }
 // 课题总等级（当前仅 SR1，未来新课题累加）
 function srTotalLevel() { return sr1Level(); }
