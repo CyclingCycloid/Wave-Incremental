@@ -2815,16 +2815,17 @@ function buildVoidOnce() {
       voidSvuEls.fillBtn = fillBtn;
     }
     if (def.id === "svu3") {
-      // SVU3「虚数相变」：相变按钮（达标高亮）+ 无序化按钮 + 等级模式悬浮说明（小黑框）
+      // SVU3「虚数相变」：相变按钮（达标高亮）+ 无序化按钮 + 等级模式悬浮说明（body 级固定黑框）
       const tip = document.createElement("span");
       tip.className = "svu3-tip";
       tip.textContent = "ⓘ 等级模式";
-      tip.setAttribute("data-tip",
+      tip.addEventListener("mouseenter", () => showSvu3TipBox(tip,
         "等级模式：ρ（虚数密度）只在全扭曲虚空（8 种削弱全开）内按真实时间增长，不受时间倍率影响"
         + "——每秒获取 w/(1+ρ)^(1+N/3)，w 为超出波速软上限部分的波速获取对数值。\n"
         + "ρ 达到 500+100N 可「相变」：相变数 +1、ρ 清零，获取更难但推迟更强。"
         + "相变与「无序化」（清零 ρ 与相变数）都只能在虚空外操作。\n"
-        + "效果：波速软上限起始点推迟 10^(3(1+N)^1.5·ρ)，并使能标偏移获取 ×N·(1+ρ)^((1+N/5)/2)。详见帮助页「虚空 II」。");
+        + "效果：波速软上限起始点推迟 10^(3(1+N)^1.5·ρ)，并使能标偏移获取 ×N·(1+ρ)^((1+N/5)/2)。详见帮助页「虚空 II」。"));
+      tip.addEventListener("mouseleave", hideSvu3TipBox);
       card.appendChild(tip);
       const row = document.createElement("div");
       row.className = "svu3-btns";
@@ -3505,6 +3506,30 @@ function svu3Phase() {
   saveGame();
   updateVoidUI();
   setAutosaveStatus("虚数相变完成：相变数 " + state.svu3N + "（ρ 已重置，软上限推迟更强）");
+}
+// 无序化：清零 ρ 与相变数；虚空中不可用，需退出虚空后操作
+// 等级模式悬浮框：渲染到 document.body 的固定定位独立黑框（脱离卡片合成树，恒全不透明）
+function showSvu3TipBox(anchor, text) {
+  let box = document.getElementById("svu3-tip-box");
+  if (!box) {
+    box = document.createElement("div");
+    box.id = "svu3-tip-box";
+    box.className = "svu3-tip-box";
+    document.body.appendChild(box);
+  }
+  box.textContent = text;
+  box.style.display = "block";
+  const r = anchor.getBoundingClientRect();
+  const left = Math.max(8, Math.min(r.left, (window.innerWidth || 800) - 440));
+  box.style.left = left + "px";
+  const bh = box.offsetHeight || 120;
+  let top = r.bottom + 6;
+  if (top + bh > (window.innerHeight || 600) - 8) top = Math.max(8, r.top - bh - 6);
+  box.style.top = top + "px";
+}
+function hideSvu3TipBox() {
+  const box = document.getElementById("svu3-tip-box");
+  if (box) box.style.display = "none";
 }
 // 无序化：清零 ρ 与相变数；虚空中不可用，需退出虚空后操作
 function svu3Disorder() {
