@@ -482,10 +482,11 @@ function cmSpMultLog() {
 // 效果②：波长效果指数 e。
 // 节点71「光学-粒子说 II」：公式变为 1 + lg(1+lg(1+CM))/7（更好）；
 // 节点72「光学-波动说 II」：基础公式结果 +0.1。两系列互斥，不会叠加
+// 效果②：波长效果指数 e。节点72「光学-波动说 II」：公式变为 1 + lg(1+lg(CM))/5（更好）。
+//（节点71 现改为削弱波长二次软上限，不再改造本公式）
 function wavelengthExp() {
-  if (theoryOwned("71")) return 1 + Math.log10(1 + cmLg1()) / 7;
-  const e = wavelengthExpBase();
-  return theoryOwned("72") ? e + 0.1 : e;
+  if (theoryOwned("72")) return 1 + Math.log10(1 + cmLg1()) / 5;
+  return wavelengthExpBase();
 }
 // Hz/s 的 log10（log10(gain/L^e)，膨胀宇宙的波长倍率计入指数底数）——
 // 累计频率、获取显示与 S19 判定共用的唯一实现
@@ -705,7 +706,7 @@ function up3WavelengthFromFLog(lf) {
   // excess→0 时 w→1e5，拐点连续；w 越大 base 越大、p 越小（恒 <1），削弱渐强。
   // 实际购买与「下次重置」预览共用本函数
   if (w > 100000) {
-    const p = (theoryOwned("41") ? 0.95 : 0.85) / Math.pow((5 + Math.log10(w)) / 10, 0.3);
+    const p = (theoryOwned("71") ? 0.96 : theoryOwned("41") ? 0.95 : 0.85) / Math.pow((5 + Math.log10(w)) / 10, 0.3);
     w = 100000 + Math.pow(w - 100000, p);
   }
   // 研究·双缝干涉实验（v0.6.3.2）：波长缩减效果 ×(0.6·0.8^(等级-1))（等级 1 仍为 0.6，高等级放缓）
@@ -4136,15 +4137,15 @@ const THEORY_NODES = [
     desc: "获得的超弦 ×1000",
     effect: () => "当前 ×1000" },
   { id: "71", name: "光学-粒子说 II", parents: ["61"], priceTBD: true, series: "particle",
-    desc: "CM第二效果公式变得更好",
-    effect: () => "公式差值 +" + (wavelengthExp() - wavelengthExpBase()).toFixed(4) },
+    desc: "波长二次软上限削弱1%",
+    effect: () => "当前削弱指数 0.96" },
   { id: "81", name: "光学-粒子说 III", parents: ["71"], cost: 0, series: "particle", placeholder: true,
     desc: "？？？" },
   { id: "62", name: "光学-波动说 I", parents: ["51"], cost: 35, series: "wave",
     desc: "基于当前超弦增加获得的超弦",
     effect: () => "当前 ×" + fmtLog(node62MultLog()) },
   { id: "72", name: "光学-波动说 II", parents: ["62"], priceTBD: true, series: "wave",
-    desc: "CM第二效果 +0.1",
+    desc: "CM第二效果公式变得更好",
     effect: () => "公式差值 +" + (wavelengthExp() - wavelengthExpBase()).toFixed(4) },
   { id: "82", name: "光学-波动说 III", parents: ["72"], cost: 0, series: "wave", placeholder: true,
     desc: "？？？" },
