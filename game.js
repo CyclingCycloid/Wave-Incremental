@@ -2781,6 +2781,10 @@ function buildVoidOnce() {
   document.getElementById("void-enter-btn").addEventListener("click", () => {
     enterVoid(voidSelection.slice());
   });
+  // R2「虚空探测器」：全扭曲虚空快捷进入（一次性勾选全部 8 种削弱）
+  document.getElementById("void-quick-all-btn").addEventListener("click", () => {
+    enterVoid(DISTORT_UNIVERSES.map(u => u.id));
+  });
   document.getElementById("void-exit-btn").addEventListener("click", exitVoid);
   // 虚空升级（SVU，虚空里程碑 1 解锁；全行卡片）
   const upg = document.getElementById("void-upg-list");
@@ -2874,11 +2878,13 @@ function updateVoidUI() {
   const m1 = voidMilestone1();
   const m2 = voidMilestone2();
   // VF 效果行：第一效果（VP 获取）恒有；第二效果（吸积 ×VF^(2/3)）里程碑 1 解锁；
-  // 第三效果（波速获取幂次）里程碑 2 解锁
-  const vfLine = state.logVoidVF10 > NLOG + 1
+  // 第三效果（波速获取幂次）里程碑 2 解锁；R2 后显示全扭曲超频说明（②③在里程碑3 后按 VF^1.1 计）
+  const vfLg = vfEffectVFLog(state.logVoidVF10);
+  const vfLine = vfLg > NLOG + 1
     ? `虚空泡沫（VF）：${fmtLog(state.logVoidVF10)}\nVP 获取 ×${fmtLog(vfMultLog)}`
-      + (m1 ? `\n黑洞吸积 ×${fmtLog(clampLog((2 / 3) * state.logVoidVF10))}` : "")
+      + (m1 ? `\n黑洞吸积 ×${fmtLog(clampLog((2 / 3) * vfLg))}` : "")
       + (m2 ? `\n波速获取 ^${fmt(vfGainExp())}` : "")
+      + (researchBought("R2") ? "\n全扭曲虚空：F 超 1e20000 的部分每 1e3000，VF 获取 ×10" : "")
     : "虚空泡沫（VF）：尚无";
   // 虚空里程碑显示（每个里程碑一个独立格子）；M1/M2 按削弱种数、M3 按历史最高 VF、M4 占位
   const m3 = voidMilestone3();
@@ -2933,6 +2939,13 @@ function updateVoidUI() {
   const enterBtn2 = document.getElementById("void-enter-btn");
   enterBtn2.textContent = voidGateOK ? "进入虚空" : "需达到1e50总奇点";
   enterBtn2.title = voidGateOK ? "" : "卷缩重置后，需要重新达到 1e50 总奇点才能进入虚空";
+  // R2 解锁的全扭曲快捷按钮：R2 购买后显示，进入门槛与主按钮一致
+  const quickAllBtn = document.getElementById("void-quick-all-btn");
+  if (quickAllBtn) {
+    quickAllBtn.classList.toggle("hidden", !researchBought("R2"));
+    quickAllBtn.disabled = !voidGateOK;
+    quickAllBtn.textContent = voidGateOK ? "进入全扭曲虚空" : "需达到1e50总奇点";
+  }
   if (state.voidActive) {
     const fLog = FLog();
     const vfLog = voidVFLog(fLog);
@@ -3266,6 +3279,10 @@ function voidVFLog(fLog) {
   if (N < 1) return NLOG;
   let multLog = (N - 1) * Math.log10(8);
   for (const id of state.voidRules) multLog += Math.log10(VOID_MULTIPLIERS[id] || 1);
+  // R2「虚空探测器」：全扭曲虚空中，超过 1e20000 的频率部分每 1e3000 使 VF 获取 ×10
+  if (N >= DISTORT_UNIVERSES.length && researchBought("R2") && fLog > 20000) {
+    multLog += Math.floor((fLog - 20000) / 3000);
+  }
   const expo = Math.min(0.0003, Math.sqrt(0.0009 / (fLog + 1)));
   return clampLog(multLog + expo * (fLog - target));
 }

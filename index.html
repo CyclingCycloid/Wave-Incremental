@@ -438,6 +438,7 @@
           <div id="void-rules" class="void-rule-grid"></div>
           <div id="void-enter-row" class="void-enter-row">
             <button id="void-enter-btn" class="void-enter-btn">进入虚空</button>
+            <button id="void-quick-all-btn" class="void-enter-btn hidden" title="一次性勾选全部 8 种削弱并进入虚空（购买研究「虚空探测器」后解锁；全扭曲虚空中 F 超 1e20000 的部分每 1e3000 使 VF 获取 ×10）">进入全扭曲虚空</button>
           </div>
           <div id="void-active-panel" class="hidden">
             <div id="void-progress"></div>
@@ -707,7 +708,7 @@
         <details class="help-section hidden" id="help-void2">
           <summary>虚空 II <span class="help-ver research-text">v0.6.3.2（测试）</span></summary>
           <div class="help-body">
-            <p>购买研究<strong>「虚空探测器」（R2）</strong>后解锁新内容：<strong>虚空里程碑 3「度规塌缩」</strong>（条件：持有的虚空泡沫达到 <strong>1e22</strong>，按历史最高判定，花费不算）与占位的里程碑 4。里程碑 3 的奖励：<strong>定向的削弱在虚空中不再生效</strong>（VF 结算的乘数与「生效削弱数」照常保留）；解锁虚空升级 <strong>SVU3「虚数相变」</strong>；<strong>前三个虚空泡沫效果按 VF 的 1.1 次方计算</strong>（VP 获取、黑洞吸积、波速获取幂次）；<strong>维度折叠器速度 ×max(1, VF^0.1)</strong>。</p>
+            <p>购买研究<strong>「虚空探测器」（R2）</strong>后解锁新内容：<strong>虚空页新增「进入全扭曲虚空」快捷按钮</strong>（一键勾选全部 8 种削弱并进入，进入门槛与普通进入一致）；全扭曲虚空中，F 超 1e20000 的部分每 1e3000 使结算的 <strong>VF 获取 ×10</strong>。另有<strong>虚空里程碑 3「度规塌缩」</strong>（条件：持有的虚空泡沫达到 <strong>1e22</strong>，按历史最高判定，花费不算）与占位的里程碑 4。里程碑 3 的奖励：<strong>定向的削弱在虚空中不再生效</strong>（VF 结算的乘数与「生效削弱数」照常保留）；解锁虚空升级 <strong>SVU3「虚数相变」</strong>；<strong>前三个虚空泡沫效果按 VF 的 1.1 次方计算</strong>（VP 获取、黑洞吸积、波速获取幂次）；<strong>维度折叠器速度 ×max(1, VF^0.1)</strong>。</p>
             <p><strong>SVU3「虚数相变」（等级模式，相变数 N 即等级）</strong>：</p>
             <ul>
               <li><strong>虚数密度 ρ</strong>：只在<strong>全扭曲虚空</strong>（8 种削弱全开）内按<strong>真实时间</strong>增长（<strong>不受时间倍率影响</strong>）——设 w 为<strong>超出波速软上限部分</strong>的波速获取对数值（软上限起点 1e20000，如波速获取达 1e21000 时 w=1000），ρ 每秒获取 <strong>w/(1+ρ)^(1+N/3)</strong>。</li>
