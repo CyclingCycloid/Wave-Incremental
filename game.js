@@ -3390,10 +3390,11 @@ function svu1Level() {
   return sp * vp * vf - 1;
 }
 // SVU2 能标偏移的等级增速（仅虚空外，每真实秒）：SVU1_level/(1+SVU2_level)^1.5。
-// SVU3「虚数相变」解锁后（里程碑3）额外提供倍率 N·(1+ρ)^((1+N/5)/2)——按约定不在 UI 显示
+// SVU3「虚数相变」解锁后（里程碑3）额外提供倍率 N·(1+ρ_eff)^((1+N/5)/2)——按约定不在 UI 显示
+//（ρ_eff 为有效 ρ：超相变阈值部分开方）
 function svu2GainRate() {
   let rate = svu1Level() / Math.pow(1 + state.svu2Level, 1.5);
-  if (voidMilestone3()) rate *= state.svu3N * Math.pow(1 + state.svu3Rho, (1 + state.svu3N / 5) / 2);
+  if (voidMilestone3()) rate *= state.svu3N * Math.pow(1 + svu3RhoEff(), (1 + state.svu3N / 5) / 2);
   return rate;
 }
 // SVU1 效果：虚空内波速获取速率的幂次 ^= 1 + min(level/6, √(2·level)/6)（虚空外恒 1）
@@ -3461,13 +3462,18 @@ const SVU_DEFS = [
     effect: () => svu3EffectText() },
 ];
 // ---------- SVU3「虚数相变」（v0.6.3.2）----------
-// 软上限起始点推迟量（log10）：3·(1+N)^1.5·ρ（任意虚空生效）
+// 软上限起始点推迟量（log10）：3·(1+N)^1.5·ρ（ρ 取有效值——超阈值部分开方；任意虚空生效）
 function svu3CapDelay() {
   if (!voidMilestone3()) return 0;
-  return 3 * Math.pow(1 + state.svu3N, 1.5) * state.svu3Rho;
+  return 3 * Math.pow(1 + state.svu3N, 1.5) * svu3RhoEff();
 }
 function svu3CapStart() { return 20000 + svu3CapDelay(); }       // 软上限起始点（log10）
 function svu3PhaseThreshold() { return 500 + 100 * state.svu3N; } // 相变阈值：ρ ≥ 500+100N
+// ρ 的有效值：超过相变阈值的部分开方（囤 ρ 不相变时效果不再线性增长；相变判定仍用原始 ρ）
+function svu3RhoEff() {
+  const th = svu3PhaseThreshold();
+  return state.svu3Rho <= th ? state.svu3Rho : th + Math.sqrt(state.svu3Rho - th);
+}
 function svu3PhaseReady() { return voidMilestone3() && state.svu3Rho >= svu3PhaseThreshold(); }
 // 卡片显示：ρ / 相变数 / 当前软上限起始点 / 相变阈值
 function svu3EffectText() {
@@ -4117,9 +4123,9 @@ const THEORY_NODES = [
     reqIns: 55, hiddenUntilIns: 50, reqA63: true },
   // 光学系列（v0.6.3.2）：粒子说=紫色 / 波动说=青色，两系列互斥（只能购买一种）；
   // 拥有节点51 后才出现在树上。62 定价 35 灵感；61/71/72 价格待定（priceTBD 暂不可购买）
-  { id: "61", name: "光学-粒子说 I", parents: ["51"], priceTBD: true, series: "particle",
-    desc: "获得的超弦 ×100",
-    effect: () => "当前 ×100" },
+  { id: "61", name: "光学-粒子说 I", parents: ["51"], cost: 40, series: "particle",
+    desc: "获得的超弦 ×1000",
+    effect: () => "当前 ×1000" },
   { id: "71", name: "光学-粒子说 II", parents: ["61"], priceTBD: true, series: "particle",
     desc: "CM第二效果公式变得更好",
     effect: () => "公式差值 +" + (wavelengthExp() - wavelengthExpBase()).toFixed(4) },
@@ -4620,12 +4626,12 @@ function canCompactify() {
     && getLogSp() >= SP_SOFTCAP_PIVOT_LOG;
 }
 // SS 获取公式：SS = floor(((VP/1e36)^(1/30)×(Sp/1.79e308)^(1/300))^0.8)；
-// 节点61「光学-粒子说 I」：×100（+2）；节点62「光学-波动说 I」：×node62MultLog()（基于当前持有 SS）
+// 节点61「光学-粒子说 I」：×1000（+3）；节点62「光学-波动说 I」：×node62MultLog()（基于当前持有 SS）
 function compactSSGainLog() {
   const vp = getLogVP(), sp = getLogSp();
   if (vp < 36 || sp < SP_SOFTCAP_PIVOT_LOG) return NLOG;
   let lg = ((vp - 36) / 30 + (sp - SP_SOFTCAP_PIVOT_LOG) / 300) * 0.8;
-  if (theoryOwned("61")) lg += 2;
+  if (theoryOwned("61")) lg += 3;
   if (theoryOwned("62")) lg += node62MultLog();
   return clampLog(lg);
 }
