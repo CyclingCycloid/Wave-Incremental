@@ -708,9 +708,9 @@ function up3WavelengthFromFLog(lf) {
     const p = (theoryOwned("41") ? 0.95 : 0.85) / Math.pow((5 + Math.log10(w)) / 10, 0.3);
     w = 100000 + Math.pow(w - 100000, p);
   }
-  // 研究·双缝干涉实验（v0.6.3）：波长缩减效果 ×0.6^等级（如波长 1e-90000 → 1e-54000）
+  // 研究·双缝干涉实验（v0.6.3.2）：波长缩减效果 ×(0.6·0.8^(等级-1))（等级 1 仍为 0.6，高等级放缓）
   const slit = researchSlitLevel();
-  if (slit >= 1) w *= Math.pow(0.6, slit);
+  if (slit >= 1) w *= slitMult(slit);
   return w;
 }
 // 冷却宇宙：购买任何升级 → 波速获取量变为 A^k，k 在 15 秒内从 0 线性升到上限 0.75；
@@ -870,11 +870,11 @@ function gainRate() {
   if (inDistort("inflation")) g = Math.sqrt(Math.max(0, g));
   // 膨胀宇宙：波速获取指数随时间下降（每秒 -0.1，到 0 为止）
   if (inDistort("expand")) g = Math.pow(Math.max(0, g), distortGainExp());
-  // 研究·双缝干涉实验（v0.6.3）：波速获取整体幂次 ×0.6^等级
+  // 研究·双缝干涉实验（v0.6.3.2）：波速获取整体幂次 ×(0.6·0.8^(等级-1))
   {
     const slit = researchSlitLevel();
     if (slit >= 1) {
-      const sp2 = Math.pow(0.6, slit);
+      const sp2 = slitMult(slit);
       const s = g < 0 ? -1 : 1;
       g = s * Math.pow(Math.abs(g), sp2);
     }
@@ -947,7 +947,7 @@ function gainRateLog(uncapped) {
   // 研究·双缝干涉实验（v0.6.3）：整体幂次 ×0.6^等级
   {
     const slit = researchSlitLevel();
-    if (slit >= 1) log *= Math.pow(0.6, slit);
+    if (slit >= 1) log *= slitMult(slit);
   }
   // 虚空共振（SVU1）：虚空内波速获取速率整体幂次（幂在 log 域 = 乘指数）；
   // 虚空泡沫第三效果（里程碑 2）：全局整体幂次
@@ -4424,9 +4424,11 @@ function subInfLog(costLog) {
 const RESEARCH_EXPS = [
   { id: "slit", name: "双缝干涉实验", unlock: () => theoryOwned("51"),
     science: "展示光子或电子等微观粒子同时具有波动性与粒子性的经典量子力学实验，当粒子穿过双缝时会在屏上形成明暗相间的干涉条纹。",
-    debuff: (n) => n >= 1 ? `波长和波速获取公式的指数变为原来的 ${(Math.pow(0.6, n)).toFixed(4)} 倍` : "无削弱" },
+    debuff: (n) => n >= 1 ? `波长和波速获取公式的指数变为原来的 ${slitMult(n).toFixed(4)} 倍` : "无削弱" },
 ];
 function researchExpDef(id) { return RESEARCH_EXPS.find(x => x.id === id); }
+// 双缝干涉实验的每级削弱倍数：0.6·0.8^(n-1)（等级 1 时 0.6 不变，高等级放缓；三处实现共用）
+function slitMult(n) { return 0.6 * Math.pow(0.8, n - 1); }
 // 双缝干涉的等级（实验进行中返回等级，否则 0）
 function researchSlitLevel() {
   if (!state.researchRun) return 0;
