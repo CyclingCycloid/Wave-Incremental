@@ -4222,7 +4222,13 @@ function theoryAvailable(def) {
 //（第 8 次起）加快为每级 +1e50000（拐点连续：10^(50000n−200000)，n=8 时仍为 1e200000）；
 // Sp：10^(200(n-1))；SS：2^(n-1)
 function insCostLogAt(src, n) {
-  if (src === "F") return clampLog(n <= 8 ? 25000 * n : 50000 * n - 200000);
+  if (src === "F") {
+    // 三段：+25000/级（n≤8）→ +50000/级（价格 1e3000000 前，n≤63）→ +100000/级（价格超 1e3000000，每级 ×1e100000）
+    if (n <= 8) return clampLog(25000 * n);
+    const log5 = 50000 * n - 200000;
+    if (log5 <= 3e6) return clampLog(log5);
+    return clampLog(100000 * n - 3400000);
+  }
   if (src === "Sp") return clampLog(200 * (n - 1));
   if (src === "VP") return clampLog(60 + 15 * (n - 1)); // R8：初始 1e60，每级 ×1e15
   return clampLog((n - 1) * Math.log10(2));
@@ -4489,7 +4495,7 @@ const RESEARCH_DEFS = [
   { id: "R6", name: "态矢量相干保持", reqED: 3.5e3, costInf: 1e8, desc: "缩短波长不再重置任何东西" },
   { id: "R7", name: "Ricci流预解算", reqED: 3.5e3, costInf: 2.5e8, desc: "基于推论增加维度折叠器速度" },
   { id: "R8", name: "启发式假说萃取", reqTotalIns: 140, costInf: 2e9, desc: "增加一个新的灵感购买途径" },
-  { id: "R9", name: "渐进推演范式 I", reqFLog: Math.log10(3e6), costInf: 1e10, desc: "解锁一个课题" },
+  { id: "R9", name: "渐进推演范式 I", reqFLog: Math.log10(3e6), reqVFLog: 30, costInf: 1e10, desc: "解锁一个课题" },
 ];
 function researchDef(id) { return RESEARCH_DEFS.find(x => x.id === id); }
 function researchBought(id) { return state.researchBought.includes(id); }
@@ -4499,6 +4505,7 @@ function researchReqMet(def) {
   if (def.reqED !== undefined && getLogED() < Math.log10(def.reqED) - 1e-9) return false;
   if (def.reqTotalIns !== undefined && getLogTotalIns() < Math.log10(def.reqTotalIns) - 1e-9) return false;
   if (def.reqFLog !== undefined && getLogMaxF() < def.reqFLog - 1e-9) return false;
+  if (def.reqVFLog !== undefined && state.logVoidVFBest10 < def.reqVFLog - 1e-9) return false;
   return true;
 }
 // 需求显示文本（按类型拼接）
@@ -4507,6 +4514,7 @@ function researchReqText(def) {
   if (def.reqED !== undefined) parts.push("需求 " + fmtNum(def.reqED, Math.log10(def.reqED)) + " ED");
   if (def.reqTotalIns !== undefined) parts.push("需求 " + fmtNum(def.reqTotalIns, Math.log10(def.reqTotalIns)) + " 总灵感");
   if (def.reqFLog !== undefined) parts.push("需求 达到 " + fmtLog(def.reqFLog) + " Hz");
+  if (def.reqVFLog !== undefined) parts.push("需求 达到 1e" + def.reqVFLog + " VF（历史最高）");
   return parts.join(" ｜ ");
 }
 function researchCostMet(def) { return getLogInf() >= Math.log10(def.costInf) - 1e-9; }
