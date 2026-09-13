@@ -771,8 +771,8 @@ function vpSpMultLog() {
 // 三段连续：T<1e50 为 1~10 线性（1 Sp @ T_P0）；1e50≤T<1e100 为 lg(T)/5（10~20）；
 // T≥1e100 为 2·T^0.01（在 1e50 与 1e100 处值与导数均连续）
 function spGainBaseLog() {
-  // R4「热焓极点回溯」：改用本次湮灭的最高有效温度（与公式同口径的时间最大值）
-  const tLog = researchBought("R4") ? Math.max(temperatureCappedLog(), state.annMaxTLog) : temperatureCappedLog();
+  // R5「热焓极点回溯」：改用本次湮灭的最高有效温度（与公式同口径的时间最大值）
+  const tLog = researchBought("R5") ? Math.max(temperatureCappedLog(), state.annMaxTLog) : temperatureCappedLog();
   if (tLog < 50) {
     // baseSpGain 在 1~10 区间，直接数值计算后取 log
     const frac = (tLog - Math.log10(T_P0)) / (50 - Math.log10(T_P0));
@@ -1808,8 +1808,8 @@ function buyUp3() {
   state.logL10 = -wLog;
   state.L = wLog < 308 ? 1 / Math.pow(10, wLog) : 0; // 超 double 下溢为 0（读取走 log）
   if (-wLog < getLogMinL()) { state.logMinL = -wLog; state.minL = state.L; } // 极值走 log（新波长 log 为 -wLog）
-  // R5「态矢量相干保持」：缩短波长不再重置任何东西（波速、升级1/2 全部保留）
-  if (!researchBought("R5")) {
+  // R6「态矢量相干保持」：缩短波长不再重置任何东西（波速、升级1/2 全部保留）
+  if (!researchBought("R6")) {
     setU(resetU());
     // 卷缩里程碑 20：升级3不再重置升级1的等级
     if (!compMilestone(20)) state.up1 = 0;
@@ -1969,14 +1969,14 @@ function updateUpgradesUI() {
     const affordable3 = FLog() > lastLog;
     const wLog2 = up3WavelengthFromFLog(FLog());
     const multLog = getLogL10() + wLog2;
-    // R5「态矢量相干保持」：卡片名称/描述随研究动态切换
-    const r5 = researchBought("R5");
-    up3Card.nameEl.textContent = r5 ? "缩短波长" : "缩短波长，但重置波速";
-    up3Card.descEl.textContent = r5 ? "按峰值频率更新波长（不再重置任何东西）" : "重置波速与基础/加成升级；按峰值频率更新波长";
+    // R6「态矢量相干保持」：卡片名称/描述随研究动态切换
+    const r6 = researchBought("R6");
+    up3Card.nameEl.textContent = r6 ? "缩短波长" : "缩短波长，但重置波速";
+    up3Card.descEl.textContent = r6 ? "按峰值频率更新波长（不再重置任何东西）" : "重置波速与基础/加成升级；按峰值频率更新波长";
     up3Card.update({
       level: `上次峰值: ${lastLog > NLOG + 1 ? fmtLog(lastLog) + " Hz" : "—"}`,
       effect: affordable3
-        ? `下次${r5 ? "缩减" : "重置"}: ×${fmtNum(Math.pow(10, multLog), multLog)}`
+        ? `下次${r6 ? "缩减" : "重置"}: ×${fmtNum(Math.pow(10, multLog), multLog)}`
         : `当前波长: ${fmtNum(Math.pow(10, getLogL10()), getLogL10())} m`,
       cost: lastLog > NLOG + 1 ? `需 F > ${fmtLog(lastLog)}` : "首次",
       affordable: affordable3,
@@ -3927,11 +3927,11 @@ function cmRateLog() {
   if (researchBought("R1")) rateLog = Math.max(rateLog + 2, rateLog * 1.03);
   return clampLog(rateLog);
 }
-// 折叠器速度的附加乘数（log10，加在速率上）：R6「Ricci流预解算」×min(10^√lg(Inf+1), Inf^0.25)
+// 折叠器速度的附加乘数（log10，加在速率上）：R7「Ricci流预解算」×min(10^√lg(Inf+1), Inf^0.25)
 // + 里程碑3「度规塌缩」的第四虚空泡沫效果 ×max(1, VF^0.1)（+0.1·lgVF）
 function cmSpeedBonusLog() {
   let add = 0;
-  if (researchBought("R6")) {
+  if (researchBought("R7")) {
     const lgInf = getLogInf();
     if (lgInf > NLOG + 1) add += Math.min(Math.sqrt(lg1FromLog(lgInf)), 0.25 * lgInf);
   }
@@ -4439,9 +4439,11 @@ const RESEARCH_DEFS = [
   { id: "R1", name: "托特管状折叠", reqED: 1e3, costInf: 2e4, desc: "维度折叠器效果更好" },
   { id: "R2", name: "虚空探测器", reqED: 1e3, costInf: 5e4, desc: "解锁新的虚空内容" },
   { id: "R3", name: "动态调整LLM", reqED: 1e3, costInf: 1e5, desc: "引理加成自身获取" },
-  { id: "R4", name: "热焓极点回溯", reqED: 4e3, costInf: 3e7, desc: "奇点改为使用此次湮灭最高温度计算" },
-  { id: "R5", name: "态矢量相干保持", reqED: 4e3, costInf: 1e8, desc: "缩短波长不再重置任何东西" },
-  { id: "R6", name: "Ricci流预解算", reqED: 4e3, costInf: 5e8, desc: "基于推论增加维度折叠器速度" },
+  { id: "R4", name: "Kähler模相位固化", reqED: 1.3e3, costInf: 1e7, desc: "卷缩不再重置卡拉比-丘流形" },
+  { id: "R5", name: "热焓极点回溯", reqED: 4e3, costInf: 3e7, desc: "奇点改为使用此次湮灭最高温度计算" },
+  { id: "R6", name: "态矢量相干保持", reqED: 4e3, costInf: 1e8, desc: "缩短波长不再重置任何东西" },
+  // TODO(数值待定)：R7 的需求/价格为占位值，定稿后直接改这里
+  { id: "R7", name: "Ricci流预解算", reqED: 4e3, costInf: 5e8, desc: "基于推论增加维度折叠器速度" },
 ];
 function researchDef(id) { return RESEARCH_DEFS.find(x => x.id === id); }
 function researchBought(id) { return state.researchBought.includes(id); }
@@ -4777,8 +4779,9 @@ function applyCompactionResetBody(realNow) {
   }
   if (!compMilestone(14)) state.voidBestRules = 0;
   if (compMilestone(12)) setVoidVFLog(clampLog(Math.max(state.logVoidVF10 ?? NLOG, 6))); // 初始 1e6 VF（不降低已有）
-  // —— 卷缩层自身：CM 重置（TP/V/E/F 配置、SS/Ins/理论树保留）——
-  setCMLog(NLOG);
+  // —— 卷缩层自身：CM 重置（TP/V/E/F 配置、SS/Ins/理论树保留）；
+  // R4「Kähler模相位固化」后卷缩（含研究重置）不再清 CM
+  if (!researchBought("R4")) setCMLog(NLOG);
   // 理论树：勾选「卷缩重置理论树」时清空已购节点并返还所耗灵感（AD 重置语义），随后解除开关
   if (state.theoryRespec) {
     let refund = 0;
@@ -7493,8 +7496,8 @@ function applyProduction(realDt) {
     }
   }
 
-  // R4 热焓极点回溯：记录本次湮灭的最高有效温度（与奇点公式同口径；各湮灭类重置清零）
-  if (researchBought("R4")) {
+  // R5 热焓极点回溯：记录本次湮灭的最高有效温度（与奇点公式同口径；各湮灭类重置清零）
+  if (researchBought("R5")) {
     const tLog = temperatureCappedLog();
     if (tLog > state.annMaxTLog) state.annMaxTLog = tLog;
   }
