@@ -5347,10 +5347,11 @@ function buildResearchOnce() {
     const nm = document.createElement("div"); nm.className = "rp-name"; nm.textContent = "晶格弛豫调制";
     const ds = document.createElement("div"); ds.className = "rp-desc"; ds.textContent = "推迟声子升级3的软上限（每级 0.1）";
     const lv = document.createElement("div"); lv.className = "rp-cost";
-    b.append(nm, ds, lv);
+    const act = document.createElement("div"); act.className = "rp-act"; act.textContent = "开始研究";
+    b.append(nm, ds, lv, act);
     b.addEventListener("click", toggleSR1);
     srRow.appendChild(b);
-    researchEls.sr.SR1 = { btn: b, lv };
+    researchEls.sr.SR1 = { btn: b, lv, act };
   }
   // 研究项目占位卡：待办不足 3 个时补满一行（标题下不留空）
   researchEls.placeholders = [];
@@ -5401,14 +5402,13 @@ function updateResearchUI() {
   // 课题（SR）区块：购买 R9 后显示（A72「立论」为其成就）
   const subjectsSection = document.getElementById("research-subjects");
   if (subjectsSection) subjectsSection.classList.toggle("hidden", !researchBought("R9"));
-  // SR1 课题卡：等级/当前软上限起点/投入状态
-  const srEl = researchEls.sr && researchEls.sr.SR1;
-  if (srEl && researchBought("R9")) {
-    const lv = sr1Level(), st = sr1SoftcapStart(), active = state.srActiveId === "SR1";
-    srEl.lv.textContent = "等级 " + fmt(lv) + " ｜ 当前软上限起点 " + fmt(st)
-      + (active ? "\n研究中：每秒投入当前推论的 1%" : "");
-    srEl.btn.textContent = active ? "停止研究" : "开始研究";
-  }
+    // SR1 课题卡：等级/当前软上限起点/投入状态（状态行独立更新，绝不覆盖卡片子元素）
+    const srEl = researchEls.sr && researchEls.sr.SR1;
+    if (srEl && researchBought("R9")) {
+      const lv = sr1Level(), st = sr1SoftcapStart(), active = state.srActiveId === "SR1";
+      srEl.lv.textContent = "等级 " + fmt(lv) + " ｜ 当前软上限起点 " + fmt(st);
+      srEl.act.textContent = active ? "研究中（点击停止）" : "开始研究";
+    }
     // 已完成研究列表展开时保持同步（购买后即时反映）
     const doneGrid = document.getElementById("research-done-grid");
     if (doneGrid && !doneGrid.classList.contains("hidden")) renderResearchDone();

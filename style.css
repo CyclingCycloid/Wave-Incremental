@@ -857,6 +857,7 @@ body[data-theme="white"] .inf-line .research-res-val { color: #3050b0; }
 .research-proj-card .rp-name { color: #7ec8f7; font-weight: bold; }
 .research-proj-card .rp-desc { font-size: 12px; margin: 4px 0; }
 .research-proj-card .rp-cost { font-size: 12px; opacity: 0.85; white-space: pre-line; }
+.research-proj-card .rp-act { font-size: 12px; color: #7ec8f7; }
 .research-proj-card:disabled { opacity: 0.5; cursor: not-allowed; }
 .research-proj-card:not(:disabled) { border-color: #7ec8f7; box-shadow: 0 0 6px rgba(126, 200, 247, 0.25); }
 .research-done-toggle { margin-top: 8px; }
