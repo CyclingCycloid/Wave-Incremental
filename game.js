@@ -7865,6 +7865,7 @@ function applyTestModeUIGlobal() {
   const clearBtn = document.getElementById("clear-vf-btn");
   const clearVpBtn = document.getElementById("clear-vp-btn");
   const clearVoidBtn = document.getElementById("clear-void-btn");
+  const clearVfBestBtn = document.getElementById("clear-vf-best-btn");
   const clearResearchBtn = document.getElementById("clear-research-btn");
   const clearInfBtn = document.getElementById("clear-inf-btn");
   const clearResearchBoughtBtn = document.getElementById("clear-research-bought-btn");
@@ -7879,6 +7880,7 @@ function applyTestModeUIGlobal() {
   if (clearBtn) clearBtn.classList.toggle("hidden", !state.testMode);
   if (clearVpBtn) clearVpBtn.classList.toggle("hidden", !state.testMode);
   if (clearVoidBtn) clearVoidBtn.classList.toggle("hidden", !state.testMode);
+  if (clearVfBestBtn) clearVfBestBtn.classList.toggle("hidden", !state.testMode);
   if (clearResearchBtn) clearResearchBtn.classList.toggle("hidden", !state.testMode);
   if (clearInfBtn) clearInfBtn.classList.toggle("hidden", !state.testMode);
   if (clearResearchBoughtBtn) clearResearchBoughtBtn.classList.toggle("hidden", !state.testMode);
@@ -8140,6 +8142,13 @@ function setupUI() {
     saveGame();
     updateVoidUI();
     setAutosaveStatus("虚空泡沫与虚空升级已清零");
+  });
+  // 测试工具：清空历史最高 VF 记录（里程碑3「度规塌缩」的判定 latch 归零，当前 VF 不动）
+  document.getElementById("clear-vf-best-btn").addEventListener("click", () => {
+    state.logVoidVFBest10 = NLOG;
+    saveGame();
+    updateVoidUI();
+    setAutosaveStatus("历史最高 VF 记录已清零");
   });
   // 测试工具：清空 ED 与推论
   document.getElementById("clear-research-btn").addEventListener("click", () => {
