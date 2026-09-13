@@ -3145,22 +3145,20 @@ function setVPLog(logV) {
 function sbu2Eff() { return effLevel(state.sbu2 + vpu2FreeLevel(), 7, 0.25); }
 // SBU3 霍金辐射的有效级别（软上限：10+(n-10)^(1/2)，从原上限 10 起算；免费等级同上）
 function sbu3Eff() { return effLevel(state.sbu3 + vpu2FreeLevel(), 16, 0.5); }
-// 黑洞基础效果：M^（0.2 + sbu2 有效级别·0.05）（引力潮汐：效果指数 +0.05/级）；返回 double（扭曲状态给时间倍率）。
-// 节点72「光学-波动说 II」：黑洞效果改为 ^3（大幅增强）
+// 黑洞基础效果：M^（0.2 + sbu2 有效级别·0.05）（引力潮汐：效果指数 +0.05/级）；返回 double（扭曲状态给时间倍率）
 function bhEffect() {
   const mLog = getLogBhMass();
   if (mLog <= 0) return 1;
   const exp = 0.2 + sbu2Eff() * 0.05;
   const effLog = exp * mLog;
-  const v = effLog > 308 ? Infinity : Math.pow(10, effLog);
-  return theoryOwned("72") ? v * v * v : v; // ^3（Infinity 时 v³ 仍为 Infinity，安全）
+  return effLog > 308 ? Infinity : Math.pow(10, effLog);
 }
-// 黑洞效果 log10（log 域，防溢出）；节点72 后 ×3（效果立方）
+// 黑洞效果 log10（log 域，防溢出）
 function bhEffectLog() {
   const mLog = getLogBhMass();
   if (mLog <= 0) return 0;
   const exp = 0.2 + sbu2Eff() * 0.05;
-  return clampLog(exp * mLog * (theoryOwned("72") ? 3 : 1));
+  return clampLog(exp * mLog);
 }
 // 黑洞对时间速率的加成（仅扭曲状态）的 log10：×(1 + bhEffect)；AU34 引力扭曲：扭曲状态效果额外 ^2。
 // 扭曲效果预览（bhTimeMultPreviewLog）供黑洞页三状态常显；实际应用仍仅扭曲状态（bhTimeMultLog 门控）
@@ -4145,8 +4143,8 @@ const THEORY_NODES = [
     desc: "基于当前超弦增加获得的超弦",
     effect: () => "当前 ×" + fmtLog(node62MultLog()) },
   { id: "72", name: "光学-波动说 II", parents: ["62"], cost: 25, series: "wave",
-    desc: "大幅增强黑洞的效果",
-    effect: () => "当前黑洞效果 ^3" },
+    desc: "基于奇点加强奇点效果",
+    effect: () => "当前指数乘数 ×" + fmt(node72SpBoostExpMult()) },
   { id: "82", name: "光学-波动说 III", parents: ["72"], cost: 0, series: "wave", placeholder: true,
     desc: "？？？" },
 ];
@@ -4189,11 +4187,17 @@ function theory11Exp() {
   if (!theoryOwned("11") || state.annihilations <= 0) return 1;
   return 1 + Math.log10(state.annihilations + 1) / 80;
 }
-// 四个奇点效果的指数（总 Sp 缩放项的指数，均受 1DA 与节点 11 加成）
-function waveGainExp() { return 2 * daExpMult() * theory11Exp(); }   // 波速获取 ×(1+Sp)^exp
-function planckExp() { return 1.5 * daExpMult() * theory11Exp(); }   // 普朗克常数 ×(1+Sp)^exp
-function tempCapExp() { return 10 * daExpMult() * theory11Exp(); }   // 普朗克温度上限 ×(1+Sp)^exp
-function accretionExp() { return 3 * theory11Exp(); }                // 黑洞吸积效率（AU43）^exp
+// 四个奇点效果的指数（总 Sp 缩放项的指数，均受 1DA 与节点 11 加成）。
+// 节点72「光学-波动说 II」：四个指数再 ×M（M = max(1, lg(Sp+1)^0.5/5)——基于奇点加强奇点效果）
+function node72SpBoostExpMult() {
+  if (!theoryOwned("72")) return 1;
+  const l = lg1FromLog(getLogSp()); // lg(Sp+1)
+  return Math.max(1, Math.pow(l, 0.5) / 5);
+}
+function waveGainExp() { return 2 * daExpMult() * theory11Exp() * node72SpBoostExpMult(); }   // 波速获取 ×(1+Sp)^exp
+function planckExp() { return 1.5 * daExpMult() * theory11Exp() * node72SpBoostExpMult(); }   // 普朗克常数 ×(1+Sp)^exp
+function tempCapExp() { return 10 * daExpMult() * theory11Exp() * node72SpBoostExpMult(); }   // 普朗克温度上限 ×(1+Sp)^exp
+function accretionExp() { return 3 * theory11Exp() * node72SpBoostExpMult(); }                // 黑洞吸积效率（AU43）^exp
 function theoryAvailable(def) {
   if (theoryOwned(def.id) || def.placeholder) return false;
   if (+def.id[0] > state.theoryDepth + 1e-9) return false; // 理论深度：更深层的节点暂不可购（显示？？？；1e-9 容差防浮点残差）
