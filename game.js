@@ -704,7 +704,7 @@ function up3WavelengthFromFLog(lf) {
   // excess→0 时 w→1e5，拐点连续；w 越大 base 越大、p 越小（恒 <1），削弱渐强。
   // 实际购买与「下次重置」预览共用本函数
   if (w > 100000) {
-    const p = (theoryOwned("71") ? 0.96 : theoryOwned("41") ? 0.95 : 0.85) / Math.pow((5 + Math.log10(w)) / 10, 0.3);
+    const p = (theoryOwned("71") ? 0.98 : theoryOwned("41") ? 0.95 : 0.85) / Math.pow((5 + Math.log10(w)) / 10, 0.3);
     w = 100000 + Math.pow(w - 100000, p);
   }
   // 研究·双缝干涉实验（v0.6.3.2）：波长缩减效果 ×(0.6·0.8^(等级-1))（等级 1 仍为 0.6，高等级放缓）
@@ -4135,8 +4135,8 @@ const THEORY_NODES = [
     desc: "获得的超弦 ×1000",
     effect: () => "当前 ×1000" },
   { id: "71", name: "光学-粒子说 II", parents: ["61"], cost: 64, series: "particle",
-    desc: "波长二次软上限削弱1%",
-    effect: () => "当前削弱指数 0.96" },
+    desc: "波长二次软上限削弱3%",
+    effect: () => "当前削弱指数 0.98" },
   { id: "81", name: "光学-粒子说 III", parents: ["71"], cost: 0, series: "particle", placeholder: true,
     desc: "？？？" },
   { id: "62", name: "光学-波动说 I", parents: ["51"], cost: 35, series: "wave",
