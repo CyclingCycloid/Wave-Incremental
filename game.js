@@ -4188,12 +4188,12 @@ function theory11Exp() {
   return 1 + Math.log10(state.annihilations + 1) / 80;
 }
 // 四个奇点效果的指数（总 Sp 缩放项的指数，均受 1DA 与节点 11 加成）。
-// 节点72「光学-波动说 II」：四个指数再 ×M（M = 1 + lg(1+lg(总Sp+1))——基于奇点加强奇点效果，
-// 与四个奇点效果同用总 Sp；增长为多对数级、远缓于初版 √lg/5。totalSp=0 时 M 恰为 1）
+// 节点72「光学-波动说 II」：四个指数再 ×M（M = 1 + lg(1+lg(总Sp+1)/2)/3——基于奇点加强奇点效果，
+// 与四个奇点效果同用总 Sp；多对数增长，totalSp=0 时 M 恰为 1）
 function node72SpBoostExpMult() {
   if (!theoryOwned("72")) return 1;
   const l = state.totalSp > 0 ? lg1FromLog(getLogTotalSp()) : 0; // lg(总Sp+1)（哨兵：totalSp=0 时为 0，勿用 lg1FromLog(0)=lg2）
-  return 1 + Math.log10(1 + l);
+  return 1 + Math.log10(1 + l / 2) / 3;
 }
 function waveGainExp() { return 2 * daExpMult() * theory11Exp() * node72SpBoostExpMult(); }   // 波速获取 ×(1+Sp)^exp
 function planckExp() { return 1.5 * daExpMult() * theory11Exp() * node72SpBoostExpMult(); }   // 普朗克常数 ×(1+Sp)^exp
