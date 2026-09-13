@@ -7905,6 +7905,7 @@ function applyTestModeUIGlobal() {
   const clearResearchBoughtBtn = document.getElementById("clear-research-bought-btn");
   const resetInsBtn = document.getElementById("reset-ins-btn");
   const resetTpCmBtn = document.getElementById("reset-tp-cm-btn");
+  const clearCmBtn = document.getElementById("clear-cm-btn");
   const forceAnnBtn = document.getElementById("force-ann-btn");
   const verEl = document.getElementById("version-label");
   if (enterBtn) {
@@ -7920,6 +7921,7 @@ function applyTestModeUIGlobal() {
   if (clearResearchBoughtBtn) clearResearchBoughtBtn.classList.toggle("hidden", !state.testMode);
   if (resetInsBtn) resetInsBtn.classList.toggle("hidden", !state.testMode);
   if (resetTpCmBtn) resetTpCmBtn.classList.toggle("hidden", !state.testMode);
+  if (clearCmBtn) clearCmBtn.classList.toggle("hidden", !state.testMode);
   if (forceAnnBtn) forceAnnBtn.classList.toggle("hidden", !state.testMode);
   const forceCompactBtn = document.getElementById("force-compact-btn");
   if (forceCompactBtn) forceCompactBtn.classList.toggle("hidden", !state.testMode);
@@ -8229,6 +8231,13 @@ function setupUI() {
     saveGame();
     updateCompactUI();
     setAutosaveStatus("拓扑节点与 CM 已归零");
+  });
+  // 测试工具：仅清空 CM（拓扑节点不动）
+  document.getElementById("clear-cm-btn").addEventListener("click", () => {
+    setCMLog(NLOG);
+    saveGame();
+    updateCompactUI();
+    setAutosaveStatus("CM 已清零（拓扑节点保留）");
   });
   // 湮灭按钮（首次湮灭后显示；点击直接湮灭，不强制切换选项卡）
   document.getElementById("annihilate-btn").addEventListener("click", () => {
