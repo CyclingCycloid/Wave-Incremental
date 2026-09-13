@@ -2883,15 +2883,14 @@ function updateVoidUI() {
   const m1 = voidMilestone1();
   const m2 = voidMilestone2();
   // VF 效果行：第一效果（VP 获取）恒有；第二效果（吸积 ×VF^(2/3)）里程碑 1 解锁；
-  // 第三效果（波速获取幂次）里程碑 2 解锁；第四效果（折叠器速度）里程碑 3 解锁；
-  // R2 后附全扭曲超频说明（②③④在里程碑3 后按 VF^1.1 / VF^0.1 口径计算）
+  // 第三效果（波速获取幂次）里程碑 2 解锁；第四效果（折叠器速度）里程碑 3 解锁
+  //（②③④在里程碑3 后按 VF^1.1 / VF^0.1 口径计算；全扭曲超频不做界面展示，见帮助页「虚空 II」）
   const vfLg = vfEffectVFLog(state.logVoidVF10);
   const vfLine = vfLg > NLOG + 1
     ? `虚空泡沫（VF）：${fmtLog(state.logVoidVF10)}\nVP 获取 ×${fmtLog(vfMultLog)}`
       + (m1 ? `\n黑洞吸积 ×${fmtLog(clampLog((2 / 3) * vfLg))}` : "")
       + (m2 ? `\n波速获取 ^${fmt(vfGainExp())}` : "")
       + (voidMilestone3() ? `\n维度折叠器速度 ×${fmtLog(clampLog(0.1 * state.logVoidVF10))}` : "")
-      + (researchBought("R2") ? "\n全扭曲虚空：F 超 1e20000 的部分，每 1e3000 使 VF 获取 ×10（连续）" : "")
     : "虚空泡沫（VF）：尚无";
   // 虚空里程碑显示（每个里程碑一个独立格子）；M1/M2 按削弱种数、M3 按历史最高 VF、M4 占位
   const m3 = voidMilestone3();
