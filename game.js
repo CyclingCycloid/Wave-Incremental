@@ -4442,10 +4442,10 @@ const RESEARCH_DEFS = [
   { id: "R2", name: "虚空探测器", reqED: 1e3, costInf: 5e4, desc: "解锁新的虚空内容" },
   { id: "R3", name: "动态调整LLM", reqED: 1e3, costInf: 1e5, desc: "引理加成自身获取" },
   { id: "R4", name: "Kähler模相位固化", reqED: 1.3e3, costInf: 1e7, desc: "卷缩不再重置卡拉比-丘流形" },
-  { id: "R5", name: "热焓极点回溯", reqED: 4e3, costInf: 3e7, desc: "奇点改为使用此次湮灭最高温度计算" },
-  { id: "R6", name: "态矢量相干保持", reqED: 4e3, costInf: 1e8, desc: "缩短波长不再重置任何东西" },
-  // TODO(数值待定)：R7 的需求/价格为占位值，定稿后直接改这里
-  { id: "R7", name: "Ricci流预解算", reqED: 4e3, costInf: 5e8, desc: "基于推论增加维度折叠器速度" },
+  { id: "R5", name: "热焓极点回溯", reqED: 3.5e3, costInf: 3e7, desc: "奇点改为使用此次湮灭最高温度计算" },
+  { id: "R6", name: "态矢量相干保持", reqED: 3.5e3, costInf: 1e8, desc: "缩短波长不再重置任何东西" },
+  // TODO(数值待定)：R7 的价格为占位值（需求已定 3.5e3 ED），定稿后直接改这里
+  { id: "R7", name: "Ricci流预解算", reqED: 3.5e3, costInf: 5e8, desc: "基于推论增加维度折叠器速度" },
 ];
 function researchDef(id) { return RESEARCH_DEFS.find(x => x.id === id); }
 function researchBought(id) { return state.researchBought.includes(id); }
