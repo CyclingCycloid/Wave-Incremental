@@ -882,7 +882,7 @@ body[data-theme="white"] .inf-line .research-res-val { color: #3050b0; }
 .svu3-phase-btn:disabled { opacity: 0.55; }
 .svu3-tip {
   position: relative; display: inline-block; margin-top: 6px; cursor: help;
-  font-size: 11px; opacity: 0.7; border-bottom: 1px dotted currentColor;
+  font-size: 11px; color: rgba(242, 242, 247, 0.7); border-bottom: 1px dotted currentColor;
 }
 .svu3-tip::after {
   content: attr(data-tip);

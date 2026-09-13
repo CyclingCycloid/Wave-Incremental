@@ -4508,15 +4508,15 @@ function researchAbandon() {
   researchResetBody();
   setAutosaveStatus("已放弃实验（无实验数据）");
 }
-// 推论产出：Multi × ED^0.8 每秒（真实时间）；R3「动态调整LLM」后 Multi 为 (lg(Inf+1))^2——
-// 注意 2 是**对数值上的幂**（+2·lg(lg(Inf+1))），绝不能写成 +2·lg(Inf+1)（= ×Inf^2，直接发散）
+// 推论产出：Multi × ED^0.8 每秒（真实时间）；R3「动态调整LLM」后 Multi 为 (lg(Inf+1))^3——
+// 注意 3 是**对数值上的幂**（+3·lg(lg(Inf+1))），绝不能写成 +3·lg(Inf+1)（= ×Inf^3，直接发散）
 function infRateLog() {
   const lg = getLogED();
   if (lg <= NLOG + 1) return NLOG;
   let rateLog = lg * 0.8;
   if (researchBought("R3")) {
     const l = lg1FromLog(getLogInf()); // lg(Inf+1)
-    if (l > 0) rateLog += 2 * Math.log10(l); // ×(lg(Inf+1))^2：多对数增长，随 Inf 收敛
+    if (l > 0) rateLog += 3 * Math.log10(l); // ×(lg(Inf+1))^3：多对数增长，随 Inf 收敛
   }
   return clampLog(rateLog);
 }
