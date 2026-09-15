@@ -2924,6 +2924,8 @@ function updateVoidUI() {
   for (const def of SVU_DEFS) {
     const el = voidSvuEls[def.id];
     if (!el) continue;
+    // SVU3 在购买 R2「虚空探测器」前整卡隐藏（不让玩家提前看到该系统）
+    if (def.id === "svu3") el.card.classList.toggle("hidden", !researchBought("R2"));
     const unlocked = def.id === "svu3" ? m3 : m1;
     el.card.classList.toggle("locked", !unlocked && def.id !== "svu3");
     el.card.classList.toggle("locked-soft", !unlocked && def.id === "svu3");
