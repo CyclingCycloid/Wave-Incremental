@@ -3326,7 +3326,7 @@ function setVoidVFCapLog(lg) {
   if (lg > getLogVoidVFCap10()) state.logVoidVFCap10 = lg;
 }
 // 虚空外 VF 追赶（applyProduction 调用，真实时间 realDt，不受时间倍率影响）：
-// current 每秒增长上限差值的 10%——闭式精确 cur' = cap − (cap−cur)×0.9^dt（指数逼近）。
+// current 每秒增长上限差值的 5%——闭式精确 cur' = cap − (cap−cur)×0.95^dt（指数逼近）。
 // 虚空中不增长；cap 无效或 current 已达上限时早退；cur>cap（异常档）时吸附归位到 cap
 function voidVFRegenTick(realDt) {
   if (state.voidActive || !(realDt > 0)) return;
@@ -3334,17 +3334,17 @@ function voidVFRegenTick(realDt) {
   if (!(capLog > NLOG + 1)) return;
   const curLog = state.logVoidVF10;
   if (!(curLog > NLOG + 1)) {
-    // current 为 0：直接按 0 与 cap 差值追赶（cur' = cap×(1−0.9^dt)）
-    setVoidVFLog(capLog + Math.log10(Math.max(1 - Math.pow(0.9, realDt), 1e-300)));
+    // current 为 0：直接按 0 与 cap 差值追赶（cur' = cap×(1−0.95^dt)）
+    setVoidVFLog(capLog + Math.log10(Math.max(1 - Math.pow(0.95, realDt), 1e-300)));
     return;
   }
   if (curLog >= capLog) {
     if (curLog > capLog) setVoidVFLog(capLog); // 异常档归位（防更新期负增长放大）
     return;
   }
-  // cur' = cur + (cap−cur)×(1−0.9^dt)：log 域 = cur + log10(1 + (cap/cur−1)×(1−0.9^dt))
+  // cur' = cur + (cap−cur)×(1−0.95^dt)：log 域 = cur + log10(1 + (cap/cur−1)×(1−0.95^dt))
   const ratio = Math.pow(10, Math.min(capLog - curLog, 300)); // (cap−cur)/cur 之比（差值可能巨大，钳比防溢出）
-  const addLog = Math.log10(Math.max((ratio - 1) * (1 - Math.pow(0.9, realDt)) + 1, 1));
+  const addLog = Math.log10(Math.max((ratio - 1) * (1 - Math.pow(0.95, realDt)) + 1, 1));
   let next = curLog + addLog;
   if (next >= capLog) next = capLog; // 吸附到上限（浮点余量）
   setVoidVFLog(next);
@@ -3392,7 +3392,7 @@ function enterVoid(ids) {
   setAutosaveStatus("已进入虚空（" + list.length + " 个削弱生效）");
 }
 // 退出虚空：达到 1e2000 Hz 时按公式结算本次 VF 上限（与历史上限取大，只增不减）。
-// VF 本体不再一次性入账——回到虚空外后 current 每秒追赶上限差值的 10%（voidVFRegenTick）。
+// VF 本体不再一次性入账——回到虚空外后 current 每秒追赶上限差值的 5%（voidVFRegenTick）。
 // 达成结算时记录里程碑（最大同时生效削弱数）
 function exitVoid() {
   if (!state.voidActive) return;
@@ -7807,7 +7807,7 @@ function applyProduction(realDt) {
   infTick(realDt); // 研究：推论产出（真实时间，拥有节点51 后）
   svu3RhoTick(realDt); // SVU3 虚数密度：全扭曲虚空中按真实时间增长（不受时间倍率影响，里程碑3 后）
   sr1Tick(realDt); // 课题 SR1：投入推论（真实时间，R9 后激活时）
-  voidVFRegenTick(realDt); // 虚空泡沫：虚空外每秒追赶上限差值的 10%（真实时间）
+  voidVFRegenTick(realDt); // 虚空泡沫：虚空外每秒追赶上限差值的 5%（真实时间）
 }
 
 function tick() {
