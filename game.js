@@ -2894,12 +2894,10 @@ function updateVoidUI() {
   // 第三效果（波速获取幂次）里程碑 2 解锁；第四效果（折叠器速度）里程碑 3 解锁
   //（②③④在里程碑3 后按 VF^1.1 / VF^0.1 口径计算；全扭曲超频不做界面展示，见帮助页「虚空 II」）
   const vfLg = vfEffectVFLog(state.logVoidVF10);
-  // VF 行附上限标注：cap 有效时显示 (上限 X)；虚空外追赶中注明增长方式，虚空中不增长
+  // VF 行附上限标注：cap 有效时显示 (上限 X)；虚空中不增长（增长方式说明见帮助页「虚空」）
   const capLog = getLogVoidVFCap10();
   const capNote = capLog > NLOG + 1 ? `（上限 ${fmtLog(capLog)}）` : "";
-  const growNote = state.voidActive
-    ? "（虚空中不增长）"
-    : (capLog > NLOG + 1 && state.logVoidVF10 < capLog) ? "（虚空外每秒 +10% 差值）" : "";
+  const growNote = state.voidActive ? "（虚空中不增长）" : "";
   const vfLine = vfLg > NLOG + 1
     ? `虚空泡沫（VF）：${fmtLog(state.logVoidVF10)}${capNote}${growNote}\nVP 获取 ×${fmtLog(vfMultLog)}`
       + (m1 ? `\n黑洞吸积 ×${fmtLog(clampLog((2 / 3) * vfLg))}` : "")
@@ -3421,7 +3419,7 @@ function exitVoid() {
   const capTxt = fmtLog(getLogVoidVFCap10());
   setAutosaveStatus(achieved
     ? (capRaised
-      ? "已退出虚空：VF 上限提升至 " + capTxt + "（虚空外每秒追赶差值的 10%）"
+      ? "已退出虚空：VF 上限提升至 " + capTxt
       : "已退出虚空：VF 上限未变（" + capTxt + "）")
     : "已退出虚空：未达到 1e2000 Hz，VF 无入账");
 }
