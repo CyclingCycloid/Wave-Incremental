@@ -2175,10 +2175,10 @@ function upgradesFree() { return state.spu1 >= 1 && !inDistort("inflation"); }
 const MILESTONES = [
   { n: 1,  desc: "保持解锁声子升级和声子页面的可见性，解锁「自动化」主选项卡" },
   { n: 2,  desc: "湮灭保持单次波动升级，和主要页面自动化的解锁" },
-  { n: 3,  desc: "湮灭保持单次声子升级，和声子相关自动化的解锁" },
+  { n: 3,  desc: "湮灭保持单次声子升级，和声子相关自动化的解锁，湮灭不再播放动画" },
   { n: 5,  desc: "湮灭不重置自动化开关，声子发生器一开始就是启动状态" },
   { n: 8,  desc: "解锁自动购买升级3（可设置在多少倍率时购买）" },
-  { n: 10, desc: "解锁自动湮灭（可设置在多少奇点时重置）" },
+  { n: 10, desc: "解锁自动湮灭（可设置在多少奇点时重置），湮灭不再需要达到当前普朗克温度" },
   { n: 20, desc: "解锁「扭曲」选项卡" },
 ];
 // SVPU2 虚幻湮灭：每次湮灭使湮灭次数 +2^svpu2（膨胀计数为有意设计：
@@ -2213,7 +2213,11 @@ function annihilationReady() {
     const tpLog = isFinite(u.tp) ? Math.log10(u.tp) : Infinity;
     return tLog >= tpLog;
   }
-  return tLog >= LOG_T_P0; // 只需超过最初的普朗克温度，无需到当前宇宙上限
+  // 主宇宙三档门槛：10 次湮灭（里程碑 10）前须达到**当前**普朗克温度（随总 Sp 上抬），
+  // 之后回落为最初的普朗克温度。温度贴着上限时 temperatureCappedLog 恰等于 capLog，
+  // >= 判定浮点安全；首次湮灭 totalSp=0，当前 cap == T_P0，行为与旧版一致
+  const targetLog = hasMilestone(10) ? LOG_T_P0 : temperatureCapLog();
+  return tLog >= targetLog;
 }
 
 // 记录一次湮灭到历史（最近十次）
@@ -2540,7 +2544,7 @@ function exitDistort() {
   setAutosaveStatus(`已退出扭曲宇宙「${u ? u.name : ""}」（未达成目标）`);
 }
 
-// 首次湮灭：渐黑 → "你达到了普朗克温度"淡入淡出 → 主文案+按钮 → 点击 → 黑屏动画 → 执行
+// 前三次湮灭的过场：渐黑 → "你达到了普朗克温度"淡入淡出 → 主文案+按钮 → 点击 → 黑屏动画 → 执行
 // 阶段切换全部由 CSS 动画时间线驱动（.shown 类触发），无 JS 定时器，不受节流影响
 let annSequenceActive = false; // 序列进行中（含确认后的黑屏动画期），防止 tick 重复拉起遮罩
 function firstAnnihilationFlow() {
@@ -2581,8 +2585,10 @@ function applyAnnihilationVisibility() {
   document.getElementById("subtab-blackhole").classList.toggle("hidden", !bhUnlocked());
   document.getElementById("subtab-void").classList.toggle("hidden", !state.ach.normal.includes("A52"));
   const ready = annihilationReady();
-  if (!done) {
-    // 首次湮灭：全屏遮罩接管（类似第一次大塌缩）；序列进行中不重复拉起
+  // 前三次湮灭（里程碑 3 前）：全屏遮罩接管过场动画；序列进行中不重复拉起
+  //（扭曲/虚空中不接管——虽然低计数下不可达，防御性排除）
+  const cinematic = state.annihilations < 3 && !state.distortActive && !state.voidActive;
+  if (cinematic) {
     document.getElementById("annihilate-btn").classList.add("hidden");
     if (ready && !annSequenceActive) firstAnnihilationFlow();
     return;
@@ -2613,7 +2619,9 @@ function applyAnnihilationVisibility() {
     btn.textContent = `湮灭（+${fmtNum(spGain(), spGainLog())} Sp）`;
     btn.disabled = false;
   } else {
-    btn.textContent = state.voidActive ? "虚空挑战中…" : `湮灭（须达到 1.42e32 K）`;
+    // 未就绪文案随门槛档位：10 次湮灭前显示当前普朗克温度，之后为最初的普朗克温度
+    const reqTxt = hasMilestone(10) ? "1.42e32 K" : fmtNum(temperatureCap(), temperatureCapLog()) + " K";
+    btn.textContent = state.voidActive ? "虚空挑战中…" : `湮灭（须达到 ${reqTxt}）`;
     btn.disabled = true;
   }
 }
