@@ -8324,8 +8324,7 @@ function setupUI() {
   });
   // 危险操作区工具：清零VF / 清空VF上限 / 无Sp湮灭（测试模式下可见）
   document.getElementById("clear-vf-btn").addEventListener("click", () => {
-    setVoidVFLog(NLOG);
-    state.logVoidVFCap10 = NLOG; // cap 与 current 一并清零
+    setVoidVFLog(NLOG); // 仅清当前 VF（cap 不动——「清空VF上限」按钮单独负责重测上限）
     saveGame();
     updateVoidUI();
     setAutosaveStatus("虚空泡沫已清零");
