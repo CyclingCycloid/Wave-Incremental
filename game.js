@@ -3037,7 +3037,7 @@ function buySAU(id, bulk) {
   if (cmpLT(state.sp, Math.pow(10, cLog), getLogSp(), cLog)) return;
   subSpLog(cLog);
   state[u.key]++;
-  if (!bulk) { saveGame(); checkAchievements(); updateSpUI(); setAutosaveStatus("已购买奇点升级：" + u.name); }
+  if (!bulk) { saveGame(); checkAchievements(); updateSpUI(); } // 可重复升级：不弹购买提示（防连点刷屏）
 }
 function buyAU(id) {
   const u = AU_DEFS.flat().find(x => x.id === id);
@@ -3603,7 +3603,7 @@ function buySBU(id, bulk) {
   if (cmpLT(state.sp, Math.pow(10, cLog), getLogSp(), cLog)) return;
   subSpLog(cLog);
   state[u.key]++;
-  if (!bulk) { saveGame(); updateBlackholeUI(); setAutosaveStatus("已购买黑洞升级：" + u.name); }
+  if (!bulk) { saveGame(); updateBlackholeUI(); } // 可重复升级：不弹购买提示（防连点刷屏）
 }
 // 黑洞虚粒子升级（花 VP，位于黑洞页）
 const SVPU_DEFS = [
@@ -3632,7 +3632,7 @@ function buySVPU(id, bulk) {
   if (cmpLT(state.virtualParticles, c, getLogVP(), cLog)) return; // 门槛照常
   if (!vpUpgradesFree()) subVPLog(cLog);
   state[u.key]++;
-  if (!bulk) { saveGame(); updateBlackholeUI(); setAutosaveStatus("已购买黑洞升级：" + u.name); }
+  if (!bulk) { saveGame(); updateBlackholeUI(); } // 可重复升级：不弹购买提示（防连点刷屏）
 }
 // ---------- 虚粒子单次升级（VPU，A45 星标奖励解锁；2×2 方格，花 VP / VPU2 花 VF）----------
 // 达成 A45 前整区不可见；解锁条件统一由 vpuUnlocked(id) 判定。
@@ -5789,7 +5789,6 @@ function buyAnnCDUpgrade() {
   state.autoAnnCDLvl++;
   saveGame();
   updateAutomationUI();
-  setAutosaveStatus("已购买：自动湮灭 CD 缩减");
 }
 function buyBatchUpgrade() {
   if (!state.ach.normal.includes("A34")) return;
@@ -5802,7 +5801,6 @@ function buyBatchUpgrade() {
   state.batchMax = Math.pow(2, state.batchLvl + 1);
   saveGame();
   updateAutomationUI();
-  setAutosaveStatus("已购买：批量购买上限翻倍");
 }
 function buySpUpgrade(id) {
   // spu1 单独处理（已移至 SAU 区）
