@@ -76,6 +76,7 @@ function defaultState() {
     voidRules: [],         // 虚空中生效的扭曲宇宙削弱（id 数组，D1-D8）
     voidVF: 0,             // 虚空泡沫（double 缓存；极端值看 logVoidVF10）
     logVoidVF10: NLOG,     // log10(虚空泡沫) 权威表示（选满削弱时 VF 可超 double）
+    logVoidVFCap10: NLOG,  // log10(VF 上限) 权威（退出虚空结算时只增不减；虚空外 current 每秒追赶差值的 10%）
     voidBestRules: 0,      // 虚空里程碑：已完成的虚空最大同时生效削弱数（0=未完成过）
     logVoidVFBest10: NLOG, // 历史最高持有的虚空泡沫 log10（里程碑3 latch，只增不减）
     svu1SpLog: NLOG,       // SVU1 虚空共振：累计投入的 Sp（log10；投入持久）
@@ -1421,6 +1422,12 @@ function migrateState() {
   // 不得用「当前持有量」回填已清零的记录——「清空历史最高VF」测试按钮就是要把记录归 0 重测
   if (state.logVoidVFBest10 === undefined || !isFinite(state.logVoidVFBest10)) {
     state.logVoidVFBest10 = (state.logVoidVF10 !== undefined && isFinite(state.logVoidVF10)) ? state.logVoidVF10 : NLOG;
+  }
+  // v0.6.3.2 虚空泡沫机制改造：新增 VF 上限字段。旧机制下持有量即「曾入账的最大结算值」，
+  // 迁移直接把旧持有量写入 cap（等价 max(current,cap)，零跳变）——此后 current ≤ cap 恒成立，
+  // 更新不会引发 VF 负增长
+  if (state.logVoidVFCap10 === undefined || !isFinite(state.logVoidVFCap10)) {
+    state.logVoidVFCap10 = (state.logVoidVF10 !== undefined && isFinite(state.logVoidVF10)) ? state.logVoidVF10 : NLOG;
   }
   // 补发 A71「乌云」：更新前已完成过实验（ED>0 或拥有 S29 均证明结束过实验）的玩家直接获得
   if (!state.ach.normal.includes("A71")
@@ -2887,12 +2894,18 @@ function updateVoidUI() {
   // 第三效果（波速获取幂次）里程碑 2 解锁；第四效果（折叠器速度）里程碑 3 解锁
   //（②③④在里程碑3 后按 VF^1.1 / VF^0.1 口径计算；全扭曲超频不做界面展示，见帮助页「虚空 II」）
   const vfLg = vfEffectVFLog(state.logVoidVF10);
+  // VF 行附上限标注：cap 有效时显示 (上限 X)；虚空外追赶中注明增长方式，虚空中不增长
+  const capLog = getLogVoidVFCap10();
+  const capNote = capLog > NLOG + 1 ? `（上限 ${fmtLog(capLog)}）` : "";
+  const growNote = state.voidActive
+    ? "（虚空中不增长）"
+    : (capLog > NLOG + 1 && state.logVoidVF10 < capLog) ? "（虚空外每秒 +10% 差值）" : "";
   const vfLine = vfLg > NLOG + 1
-    ? `虚空泡沫（VF）：${fmtLog(state.logVoidVF10)}\nVP 获取 ×${fmtLog(vfMultLog)}`
+    ? `虚空泡沫（VF）：${fmtLog(state.logVoidVF10)}${capNote}${growNote}\nVP 获取 ×${fmtLog(vfMultLog)}`
       + (m1 ? `\n黑洞吸积 ×${fmtLog(clampLog((2 / 3) * vfLg))}` : "")
       + (m2 ? `\n波速获取 ^${fmt(vfGainExp())}` : "")
       + (voidMilestone3() ? `\n维度折叠器速度 ×${fmtLog(clampLog(0.1 * state.logVoidVF10))}` : "")
-    : "虚空泡沫（VF）：尚无";
+    : "虚空泡沫（VF）：尚无" + capNote + growNote;
   // 虚空里程碑显示（每个里程碑一个独立格子）；M1/M2 按削弱种数、M3 按历史最高 VF、M4 占位
   const m3 = voidMilestone3();
   for (let i = 0; i < VOID_MILESTONES.length; i++) {
@@ -2959,7 +2972,7 @@ function updateVoidUI() {
     const fLog = FLog();
     const vfLog = voidVFLog(fLog);
     const reached = vfLog > NLOG + 1;
-    const preview = reached ? `预计 VF：${fmtLog(vfLog)}` : `频率尚未达到 1e2000 Hz`;
+    const preview = reached ? `本次结算 VF 上限：${fmtLog(vfLog)}` : `频率尚未达到 1e2000 Hz`;
     document.getElementById("void-progress").textContent =
       `当前频率：${fmtNum(Math.pow(10, Math.min(fLog, 308)), fLog)} Hz\n目标：1e2000 Hz\n${preview}`;
     stats.textContent = vfLine;
@@ -3306,6 +3319,38 @@ function setVoidVFLog(lg) {
     : (state.logVoidVF10 > 308 ? Infinity : Math.pow(10, state.logVoidVF10));
   if (state.logVoidVF10 > (state.logVoidVFBest10 ?? NLOG)) state.logVoidVFBest10 = state.logVoidVF10;
 }
+// VF 上限（log10 权威；退出虚空结算时只增不减）
+function getLogVoidVFCap10() {
+  return (state.logVoidVFCap10 !== undefined && isFinite(state.logVoidVFCap10)) ? clampLog(state.logVoidVFCap10) : NLOG;
+}
+function setVoidVFCapLog(lg) {
+  lg = clampLog(lg);
+  if (lg > getLogVoidVFCap10()) state.logVoidVFCap10 = lg;
+}
+// 虚空外 VF 追赶（applyProduction 调用，真实时间 realDt，不受时间倍率影响）：
+// current 每秒增长上限差值的 10%——闭式精确 cur' = cap − (cap−cur)×0.9^dt（指数逼近）。
+// 虚空中不增长；cap 无效或 current 已达上限时早退；cur>cap（异常档）时吸附归位到 cap
+function voidVFRegenTick(realDt) {
+  if (state.voidActive || !(realDt > 0)) return;
+  const capLog = getLogVoidVFCap10();
+  if (!(capLog > NLOG + 1)) return;
+  const curLog = state.logVoidVF10;
+  if (!(curLog > NLOG + 1)) {
+    // current 为 0：直接按 0 与 cap 差值追赶（cur' = cap×(1−0.9^dt)）
+    setVoidVFLog(capLog + Math.log10(Math.max(1 - Math.pow(0.9, realDt), 1e-300)));
+    return;
+  }
+  if (curLog >= capLog) {
+    if (curLog > capLog) setVoidVFLog(capLog); // 异常档归位（防更新期负增长放大）
+    return;
+  }
+  // cur' = cur + (cap−cur)×(1−0.9^dt)：log 域 = cur + log10(1 + (cap/cur−1)×(1−0.9^dt))
+  const ratio = Math.pow(10, Math.min(capLog - curLog, 300)); // (cap−cur)/cur 之比（差值可能巨大，钳比防溢出）
+  const addLog = Math.log10(Math.max((ratio - 1) * (1 - Math.pow(0.9, realDt)) + 1, 1));
+  let next = curLog + addLog;
+  if (next >= capLog) next = capLog; // 吸附到上限（浮点余量）
+  setVoidVFLog(next);
+}
 // VF 对虚粒子获取的加成（log10）：×(1+VF^((lg(VF+1)+3)/(4lg(VF+1)+6)))。无 VF 时 0。
 // 里程碑3 后按 VF^1.1 计算（lg 与幂次均放大 1.1 倍）
 function vfVPMultLog() {
@@ -3348,7 +3393,8 @@ function enterVoid(ids) {
   updateVoidUI();
   setAutosaveStatus("已进入虚空（" + list.length + " 个削弱生效）");
 }
-// 退出虚空：达到 1e2000 Hz 时结算 VF（里程碑式：更高才更新），随后湮灭重置回主宇宙。
+// 退出虚空：达到 1e2000 Hz 时按公式结算本次 VF 上限（与历史上限取大，只增不减）。
+// VF 本体不再一次性入账——回到虚空外后 current 每秒追赶上限差值的 10%（voidVFRegenTick）。
 // 达成结算时记录里程碑（最大同时生效削弱数）
 function exitVoid() {
   if (!state.voidActive) return;
@@ -3358,12 +3404,12 @@ function exitVoid() {
   if (achieved && state.voidRules.length > state.voidBestRules) {
     state.voidBestRules = state.voidRules.length;
   }
-  const prevVFLog = state.logVoidVF10;
-  const improved = achieved && vfLog > prevVFLog;
-  if (improved) setVoidVFLog(vfLog);
-  // 未超过持有量（VF 不入账）时也要更新「历史最高」记录——否则清空记录后，
-  // 只要持有量卡在高位，任何新结算都写不进历史最高（清空按钮失效的根因）
-  else if (achieved && vfLog > state.logVoidVFBest10) state.logVoidVFBest10 = vfLog;
+  let capRaised = false;
+  if (achieved) {
+    const prevCapLog = getLogVoidVFCap10();
+    setVoidVFCapLog(vfLog);
+    capRaised = getLogVoidVFCap10() > prevCapLog;
+  }
   state.voidActive = false;
   state.voidRules = [];
   forceAnnihilationReset(0);
@@ -3372,11 +3418,12 @@ function exitVoid() {
   renderAll();
   saveGame();
   updateVoidUI();
+  const capTxt = fmtLog(getLogVoidVFCap10());
   setAutosaveStatus(achieved
-    ? (improved
-      ? "已退出虚空：获得虚空泡沫 ×" + fmtLog(state.logVoidVF10)
-      : "已退出虚空：未超过历史最高（" + fmtLog(prevVFLog) + "）")
-    : "已退出虚空：未达到 1e2000 Hz，无虚空泡沫");
+    ? (capRaised
+      ? "已退出虚空：VF 上限提升至 " + capTxt + "（虚空外每秒追赶差值的 10%）"
+      : "已退出虚空：VF 上限未变（" + capTxt + "）")
+    : "已退出虚空：未达到 1e2000 Hz，VF 无入账");
 }
 function bhMassSoftcapped() {
   if (!bhUnlocked()) return false;
@@ -4878,14 +4925,17 @@ function applyCompactionResetBody(realNow) {
   state.svpu1 = 0; state.svpu2 = 0; state.svpu3 = 0; state.svpu4 = 0; state.svpu5 = 0;
   // —— 虚空：里程碑 14/16/18 条件保留，其余重置 ——
   state.voidActive = false; state.voidRules = [];
-  if (!compMilestone(18)) setVoidVFLog(NLOG);
+  if (!compMilestone(18)) { setVoidVFLog(NLOG); state.logVoidVFCap10 = NLOG; } // cap 与 current 一并清零
   if (!compMilestone(16)) {
     state.svu1SpLog = NLOG; state.svu1VpLog = NLOG; state.svu1VfLog = NLOG;
     state.svu1Filling = false;
     state.svu2Level = 0;
   }
   if (!compMilestone(14)) state.voidBestRules = 0;
-  if (compMilestone(12)) setVoidVFLog(clampLog(Math.max(state.logVoidVF10 ?? NLOG, 6))); // 初始 1e6 VF（不降低已有）
+  if (compMilestone(12)) { // 初始 1e6 VF（不降低已有）：current 与 cap 双写
+    setVoidVFCapLog(Math.max(state.logVoidVF10 ?? NLOG, 6));
+    setVoidVFLog(clampLog(Math.max(state.logVoidVF10 ?? NLOG, 6)));
+  }
   // —— 卷缩层自身：CM 重置（TP/V/E/F 配置、SS/Ins/理论树保留）；
   // R4「Kähler模相位固化」后卷缩（含研究重置）不再清 CM
   if (!researchBought("R4")) setCMLog(NLOG);
@@ -7759,6 +7809,7 @@ function applyProduction(realDt) {
   infTick(realDt); // 研究：推论产出（真实时间，拥有节点51 后）
   svu3RhoTick(realDt); // SVU3 虚数密度：全扭曲虚空中按真实时间增长（不受时间倍率影响，里程碑3 后）
   sr1Tick(realDt); // 课题 SR1：投入推论（真实时间，R9 后激活时）
+  voidVFRegenTick(realDt); // 虚空泡沫：虚空外每秒追赶上限差值的 10%（真实时间）
 }
 
 function tick() {
@@ -8027,6 +8078,7 @@ function handleGameHotkey(e) {
 function applyTestModeUIGlobal() {
   const enterBtn = document.getElementById("enter-test-btn");
   const clearBtn = document.getElementById("clear-vf-btn");
+  const clearVfCapBtn = document.getElementById("clear-vf-cap-btn");
   const clearVpBtn = document.getElementById("clear-vp-btn");
   const clearVoidBtn = document.getElementById("clear-void-btn");
   const clearVfBestBtn = document.getElementById("clear-vf-best-btn");
@@ -8044,6 +8096,7 @@ function applyTestModeUIGlobal() {
     enterBtn.textContent = state.testMode ? "退出测试" : "进入测试";
   }
   if (clearBtn) clearBtn.classList.toggle("hidden", !state.testMode);
+  if (clearVfCapBtn) clearVfCapBtn.classList.toggle("hidden", !state.testMode);
   if (clearVpBtn) clearVpBtn.classList.toggle("hidden", !state.testMode);
   if (clearVoidBtn) clearVoidBtn.classList.toggle("hidden", !state.testMode);
   if (clearVfBestBtn) clearVfBestBtn.classList.toggle("hidden", !state.testMode);
@@ -8271,12 +8324,20 @@ function setupUI() {
     renderAll();
     setAutosaveStatus("已进入测试模式：开发者预览");
   });
-  // 危险操作区工具：清零VF / 无Sp湮灭（测试模式下可见）
+  // 危险操作区工具：清零VF / 清空VF上限 / 无Sp湮灭（测试模式下可见）
   document.getElementById("clear-vf-btn").addEventListener("click", () => {
     setVoidVFLog(NLOG);
+    state.logVoidVFCap10 = NLOG; // cap 与 current 一并清零
     saveGame();
     updateVoidUI();
     setAutosaveStatus("虚空泡沫已清零");
+  });
+  // 清空VF上限（当前 VF 不动）：重测虚空外追赶；下次退出虚空结算会重新写入上限
+  document.getElementById("clear-vf-cap-btn").addEventListener("click", () => {
+    state.logVoidVFCap10 = NLOG;
+    saveGame();
+    updateVoidUI();
+    setAutosaveStatus("VF 上限已清零（当前 VF 不动）");
   });
   // 无 Sp 湮灭：执行一次不获取奇点的湮灭重置（扭曲/虚空中不可用——各有专属出口）
   document.getElementById("force-ann-btn").addEventListener("click", () => {
@@ -8299,6 +8360,7 @@ function setupUI() {
   // 测试工具：清除 VF 与虚空升级（SVU1 累计投入与填充开关、SVU2 等级，与卷缩重置同范围）
   document.getElementById("clear-void-btn").addEventListener("click", () => {
     setVoidVFLog(NLOG);
+    state.logVoidVFCap10 = NLOG; // cap 与 current 一并清零
     state.svu1SpLog = NLOG; state.svu1VpLog = NLOG; state.svu1VfLog = NLOG;
     state.svu1Filling = false;
     state.svu2Level = 0;

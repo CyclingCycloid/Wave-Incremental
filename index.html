@@ -337,6 +337,7 @@
           <div class="btn-row" id="test-mode-row">
             <button id="enter-test-btn">进入测试</button>
             <button id="clear-vf-btn" class="hidden">清零VF</button>
+            <button id="clear-vf-cap-btn" class="hidden" title="仅 VF 上限归 0（当前 VF 不动）——重测虚空外追赶用；下次退出虚空结算会重新写入上限">清空VF上限</button>
             <button id="clear-vp-btn" class="hidden">清除VP·质量归一</button>
             <button id="clear-void-btn" class="hidden">清零VF与虚空升级</button>
             <button id="clear-vf-best-btn" class="hidden" title="历史最高持有虚空泡沫记录归 0（里程碑3「度规塌缩」的判定 latch，当前 VF 不动）">清空历史最高VF</button>
@@ -639,9 +640,9 @@
         <details class="help-section hidden" id="help-void">
           <summary>虚空 <span class="help-ver">v0.5.1</span></summary>
           <div class="help-body">
-            <p>选择任意多个扭曲削弱同时生效进入虚空（进入即湮灭重置，需 1e50 总奇点）。频率达到 <strong>1e2000 Hz</strong> 后从虚空页退出，结算<strong>虚空泡沫 VF</strong>（高于历史最高才更新，可消耗）：</p>
+            <p>选择任意多个扭曲削弱同时生效进入虚空（进入即湮灭重置，需 1e50 总奇点）。频率达到 <strong>1e2000 Hz</strong> 后从虚空页退出，按以下公式结算出本次 <strong>VF 上限</strong>（与历史上限取大，只增不减）：</p>
             <p class="help-formula">VF = 8^(N-1) × 乘数之积 × (F/1e2000)^min(0.0003, √(0.0009/lg(F+1)))</p>
-            <p>虚空中的波速获取超过 1e20000 的部分将受到很强的软上限影响。虚空内禁用湮灭；VF 的各项效果、虚空升级与里程碑均见虚空页。</p>
+            <p>在虚空外，当前 VF 每秒增长上限差值的 10%（指数逼近，真实时间）；虚空中不增长。虚空中的波速获取超过 1e20000 的部分将受到很强的软上限影响。虚空内禁用湮灭；VF 的各项效果、虚空升级与里程碑均见虚空页。</p>
           </div>
         </details>
 
