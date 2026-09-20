@@ -166,10 +166,10 @@ function defaultState() {
     // 成就相关瞬时状态（加载时重置，避免离线干扰）
     hiddenClicks: [],      // S5 点击序列（单元格 id）
     metaClicks: [],        // S3 单次升级点击时间戳
-    notationSwitches: [],  // S6 显示方式切换时间戳
+    themeSwitches: [],     // S6 页面主题切换时间戳
     phToggles: [],         // S7 声子发生器开关时间戳
     capReachedAt: 0,       // S11 达到温度上限的时间戳
-    settings: { theme: "black", notation: "scientific", decimals: 3, uiFps: 33, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true },
+    settings: { theme: "black", decimals: 3, uiFps: 33, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true },
     lastTick: Date.now(),
   };
 }
@@ -1066,20 +1066,8 @@ function fmt(num) {
   const abs = Math.abs(num);
   const tiny = Math.pow(10, -d); // 小于此值用科学计数法
   if (abs < 1000 && abs >= tiny) return sign + abs.toFixed(d);
-  if (abs > 0 && abs < tiny) {
-    return sign + abs.toExponential(d).replace("e+", "e");
-  }
-  const notation = (state.settings && state.settings.notation) || "scientific";
-  if (notation === "log") {
-    return "10^" + Math.log10(abs).toFixed(d);
-  }
-  if (notation === "engineering") {
-    const exp = Math.floor(Math.log10(abs));
-    const engExp = Math.floor(exp / 3) * 3;
-    const mant = abs / Math.pow(10, engExp);
-    return sign + mant.toFixed(d) + "e" + engExp;
-  }
-  // scientific (default)
+  // 恒为科学计数（原「工程/对数」记数设置已删除：超 double 上限后显示全部走 fmtLog
+  // 的科学格式，该设置在后期不可用）
   return sign + abs.toExponential(d).replace("e+", "e");
 }
 
@@ -1271,6 +1259,10 @@ function migrateState() {
   if (!Array.isArray(state.vpuCondMet)) state.vpuCondMet = [];
   // v0.5.1：测试模式字段保留兼容（内容已全员开放，逻辑不再读取）
   if (state.testMode === undefined) state.testMode = false;
+  // v0.6.3.2：数值显示方式设置已删除（超 double 上限后工程/对数记数不可用，显示恒为科学计数）；
+  // S6 改按页面主题切换判定——清理旧档残留键
+  if (state.settings) delete state.settings.notation;
+  delete state.notationSwitches;
   // 孤儿虚空状态清理：虚空中丢失 A52 的存档会永久软锁
   //（虚空页隐藏、湮灭/自动湮灭/扭曲入口全被阻）。进入虚空时资源已重置，
   // 此处直接清标志即可回到主宇宙（不走 exitVoid——迁移阶段 DOM 未就绪）
@@ -1506,7 +1498,7 @@ function loadGame() {
     if (!raw) return false;
     const obj = decodeSave(raw);
     state = Object.assign(defaultState(), obj);
-    state.settings = Object.assign({ theme: "black", notation: "scientific", decimals: 3, uiFps: 33, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true }, obj.settings || {});
+    state.settings = Object.assign({ theme: "black", decimals: 3, uiFps: 33, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true }, obj.settings || {});
     state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
     migrateState();
     // 迁移：v0.1 旧存档用 frequency 字段
@@ -1525,7 +1517,6 @@ function loadGame() {
       if (getLogL10() < getLogMinL()) { state.minL = state.L; state.logMinL = getLogL10(); }
     }
     applyTheme(state.settings.theme);
-    applyNotation(state.settings.notation);
     queueOfflineProgress();
     state.lastTick = Date.now();
     return true;
@@ -1555,7 +1546,6 @@ function hardReset() {
   localStorage.removeItem(SAVE_KEY);
   state = defaultState();
   applyTheme("black");
-  applyNotation("scientific");
   saveGame();
   renderAll();
   setAutosaveStatus("已硬重置");
@@ -1577,20 +1567,19 @@ function importSaveFromIo() {
     }
     const obj = decodeSave(str);
     state = Object.assign(defaultState(), obj);
-    state.settings = Object.assign({ theme: "black", notation: "scientific", decimals: 3, uiFps: 33, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true }, obj.settings || {});
+    state.settings = Object.assign({ theme: "black", decimals: 3, uiFps: 33, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true }, obj.settings || {});
     state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
     migrateState();
     // 重置瞬时成就状态（与 init 一致）：旧档携带的计时数组会干扰 S3/S5/S6 判定
     state.hiddenClicks = [];
     state.metaClicks = [];
-    state.notationSwitches = [Date.now()];
+    state.themeSwitches = [Date.now()];
     state.phToggles = [];
     if (obj.frequency !== undefined && obj.U === undefined) { setU(obj.frequency); state.L = 1; state.logL10 = 0; }
     if (obj.totalFrequency !== undefined) setTotalFGained(obj.totalFrequency);
     queueOfflineProgress();
     state.lastTick = Date.now();
     applyTheme(state.settings.theme);
-    applyNotation(state.settings.notation);
     applyDecimals(state.settings.decimals);
     processPendingOffline(); // 导入发生在 init 之后：离线结算须就地执行
     saveGame();
@@ -1639,14 +1628,13 @@ function loadFromSlot(i) {
     if (!raw) { setAutosaveStatus("该槽为空"); return; }
     const obj = decodeSave(raw);
     state = Object.assign(defaultState(), obj);
-    state.settings = Object.assign({ theme: "black", notation: "scientific", decimals: 3, uiFps: 33, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true }, obj.settings || {});
+    state.settings = Object.assign({ theme: "black", decimals: 3, uiFps: 33, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true }, obj.settings || {});
     state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
     migrateState();
     queueOfflineProgress();
     state.lastTick = Date.now();
     currentSlot = i;
     applyTheme(state.settings.theme);
-    applyNotation(state.settings.notation);
     processPendingOffline(); // 槽位加载发生在 init 之后：离线结算须就地执行
     saveGame();
     renderAll();
@@ -1692,18 +1680,12 @@ function renderSlots() {
   }
 }
 
-// ---------- Theme / notation ----------
+// ---------- Theme ----------
 function applyTheme(theme) {
   document.body.setAttribute("data-theme", theme);
   state.settings.theme = theme;
   document.getElementById("theme-white").classList.toggle("active", theme === "white");
   document.getElementById("theme-black").classList.toggle("active", theme === "black");
-}
-function applyNotation(n) {
-  state.settings.notation = n;
-  document.querySelectorAll("#notation-row button").forEach(b => {
-    b.classList.toggle("active", b.dataset.notation === n);
-  });
 }
 function applyDecimals(n) {
   n = Math.min(6, Math.max(3, parseInt(n, 10) || 3));
@@ -1723,18 +1705,18 @@ function applyUiFps(ms) {
   });
 }
 
-// S6 选择困难症：在 10 分钟内，没有任何一种显示方式被连续使用超过 2 分钟。
-// 实现：记录每次切换的时间戳；取当前时间作为末尾，向前找一段连续间隔均 ≤2min 的区间，
-// 若该区间跨度 ≥10min 则达成。
+// S6 选择困难症：在 5 分钟内，没有任何一种页面主题被连续使用超过 1 分钟。
+// 实现：记录每次主题切换的时间戳；取当前时间作为末尾，向前找一段连续间隔均 ≤1min 的区间，
+// 若该区间跨度 ≥5min 则达成。
 function checkS6() {
   if (state.ach.hidden.includes("S6")) return;
-  const sw = state.notationSwitches.slice();
+  const sw = (state.themeSwitches || []).slice();
   const now = Date.now();
   sw.push(now); // 把"当前时刻"作为最后一个区间端点
   let i = sw.length - 1;
-  while (i > 0 && sw[i] - sw[i - 1] <= 120000) i--; // 连续间隔 ≤2min
+  while (i > 0 && sw[i] - sw[i - 1] <= 60000) i--; // 连续间隔 ≤1min
   const span = sw[sw.length - 1] - sw[i];
-  if (span >= 600000) grantHidden("S6");
+  if (span >= 300000) grantHidden("S6");
 }
 
 // ---------- Tabs ----------
@@ -8083,8 +8065,15 @@ function setupUI() {
     t.addEventListener("click", () => switchSubtab(t.dataset.subtab));
   });
 
-  document.getElementById("theme-white").addEventListener("click", () => { applyTheme("white"); saveGame(); });
-  document.getElementById("theme-black").addEventListener("click", () => { applyTheme("black"); saveGame(); });
+  // 主题切换计入 S6 判定（仅实际变更时记录——重复点击当前主题不算切换）
+  const onThemeBtn = (theme) => {
+    const prev = state.settings.theme;
+    applyTheme(theme);
+    if (state.settings.theme !== prev) { state.themeSwitches.push(Date.now()); checkS6(); }
+    saveGame();
+  };
+  document.getElementById("theme-white").addEventListener("click", () => onThemeBtn("white"));
+  document.getElementById("theme-black").addEventListener("click", () => onThemeBtn("black"));
 
   // 离线收益开关 + 收益弹窗关闭按钮
   document.getElementById("offline-on").addEventListener("click", () => {
@@ -8098,18 +8087,6 @@ function setupUI() {
   syncOfflineToggleUI();
   document.getElementById("offline-claim").addEventListener("click", () => {
     document.getElementById("offline-overlay").classList.add("hidden");
-  });
-
-  document.querySelectorAll("#notation-row button").forEach(b => {
-    b.addEventListener("click", () => {
-      const prev = state.settings.notation;
-      applyNotation(b.dataset.notation);
-      if (state.settings.notation !== prev) {
-        state.notationSwitches.push(Date.now());
-        checkS6();
-      }
-      saveGame(); renderAll();
-    });
   });
 
   const decInp = document.getElementById("decimals-input");
@@ -8431,10 +8408,9 @@ function init() {
   // 重置瞬时成就状态（避免离线时间干扰 S3/S5/S6 的计时）
   state.hiddenClicks = [];
   state.metaClicks = [];
-  state.notationSwitches = [Date.now()];
+  state.themeSwitches = [Date.now()];
   state.phToggles = [];
   applyTheme(state.settings.theme);
-  applyNotation(state.settings.notation);
   applyDecimals(state.settings.decimals);
   applyUiFps(state.settings.uiFps);
   setupUI();
