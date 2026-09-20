@@ -2660,9 +2660,12 @@ function applyHelpVisibility() {
   // 虚空 II 章节：购买研究 R2「虚空探测器」后显示（介绍里程碑 3 与 SVU3）
   const helpVoid2 = document.getElementById("help-void2");
   if (helpVoid2) helpVoid2.classList.toggle("hidden", !researchBought("R2"));
+  // 课题帮助段（研究章节内）：购买 R9 解锁课题后显示（防剧透）
+  const helpSr = document.getElementById("help-sr-extra");
+  if (helpSr) helpSr.classList.toggle("hidden", !researchBought("R9"));
   // 卷缩章节：测试模式下首次卷缩后显示
-  // 卷缩相关帮助章节（卷缩/里程碑/维度/理论树/研究）：首次卷缩后显示
-  for (const id of ["help-compact", "help-compact-ms", "help-compact-dim", "help-compact-theory", "help-compact-research"]) {
+  // 卷缩相关帮助章节（卷缩/维度/理论树/研究）：首次卷缩后显示（里程碑与卷缩页重复，已删除该节）
+  for (const id of ["help-compact", "help-compact-dim", "help-compact-theory", "help-compact-research"]) {
     const el = document.getElementById(id);
     if (el) el.classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
   }
@@ -3009,10 +3012,10 @@ const VACUUM_DEF = { id: "sau4", key: "sau4", name: "真空衰变", desc: "每�
 // 第二类：单次（四组×4，两组共一行）
 const AU_DEFS = [
   [ // 第1组
-    { id: "au11", name: "机械共振", desc: "基于波动升级1等级给予其指数加成：^max(1,√n/5)", cost: 1e6 },
+    { id: "au11", name: "机械共振", desc: "基于波动升级1等级给予其指数加成", cost: 1e6 },
     { id: "au12", name: "受激跃迁", desc: "每个声子升级1等级给予声子升级2免费2级", cost: 1e10 },
-    { id: "au13", name: "光子共振", desc: "基于波动升级2等级增强其底数：+min(2, lg(1+n)/4)", cost: 1e16 },
-    { id: "au14", name: "黑体辐射", desc: "波长倒数增强声子产生：×max(1, L^-0.1)", cost: 3e16 },
+    { id: "au13", name: "光子共振", desc: "基于波动升级2等级增强其底数", cost: 1e16 },
+    { id: "au14", name: "黑体辐射", desc: "波长倒数增强声子产生", cost: 3e16 },
   ],
   [ // 第2组
     { id: "au21", name: "时序扩张", desc: "解锁升级3自动化的间隔模式", cost: 1e5 },
@@ -3021,7 +3024,7 @@ const AU_DEFS = [
     { id: "au24", name: "量子涟漪", desc: "湮灭保留声子数量（进出扭曲宇宙除外）", cost: 1e11 },
   ],
   [ // 第3组
-    { id: "au31", name: "时间之矢", desc: "基于真实游玩时间给予时间倍率：×(1+lg(1+t)^0.6)", cost: 1e6 },
+    { id: "au31", name: "时间之矢", desc: "基于真实游玩时间给予时间倍率", cost: 1e6 },
     { id: "au32", name: "成就刻印", desc: "成就的时间倍率 1.1x → 1.2x", cost: 1e7 },
     { id: "au33", name: "绝对零度", desc: "基于「冷却」最佳完成时间给予时间倍率", cost: 1e10 },
     { id: "au34", name: "引力扭曲", desc: "增强黑洞的效果", cost: 1e11 },
