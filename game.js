@@ -164,6 +164,7 @@ function defaultState() {
     realTime: 0,           // 真实时间（未乘时间速率）
     // 成就
     ach: { normal: [], hidden: [], hiddenRevealed: [] },
+    achA2324Swapped: 0,    // A23/A24 位置交换（A23=聚变、A24=耦合）的一次性旧档迁移闩锁
     // 成就相关瞬时状态（加载时重置，避免离线干扰）
     hiddenClicks: [],      // S5 点击序列（单元格 id）
     metaClicks: [],        // S3 单次升级点击时间戳
@@ -1434,6 +1435,17 @@ function migrateState() {
     && ((state.logED !== undefined && isFinite(state.logED) && state.logED > NLOG + 1) || state.ach.hidden.includes("S29"))) {
     state.ach.normal.push("A71");
   }
+  // v0.6.3.2：A23/A24 位置交换（A23=聚变、A24=耦合）——旧档按旧 id→成就映射一次性换回
+  // 已达成标记（只换恰持有其一的存档；两个都有/都没有无需处理），闩锁防重复交换
+  if (!state.achA2324Swapped) {
+    const has23 = state.ach.normal.includes("A23");
+    const has24 = state.ach.normal.includes("A24");
+    if (has23 !== has24) {
+      if (has23) { state.ach.normal = state.ach.normal.filter(x => x !== "A23"); state.ach.normal.push("A24"); }
+      else { state.ach.normal = state.ach.normal.filter(x => x !== "A24"); state.ach.normal.push("A23"); }
+    }
+    state.achA2324Swapped = 1;
+  }
   // v0.6.0.0：自动化新键合并（旧档 autoOn 缺 sau/sbu/svpu/comp）与阈值 log 权威回填
   state.autoOn = Object.assign(defaultAutoOn(), state.autoOn || {});
   if (state.autoAnnHeldMultLog === undefined || !isFinite(state.autoAnnHeldMultLog)) {
@@ -2031,7 +2043,7 @@ function pg1Cost() { return costOf(1e10 * Math.pow(100, state.pg1)); }  // 花 F
 function pg2Cost() { return costOf(100 * Math.pow(2, state.pg2)); }     // 花 P，增速 ×2
 function pg3Cost() { return costOf(1e4 * Math.pow(10, state.pg3)); }    // 花 P，增速 ×10
 const FLUCT_COST = 1000;    // 声子涨落（P）
-const COUPLING_COST = 10000; // 声波耦合（P）
+const COUPLING_COST = 1e6; // 声波耦合（P）
 const LOG_FLUCT_COST = Math.log10(FLUCT_COST);
 const LOG_COUPLING_COST = Math.log10(COUPLING_COST);
 
@@ -7211,8 +7223,8 @@ const NORMAL_ACH = [
   // 第 2 行 (A21-A25) 声子
   { id: "A21", name: "热学", desc: "启动声子发生器", star: true, reward: "up1 的效果变为 1.5 次方", check: () => !!state.phOn },
   { id: "A22", name: "室温", desc: "到达 300 K", check: () => temperature() >= 300 },
-  { id: "A23", name: "耦合", desc: "购买声波耦合", check: () => state.phCoupling >= 1 },
-  { id: "A24", name: "聚变", desc: "到达 1.5e7 K", check: () => temperature() >= 1.5e7 },
+  { id: "A23", name: "聚变", desc: "到达 1.5e7 K", check: () => temperature() >= 1.5e7 },
+  { id: "A24", name: "耦合", desc: "购买声波耦合", check: () => state.phCoupling >= 1 },
   { id: "A25", name: "湮灭", desc: "达到普朗克温度（1.417e32 K）", star: true, reward: "各个重置后波速为 100 m/s", check: () => state.annihilations >= 1 },
   // 第 3 行 (A31-A35) 湮灭
   { id: "A31", name: "创生", desc: "购买第一个湮灭升级", check: () => state.spu1 >= 1 },
