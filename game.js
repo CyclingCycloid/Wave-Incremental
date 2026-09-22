@@ -2189,7 +2189,8 @@ function applyPhononVisibility() {
 // ---------- 湮灭 ----------
 // 奇点升级1：除升级3外的升级不再消耗资源。
 // 滞涨宇宙（原通胀）：价格是核心机制，spu1 免费效果失效（否则自动化免费连买导致数值失控）。
-function upgradesFree() { return state.spu1 >= 1 && !inDistort("inflation"); }
+// 15 次湮灭里程碑门控：更新前持有 spu1 的旧档在低湮灭数下不生效（达 15 后自动恢复）
+function upgradesFree() { return state.spu1 >= 1 && hasMilestone(15) && !inDistort("inflation"); }
 
 const MILESTONES = [
   { n: 1,  desc: "保持解锁声子升级和声子页面的可见性，解锁「自动化」主选项卡" },
@@ -6046,10 +6047,10 @@ function updateSpUI() {
     const cur = r.distort ? distortDA() : effAnnihilations();
     r.countEl.textContent = done ? "✓" : (cur + " / " + r.m.n);
   }
-  // spu1（15 次湮灭里程碑解锁；已拥有恒可见——卷缩里程碑 2 直接授予时湮灭数恰为 15）
+  // spu1（15 次湮灭里程碑解锁；<15 时无论是否拥有整行隐藏——含更新前持有 spu1 的旧档）
   if (spu1Ref) {
     const owned = state.spu1 >= 1;
-    const unlocked = owned || hasMilestone(15);
+    const unlocked = hasMilestone(15);
     if (spu1Ref.row) spu1Ref.row.classList.toggle("hidden", !unlocked);
     spu1Ref.btn.classList.toggle("bought", owned);
     spu1Ref.btn.disabled = owned;
