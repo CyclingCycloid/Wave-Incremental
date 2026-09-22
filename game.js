@@ -2690,6 +2690,8 @@ function applyHelpVisibility() {
 // ---------- 奇点升级 ----------
 // spu1 移至 SAU 区（与奇点升级同尺寸按钮）：
 const SPU1_DEF = { id: "spu1", name: "奇点之前的升级不再消耗资源", desc: "购买除升级3外奇点之前的升级不再消耗资源" };
+const SPU1_COST = 50;             // spu1 价格（Sp）
+const LOG_SPU1_COST = Math.log10(SPU1_COST);
 
 // ---------- 奇点升级（3DA 里程碑解锁）----------
 // 第一类：可重复（SAU1-3，一行三个）
@@ -5869,8 +5871,8 @@ function buySpUpgrade(id) {
   if (id === "spu1") {
     if (!hasMilestone(15)) return; // 解锁前隐藏且不可购
     if (state.spu1 >= 1) return;
-    if (cmpLT(state.sp, 1, getLogSp(), 0)) return;
-    subSpLog(0);
+    if (cmpLT(state.sp, SPU1_COST, getLogSp(), LOG_SPU1_COST)) return;
+    subSpLog(LOG_SPU1_COST);
     state.spu1 = 1;
     checkAchievements(); // A31
     updateSpUI();
@@ -6054,7 +6056,7 @@ function updateSpUI() {
     if (spu1Ref.row) spu1Ref.row.classList.toggle("hidden", !unlocked);
     spu1Ref.btn.classList.toggle("bought", owned);
     spu1Ref.btn.disabled = owned;
-    if (spu1Ref.costEl) spu1Ref.costEl.textContent = owned ? "已购买" : "1 Sp";
+    if (spu1Ref.costEl) spu1Ref.costEl.textContent = owned ? "已购买" : fmtNum(SPU1_COST, LOG_SPU1_COST) + " Sp";
   }
   // 真空衰变（3DA 解锁）
   const sauUnlocked = hasDistortMilestone(3);
