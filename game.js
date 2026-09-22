@@ -2186,6 +2186,7 @@ const MILESTONES = [
   { n: 5,  desc: "湮灭不重置自动化开关，声子发生器一开始就是启动状态" },
   { n: 8,  desc: "解锁自动购买升级3（可设置在多少倍率时购买）" },
   { n: 10, desc: "解锁自动湮灭（可设置在多少奇点时重置），湮灭不再需要达到当前普朗克温度" },
+  { n: 15, desc: "解锁一个奇点升级：奇点之前的升级不再消耗资源" },
   { n: 20, desc: "解锁「扭曲」选项卡" },
 ];
 // SVPU2 虚幻湮灭：每次湮灭使湮灭次数 +2^svpu2（膨胀计数为有意设计：
@@ -4745,7 +4746,7 @@ function compMilestone(n) { return state.compactions >= n; }
 function compMilestone1() { return compMilestone(1); }
 const COMP_MILESTONES = [
   { n: 1, reward: "保持湮灭选项卡的可见性；卷缩后初始拥有 3 次湮灭次数" },
-  { n: 2, reward: "卷缩后初始拥有 10 次湮灭次数，「奇点之前的升级不再消耗资源」视为已购买" },
+  { n: 2, reward: "卷缩后初始拥有 15 次湮灭次数，「奇点之前的升级不再消耗资源」视为已购买" },
   { n: 3, reward: "卷缩后初始拥有 20 次湮灭次数和 100 奇点；初始批量购买 8 级，自动湮灭 CD 降至上限 25ms；卷缩不再重置自动化开关" },
   { n: 4, reward: "卷缩后「定向」「冷却」「刚性」为已完成状态" },
   { n: 5, reward: "保持已购的单次奇点升级（AU1n/2n/3n 无条件保留；AU4n 在新纪元解锁条件满足时保留——第 6 次起保留 AU41，第 7 次起 AU42/43，第 8 次起 AU44）" },
@@ -4860,7 +4861,7 @@ function applyCompactionResetBody(realNow) {
   state.au = {};            // AU 与 VPU（vpu_* 存于 au）一并清除
   state.vpuCondMet = [];    // VPU 解锁 latch：「仅当出现比湮灭更高层次的重置时才清除」——卷缩即该重置
   // 湮灭次数阶梯：≥3 → 20；≥2 → 10；≥1 → 3；否则 0（等效对应湮灭里程碑）
-  state.annihilations = compMilestone(3) ? 20 : compMilestone(2) ? 10 : compMilestone(1) ? 3 : 0;
+  state.annihilations = compMilestone(3) ? 20 : compMilestone(2) ? 15 : compMilestone(1) ? 3 : 0;
   if (compMilestone(1)) {
     state.phUnlocked = 1; state.meta1 = 1; state.phFluct = 1; state.phCoupling = 1;
     state.autoWaveUpg = 1; state.autoPhononUpg = 1;
@@ -5851,8 +5852,9 @@ function buyBatchUpgrade() {
   updateAutomationUI();
 }
 function buySpUpgrade(id) {
-  // spu1 单独处理（已移至 SAU 区）
+  // spu1 单独处理（已移至 SAU 区；15 次湮灭里程碑解锁）
   if (id === "spu1") {
+    if (!hasMilestone(15)) return; // 解锁前隐藏且不可购
     if (state.spu1 >= 1) return;
     if (cmpLT(state.sp, 1, getLogSp(), 0)) return;
     subSpLog(0);
@@ -5916,7 +5918,7 @@ function buildAnnihilationOnce() {
     spuRow.appendChild(spuBtn);
   }
   uList.appendChild(spuRow);
-  spu1Ref = { btn: spuBtn, costEl: spuBtn.querySelector ? spuBtn.children[2] : null };
+  spu1Ref = { btn: spuBtn, row: spuRow, costEl: spuBtn.querySelector ? spuBtn.children[2] : null };
   // 真空衰变（spu1 下方、SAU 行上方）
   const vacRow = document.createElement("div");
   vacRow.className = "sau-row vac-row";
@@ -6032,9 +6034,11 @@ function updateSpUI() {
     const cur = r.distort ? distortDA() : effAnnihilations();
     r.countEl.textContent = done ? "✓" : (cur + " / " + r.m.n);
   }
-  // spu1（始终显示，与 SAU 同尺寸）
+  // spu1（15 次湮灭里程碑解锁；已拥有恒可见——卷缩里程碑 2 直接授予时湮灭数恰为 15）
   if (spu1Ref) {
     const owned = state.spu1 >= 1;
+    const unlocked = owned || hasMilestone(15);
+    if (spu1Ref.row) spu1Ref.row.classList.toggle("hidden", !unlocked);
     spu1Ref.btn.classList.toggle("bought", owned);
     spu1Ref.btn.disabled = owned;
     if (spu1Ref.costEl) spu1Ref.costEl.textContent = owned ? "已购买" : "1 Sp";
