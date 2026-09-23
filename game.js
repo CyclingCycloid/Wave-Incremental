@@ -2230,7 +2230,7 @@ function hasMilestone(n) { return state.annihilations >= n; }
 // ---------- 扭曲里程碑（按已湮灭的扭曲宇宙数量 DA）----------
 const DISTORT_MILESTONES = [
   { n: 1, desc: "" }, // 动态填充：基于扭曲宇宙湮灭数，将奇点效果变为 X 倍
-  { n: 3, desc: "解锁更多的奇点升级" },
+  { n: 3, desc: "解锁奇点升级" },
   { n: 5, desc: "解锁黑洞选项卡", black: true },
   { n: 8, desc: "打破多元宇宙的规则" },
 ];
