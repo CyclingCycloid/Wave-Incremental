@@ -1778,6 +1778,7 @@ function switchSubtab(name) {
 
 // ---------- Purchase ----------
 function buyUp1(bulk) {
+  if (annihilationFrozen()) return; // 冻结态禁购（只能湮灭）
   if (inDistort("simple")) return; // 简洁宇宙：波动升级1/2无效（不可购买）
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
   const c = up1Cost();
@@ -1790,6 +1791,7 @@ function buyUp1(bulk) {
   if (!bulk) { checkAchievements(); renderWave(); }
 }
 function buyUp2(bulk) {
+  if (annihilationFrozen()) return; // 冻结态禁购（只能湮灭）
   if (inDistort("simple")) return; // 简洁宇宙：波动升级1/2无效（不可购买）
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
   // 边界防卡死：up2 是「×倍率」型，up1=0 时获取速率为 0——没有 spu1（免费）或其失效
@@ -1803,6 +1805,7 @@ function buyUp2(bulk) {
   if (!bulk) { checkAchievements(); renderWave(); }
 }
 function buyUp3() {
+  if (annihilationFrozen()) return; // 冻结态禁购（只能湮灭）
   if (inDistort("rigid")) return; // 刚性宇宙：升级 3 无效
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
   // 仅当当前频率超过上次记录的峰值时才更新（log 域比较，超 double 不截断；不再用 Infinity 哨兵）
@@ -2011,6 +2014,7 @@ function updateUpgradesUI() {
 
 // ---------- 声子系统 ----------
 function buyPhUnlock() {
+  if (annihilationFrozen()) return; // 冻结态禁购（只能湮灭）
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
   if (state.phUnlocked) return;
   if (cmpLT(F(), costOf(PH_UNLOCK_COST), FLog(), costOfLog(LOG_PH_UNLOCK_COST))) return;
@@ -2048,6 +2052,7 @@ const LOG_FLUCT_COST = Math.log10(FLUCT_COST);
 const LOG_COUPLING_COST = Math.log10(COUPLING_COST);
 
 function buyPG1(bulk) {
+  if (annihilationFrozen()) return; // 冻结态禁购（只能湮灭）
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
   if (inDistort("adiabatic")) return; // 绝热宇宙：无法购买声子发生器效率
   const c = pg1Cost();
@@ -2058,6 +2063,7 @@ function buyPG1(bulk) {
   if (!bulk) { saveGame(); renderWave(); updatePhononUI(); }
 }
 function buyPG2(bulk) {
+  if (annihilationFrozen()) return; // 冻结态禁购（只能湮灭）
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
   const c = pg2Cost();
   if (cmpLT(state.phonons, c, getLogPhonons(), pg2CostLog())) return;
@@ -2067,6 +2073,7 @@ function buyPG2(bulk) {
   if (!bulk) { saveGame(); updatePhononUI(); }
 }
 function buyPG3(bulk) {
+  if (annihilationFrozen()) return; // 冻结态禁购（只能湮灭）
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
   if (state.pg3 >= pg3Cap()) return;
   if (inDistort("rigid") || inDistort("adiabatic") || inDistort("simple")) return; // 刚性/热寂/简洁：无法购买声子升级3
@@ -2078,6 +2085,7 @@ function buyPG3(bulk) {
   if (!bulk) { saveGame(); updatePhononUI(); }
 }
 function buyFluct() {
+  if (annihilationFrozen()) return; // 冻结态禁购（只能湮灭）
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
   if (state.phFluct) return;
   if (cmpLT(state.phonons, costOf(FLUCT_COST), getLogPhonons(), costOfLog(LOG_FLUCT_COST))) return;
@@ -2088,6 +2096,7 @@ function buyFluct() {
   setAutosaveStatus("已购买：声子涨落");
 }
 function buyCoupling() {
+  if (annihilationFrozen()) return; // 冻结态禁购（只能湮灭）
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
   if (state.phCoupling) return;
   if (cmpLT(state.phonons, costOf(COUPLING_COST), getLogPhonons(), costOfLog(LOG_COUPLING_COST))) return;
@@ -6878,8 +6887,9 @@ function updateDispAnchor() {
   dispUAt = Date.now();
   dispUBase = state.U;
   dispUBaseLog = getLogU10();
+  // 冻结态外推归零：否则旧速率每帧外推、tick 又拉回，数值循环锯齿跳动
   // 定向宇宙：获取每刻随机取反且 U 有 0 硬下限，外推会失真——不做外推
-  dispGRate = inDistort("directed") ? 0 : gainRate() * timeRate();
+  dispGRate = annihilationFrozen() ? 0 : (inDistort("directed") ? 0 : gainRate() * timeRate());
 }
 // 显示外推 U：double 在范围内走原路径；超范围（dispGRate 或 U 饱和）退 log 域外推
 function extrapolatedU() {
@@ -6934,19 +6944,25 @@ function renderFast() {
     fLog = clampLog(uLogD - getLogL10());
     f = (isFinite(extrapolatedU()) && state.L > 0) ? extrapolatedU() / state.L : Math.pow(10, fLog);
   }
-  // F 显示：超 double 走 fmtLog（1eN），否则 fmt（现状）
-  document.getElementById("freq-value").textContent = fmtNum(f, fLog);
-  // Hz/s 显示：膨胀宇宙需除以含倍率的有效波长（log 域防溢出）
-  {
-    const grD = gainRateLog(); // 单次调用：符号与数值同源（定向宇宙符号为确定性时间窗）
-    // Hz/s = gain/L^e（e 为卷缩波长指数，e=1 时与原式一致；膨胀宇宙的波长倍率计入）
-    const gLog = grD.log <= NLOG + 1
-      ? NLOG
-      : gainPerLLog(grD.log + timeRateLog());
-    const gainHz = gLog > 308 ? Infinity : (gLog < -308 ? 0 : Math.pow(10, gLog));
-    // 定向宇宙负增益必须带 "-"（历史上只输出了 "+"，负值显示成无符号正值）
-    document.getElementById("freq-gain").textContent =
-      (gLog > NLOG + 1 ? (grD.sign > 0 ? "+" : "-") : "") + fmtNum(gainHz, gLog) + " Hz/s";
+  // 冻结态（10 次湮灭前就绪）：频率显示 Annihilated、增益 +0（生产与外推已停）
+  if (annihilationFrozen()) {
+    document.getElementById("freq-value").textContent = "Annihilated";
+    document.getElementById("freq-gain").textContent = "+0 Hz/s";
+  } else {
+    // F 显示：超 double 走 fmtLog（1eN），否则 fmt（现状）
+    document.getElementById("freq-value").textContent = fmtNum(f, fLog);
+    // Hz/s 显示：膨胀宇宙需除以含倍率的有效波长（log 域防溢出）
+    {
+      const grD = gainRateLog(); // 单次调用：符号与数值同源（定向宇宙符号为确定性时间窗）
+      // Hz/s = gain/L^e（e 为卷缩波长指数，e=1 时与原式一致；膨胀宇宙的波长倍率计入）
+      const gLog = grD.log <= NLOG + 1
+        ? NLOG
+        : gainPerLLog(grD.log + timeRateLog());
+      const gainHz = gLog > 308 ? Infinity : (gLog < -308 ? 0 : Math.pow(10, gLog));
+      // 定向宇宙负增益必须带 "-"（历史上只输出了 "+"，负值显示成无符号正值）
+      document.getElementById("freq-gain").textContent =
+        (gLog > NLOG + 1 ? (grD.sign > 0 ? "+" : "-") : "") + fmtNum(gainHz, gLog) + " Hz/s";
+    }
   }
   // 冷却宇宙：实时显示当前指数 k
   const cdEl = document.getElementById("cooldown-display");
