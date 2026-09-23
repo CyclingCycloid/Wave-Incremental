@@ -7082,7 +7082,8 @@ function renderStats() {
     sumRow.append(sumLabel, sumVal);
     dGroup.appendChild(sumRow);
     chList.appendChild(dGroup);
-    // —— 实验项目（天蓝色小标题）：已解锁实验与各自完成的最高等级 ——
+    // —— 实验项目（天蓝色小标题）：研究页解锁（购买理论树节点 51）后才出现，防剧透 ——
+    if (theoryOwned("51")) {
     const eGroup = document.createElement('div');
     eGroup.className = 'stat-group';
     const eTitle = document.createElement('h3');
@@ -7108,6 +7109,7 @@ function renderStats() {
       eGroup.appendChild(row);
     }
     chList.appendChild(eGroup);
+    }
   }
   // 最近十次湮灭（重置子页）
   const hList = document.getElementById("ann-history-list");
