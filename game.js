@@ -2406,7 +2406,8 @@ function doAnnihilation(skipRender) {
   return true; // 成功执行（wasFirst 语义不再需要，首次流程由 confirmFirstAnnihilation 单独处理）
 }
 
-// 进入扭曲宇宙：立即进行一次湮灭重置（普通宇宙部分照常结算 Sp），然后应用该宇宙规则
+// 进入扭曲宇宙：立即进行一次湮灭重置（一律不结算 Sp——与虚空入口一致；
+// 就绪时的待获取 Sp 随重置放弃，不把入口湮灭结算进持有与总 Sp 提供额外加成），然后应用该宇宙规则
 function enterDistort(id) {
   if (state.voidActive) return; // 虚空挑战中：禁止进入扭曲宇宙（防双重挑战脏状态）
   // S16：硬核玩家 —— 已在一个扭曲宇宙中时点击另一个扭曲宇宙的进入
@@ -2417,12 +2418,8 @@ function enterDistort(id) {
   const u = DISTORT_UNIVERSES.find(x => x.id === id);
   if (!u) return;
   if (state.annihilations < 20) return; // 扭曲选项卡本身 20 湮灭解锁
-  // 强制进行一次普通湮灭重置（无需达到 T_P0；已达标则照常给 Sp）
-  if (annihilationReady()) {
-    doAnnihilation();
-  } else {
-    forceAnnihilationReset(0); // 未达标进入：重置但不获 Sp、不计入最好纪录
-  }
+  // 强制进行一次湮灭重置（不获 Sp、不计入最好纪录；湮灭次数照常 +1——「进入=湮灭」）
+  forceAnnihilationReset(0);
   // AU24 的「湮灭保留声子」在进出扭曲宇宙时不生效：进入扭曲必须清零声子
   setPhonons(0);
   state.distortActive = id;
