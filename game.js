@@ -20,7 +20,6 @@ function defaultState() {
     phCoupling: 0,         // 单次：声波耦合（波速加成声子获取）
     // 湮灭层：奇点（持有 / 总获取）、湮灭次数、奇点升级、自动化
     sp: 0, totalSp: 0, annihilations: 0,
-    spu1: 0,               // 奇点升级1：奇点之前的升级不再消耗资源（1 Sp）
     autoWaveUpg: 0,        // 主要页可重复升级自动化解锁（1e10 Hz）
     autoPhononUpg: 0,      // 声子页可重复升级自动化解锁（1e20 Hz）
     autoUp3: 0,            // 升级3自动化解锁（第8次湮灭）
@@ -165,6 +164,7 @@ function defaultState() {
     // 成就
     ach: { normal: [], hidden: [], hiddenRevealed: [] },
     achA2324Swapped: 0,    // A23/A24 位置交换（A23=聚变、A24=耦合）的一次性旧档迁移闩锁
+    achA3132Swapped: 0,    // A31/A32 位置交换（A31=QoL、A32=创生）的一次性旧档迁移闩锁
     // 成就相关瞬时状态（加载时重置，避免离线干扰）
     hiddenClicks: [],      // S5 点击序列（单元格 id）
     metaClicks: [],        // S3 单次升级点击时间戳
@@ -1262,9 +1262,10 @@ function migrateState() {
   // v0.5.1：测试模式字段保留兼容（内容已全员开放，逻辑不再读取）
   if (state.testMode === undefined) state.testMode = false;
   // v0.6.3.2：数值显示方式设置已删除（超 double 上限后工程/对数记数不可用，显示恒为科学计数）；
-  // S6 改按页面主题切换判定——清理旧档残留键
+  // S6 改按页面主题切换判定——清理旧档残留键；spu1 升级移除（免费效果改为 15 次湮灭里程碑直接奖励）
   if (state.settings) delete state.settings.notation;
   delete state.notationSwitches;
+  delete state.spu1;
   // 孤儿虚空状态清理：虚空中丢失 A52 的存档会永久软锁
   //（虚空页隐藏、湮灭/自动湮灭/扭曲入口全被阻）。进入虚空时资源已重置，
   // 此处直接清标志即可回到主宇宙（不走 exitVoid——迁移阶段 DOM 未就绪）
@@ -1445,6 +1446,16 @@ function migrateState() {
       else { state.ach.normal = state.ach.normal.filter(x => x !== "A24"); state.ach.normal.push("A23"); }
     }
     state.achA2324Swapped = 1;
+  }
+  // v0.6.3.2：A31/A32 位置交换（A31=QoL、A32=创生）——同款一次性迁移
+  if (!state.achA3132Swapped) {
+    const has31 = state.ach.normal.includes("A31");
+    const has32 = state.ach.normal.includes("A32");
+    if (has31 !== has32) {
+      if (has31) { state.ach.normal = state.ach.normal.filter(x => x !== "A31"); state.ach.normal.push("A32"); }
+      else { state.ach.normal = state.ach.normal.filter(x => x !== "A32"); state.ach.normal.push("A31"); }
+    }
+    state.achA3132Swapped = 1;
   }
   // v0.6.0.0：自动化新键合并（旧档 autoOn 缺 sau/sbu/svpu/comp）与阈值 log 权威回填
   state.autoOn = Object.assign(defaultAutoOn(), state.autoOn || {});
@@ -1782,7 +1793,7 @@ function buyUp1(bulk) {
   if (inDistort("simple")) return; // 简洁宇宙：波动升级1/2无效（不可购买）
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
   const c = up1Cost();
-  // 资源必须达标（spu1 只免扣款，不免门槛）；F/c 均 < LOG_FALLBACK 时走 double（零回归），饱和时退 log 域
+  // 资源必须达标（前奇点升级免费只免扣款，不免门槛）；F/c 均 < LOG_FALLBACK 时走 double（零回归），饱和时退 log 域
   if (cmpLT(F(), c, FLog(), up1CostLog())) return;
   if (!upgradesFree()) subULog(up1CostLog());
   markPurchase();
@@ -1794,11 +1805,11 @@ function buyUp2(bulk) {
   if (annihilationFrozen()) return; // 冻结态禁购（只能湮灭）
   if (inDistort("simple")) return; // 简洁宇宙：波动升级1/2无效（不可购买）
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
-  // 边界防卡死：up2 是「×倍率」型，up1=0 时获取速率为 0——没有 spu1（免费）或其失效
-  // （spu1 只在主宇宙生效，扭曲宇宙中失效）时要求至少一级升级1（A53 免费等级计入）
+  // 边界防卡死：up2 是「×倍率」型，up1=0 时获取速率为 0——免费未生效时（15 次湮灭前，或滞涨宇宙中）
+  // 要求至少一级升级1（A53 免费等级计入）
   if (getUp1Eff() < 1 && !upgradesFree()) return;
   const c = up2Cost();
-  if (cmpLT(F(), c, FLog(), up2CostLog())) return; // 资源必须达标（spu1 只免扣款，不免门槛）
+  if (cmpLT(F(), c, FLog(), up2CostLog())) return; // 资源必须达标（前奇点升级免费只免扣款，不免门槛）
   if (!upgradesFree()) subULog(up2CostLog());
   markPurchase();
   state.up2++;
@@ -1968,7 +1979,7 @@ function updateUpgradesUI() {
   });
     const up2MultLog = state.up2 * Math.log10(up2Base());
     const up2Mult = up2MultLog > 308 ? Infinity : Math.pow(10, up2MultLog);
-    // 与 buyUp2 同门槛：无 spu1（或失效）时至少需要一级升级1（免费等级计入）
+    // 与 buyUp2 同门槛：免费未生效时（15 次湮灭前或滞涨）至少需要一级升级1（免费等级计入）
     const up2Allowed = getUp1Eff() >= 1 || upgradesFree();
     up2Card.update({
       level: `等级 ${state.up2}`,
@@ -2056,7 +2067,7 @@ function buyPG1(bulk) {
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
   if (inDistort("adiabatic")) return; // 绝热宇宙：无法购买声子发生器效率
   const c = pg1Cost();
-  if (cmpLT(F(), c, FLog(), pg1CostLog())) return; // 资源必须达标（spu1 只免扣款，不免门槛）
+  if (cmpLT(F(), c, FLog(), pg1CostLog())) return; // 资源必须达标（前奇点升级免费只免扣款，不免门槛）
   if (!upgradesFree()) subULog(pg1CostLog());
   markPurchase();
       state.pg1++;
@@ -2196,10 +2207,9 @@ function applyPhononVisibility() {
 }
 
 // ---------- 湮灭 ----------
-// 奇点升级1：除升级3外的升级不再消耗资源。
-// 滞涨宇宙（原通胀）：价格是核心机制，spu1 免费效果失效（否则自动化免费连买导致数值失控）。
-// 15 次湮灭里程碑门控：更新前持有 spu1 的旧档在低湮灭数下不生效（达 15 后自动恢复）
-function upgradesFree() { return state.spu1 >= 1 && hasMilestone(15) && !inDistort("inflation"); }
+// 前奇点升级不再消耗资源：15 次湮灭里程碑的直接奖励（不再是可购买升级）。
+// 滞涨宇宙（原通胀）：价格是核心机制，免费效果失效（否则自动化免费连买导致数值失控）
+function upgradesFree() { return hasMilestone(15) && !inDistort("inflation"); }
 
 const MILESTONES = [
   { n: 1,  desc: "保持解锁声子升级和声子页面的可见性，解锁「自动化」主选项卡" },
@@ -2208,7 +2218,7 @@ const MILESTONES = [
   { n: 5,  desc: "湮灭不重置自动化开关，声子发生器一开始就是启动状态" },
   { n: 8,  desc: "解锁自动购买升级3（可设置在多少倍率时购买）" },
   { n: 10, desc: "解锁自动湮灭（可设置在多少奇点时重置），湮灭不再需要达到当前普朗克温度" },
-  { n: 15, desc: "解锁一个奇点升级：奇点之前的升级不再消耗资源" },
+  { n: 15, desc: "奇点之前的升级不再消耗资源" },
   { n: 20, desc: "解锁「扭曲」选项卡" },
 ];
 // SVPU2 虚幻湮灭：每次湮灭使湮灭次数 +2^svpu2（膨胀计数为有意设计：
@@ -2705,12 +2715,6 @@ function applyHelpVisibility() {
   document.getElementById("comp-history-area").classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
 }
 
-// ---------- 奇点升级 ----------
-// spu1 移至 SAU 区（与奇点升级同尺寸按钮）：
-const SPU1_DEF = { id: "spu1", name: "奇点之前的升级不再消耗资源", desc: "购买除升级3外奇点之前的升级不再消耗资源" };
-const SPU1_COST = 50;             // spu1 价格（Sp）
-const LOG_SPU1_COST = Math.log10(SPU1_COST);
-
 // ---------- 奇点升级（3DA 里程碑解锁）----------
 // 第一类：可重复（SAU1-3，一行三个）
 const SAU_DEFS = [
@@ -3039,7 +3043,7 @@ function sauCostLog(base, n) {
     return log;
   });
 }
-// 真空衰变（独立行，位于 spu1 下方、SAU 行上方）：每级奇点获取 ×2，价 10^(3+n)；
+// 真空衰变（独立行，SAU 行上方）：每级奇点获取 ×2，价 10^(3+n)；
 // 500 级以上每级价格额外 ×级别×100（价 10^(3+500) × ∏_{k=501..n} 100k）
 const VACUUM_DEF = { id: "sau4", key: "sau4", name: "真空衰变", desc: "每级使获得的奇点 ×2", max: Infinity,
   // 500 级起每级额外 ×级别×100（原层）；1000 级起价格 = 上一级的 1.01 次方（v0.6.2）
@@ -3696,7 +3700,7 @@ const SVPU_DEFS = [
 function svpu1Max() { return vpuOwned("vpu4") ? Infinity : 4; }
 // 黑洞质量软上限起始点（log10）：1e50 起始，潮汐撕裂每级 +10 个数量级
 function bhMassSoftcapLog() { return 50 + 10 * state.svpu5; }
-// 卷缩里程碑 25：虚粒子升级（SVPU）不再消耗虚粒子——只免扣款，不免门槛（与 spu1 同语义：
+// 卷缩里程碑 25：虚粒子升级（SVPU）不再消耗虚粒子——只免扣款，不免门槛（与前奇点升级免费同语义：
 // 价格仍须达到才可购买，价格增长是免费状态下的天然限速，防止自动购买器无锚点连买）
 function vpUpgradesFree() { return compMilestone(25); }
 function buySVPU(id, bulk) {
@@ -4779,7 +4783,7 @@ function compMilestone(n) { return state.compactions >= n; }
 function compMilestone1() { return compMilestone(1); }
 const COMP_MILESTONES = [
   { n: 1, reward: "保持湮灭选项卡的可见性；卷缩后初始拥有 3 次湮灭次数" },
-  { n: 2, reward: "卷缩后初始拥有 15 次湮灭次数，「奇点之前的升级不再消耗资源」视为已购买" },
+  { n: 2, reward: "卷缩后初始拥有 15 次湮灭次数" },
   { n: 3, reward: "卷缩后初始拥有 20 次湮灭次数和 100 奇点；初始批量购买 8 级，自动湮灭 CD 降至上限 25ms；卷缩不再重置自动化开关" },
   { n: 4, reward: "卷缩后「定向」「冷却」「刚性」为已完成状态" },
   { n: 5, reward: "保持已购的单次奇点升级（AU1n/2n/3n 无条件保留；AU4n 在新纪元解锁条件满足时保留——第 6 次起保留 AU41，第 7 次起 AU42/43，第 8 次起 AU44）" },
@@ -4886,7 +4890,6 @@ function applyCompactionResetBody(realNow) {
   state.phFluct = 0; state.phCoupling = 0;
   // —— 湮灭层 ——
   setSp(0); setTotalSp(0);
-  state.spu1 = 0;
   state.sau1 = 0; state.sau2 = 0; state.sau3 = 0; state.sau4 = 0;
   // AU/VPU 快照：里程碑 5/10/12 按条件恢复（快照于清除前）
   const prevAu = Object.assign({}, state.au);
@@ -4900,7 +4903,6 @@ function applyCompactionResetBody(realNow) {
     state.autoWaveUpg = 1; state.autoPhononUpg = 1;
   }
   if (compMilestone(2)) state.phOn = true; // 第二次卷缩起：声子发生器自动打开
-  if (compMilestone(2)) state.spu1 = 1; // 「奇点之前的升级不再消耗资源」视为已购买
   if (compMilestone(3)) { setSp(100); setTotalSp(100); } // 初始 100 奇点
   if (compMilestone(10)) { setSp(1e10); setTotalSp(1e10); } // 里程碑 10：初始 1e10 奇点（覆盖里程碑 3 的 100）
   state.autoUp3 = 0; state.autoAnn = 0;
@@ -5884,25 +5886,9 @@ function buyBatchUpgrade() {
   saveGame();
   updateAutomationUI();
 }
-function buySpUpgrade(id) {
-  // spu1 单独处理（已移至 SAU 区；15 次湮灭里程碑解锁）
-  if (id === "spu1") {
-    if (!hasMilestone(15)) return; // 解锁前隐藏且不可购
-    if (state.spu1 >= 1) return;
-    if (cmpLT(state.sp, SPU1_COST, getLogSp(), LOG_SPU1_COST)) return;
-    subSpLog(LOG_SPU1_COST);
-    state.spu1 = 1;
-    checkAchievements(); // A31
-    updateSpUI();
-    saveGame();
-    setAutosaveStatus("已购买湮灭升级");
-    return;
-  }
-  // 其余通用奇点升级条目已迁移至 SAU/AU 区，此处无其他可购项
-}
 
 // 湮灭页 UI（build-once, in-place update）
-let spBuilt = false, msRefs = [], sauRefs = [], auRefs = {}, spu1Ref = null, vacRef = null;
+let spBuilt = false, msRefs = [], sauRefs = [], auRefs = {}, vacRef = null;
 function buildAnnihilationOnce() {
   if (spBuilt) return;
   // 里程碑
@@ -5937,22 +5923,7 @@ function buildAnnihilationOnce() {
   // 奇点升级
   const uList = document.getElementById("sp-upgrade-list");
   uList.innerHTML = "";
-  // spu1（奇点升级区顶部，与 SAU 按钮同尺寸）
-  const spuRow = document.createElement("div");
-  spuRow.className = "sau-row spu-row";
-  const spuBtn = document.createElement("button");
-  spuBtn.className = "sau-btn";
-  {
-    const nm = document.createElement("div"); nm.className = "sau-name"; nm.textContent = SPU1_DEF.name;
-    const ds = document.createElement("div"); ds.className = "sau-desc"; ds.textContent = SPU1_DEF.desc;
-    const ct = document.createElement("div"); ct.className = "sau-cost";
-    spuBtn.append(nm, ds, ct);
-    spuBtn.addEventListener("click", () => buySpUpgrade("spu1"));
-    spuRow.appendChild(spuBtn);
-  }
-  uList.appendChild(spuRow);
-  spu1Ref = { btn: spuBtn, row: spuRow, costEl: spuBtn.querySelector ? spuBtn.children[2] : null };
-  // 真空衰变（spu1 下方、SAU 行上方）
+  // 真空衰变（SAU 行上方）
   const vacRow = document.createElement("div");
   vacRow.className = "sau-row vac-row";
   vacRef = null;
@@ -6066,15 +6037,6 @@ function updateSpUI() {
     r.row.classList.toggle("done", done);
     const cur = r.distort ? distortDA() : effAnnihilations();
     r.countEl.textContent = done ? "✓" : (cur + " / " + r.m.n);
-  }
-  // spu1（15 次湮灭里程碑解锁；<15 时无论是否拥有整行隐藏——含更新前持有 spu1 的旧档）
-  if (spu1Ref) {
-    const owned = state.spu1 >= 1;
-    const unlocked = hasMilestone(15);
-    if (spu1Ref.row) spu1Ref.row.classList.toggle("hidden", !unlocked);
-    spu1Ref.btn.classList.toggle("bought", owned);
-    spu1Ref.btn.disabled = owned;
-    if (spu1Ref.costEl) spu1Ref.costEl.textContent = owned ? "已购买" : fmtNum(SPU1_COST, LOG_SPU1_COST) + " Sp";
   }
   // 真空衰变（3DA 解锁）
   const sauUnlocked = hasDistortMilestone(3);
@@ -6535,7 +6497,7 @@ function updateAutomationUI() {
 }
 
 // 每帧自动购买/自动湮灭逻辑（游戏时间）
-// 注意：即使 spu1 已购（购买免费），自动化仍以"资源达到价格"为触发条件，
+// 注意：即使前奇点升级免费（15 次湮灭里程碑），自动化仍以"资源达到价格"为触发条件，
 // 防止免费升级被自动化每 tick 无限购买导致指数爆炸；手动购买不受此限制。
 // 批量执行：mode 下每 tick 最多买 batchLimit() 次（单次=1）。
 // batchLimit() 返回 Infinity 时（打破规则且 >128，最大购买）：简洁宇宙保持 256（历史卡死防护），
@@ -7255,8 +7217,8 @@ const NORMAL_ACH = [
   { id: "A24", name: "耦合", desc: "购买声波耦合", check: () => state.phCoupling >= 1 },
   { id: "A25", name: "湮灭", desc: "达到普朗克温度（1.417e32 K）", star: true, reward: "各个重置后波速为 100 m/s", check: () => state.annihilations >= 1 },
   // 第 3 行 (A31-A35) 湮灭
-  { id: "A31", name: "创生", desc: "购买第一个湮灭升级", check: () => state.spu1 >= 1 },
-  { id: "A32", name: "QoL", desc: "获得所有自动化", check: () => state.autoWaveUpg && state.autoPhononUpg && state.autoUp3 && state.autoAnn },
+  { id: "A31", name: "QoL", desc: "获得所有自动化", check: () => state.autoWaveUpg && state.autoPhononUpg && state.autoUp3 && state.autoAnn },
+  { id: "A32", name: "创生", desc: "获取奇点前资源不消耗", check: () => hasMilestone(15) },
   { id: "A33", name: "扭曲", desc: "解锁扭曲选项卡", check: () => state.annihilations >= 20 },
   { id: "A34", name: "秩序", desc: "湮灭一个被扭曲的宇宙", star: true, reward: "解锁批量购买", check: () => state.distortDone.length >= 1 },
   { id: "A35", name: "刻写", desc: "购买第一个奇点升级", check: () => (state.sau1 + state.sau2 + state.sau3 + state.sau4 > 0) || Object.keys(state.au).length > 0 },
@@ -7326,9 +7288,8 @@ const HIDDEN_ACH = [
 ];
 // S5 目标序列：S1,S1,S4,S5,S1,S4
 const S5_SEQUENCE = ["S1", "S1", "S4", "S5", "S1", "S4"];
-// A45 万物：是否拥有所有奇点升级（spu1、SAU1-3、真空衰变、全部 16 个 AU）
+// A45 万物：是否拥有所有奇点升级（SAU1-3、真空衰变、全部 16 个 AU）
 function ALL_SP_UPGRADES_OWNED() {
-  if (state.spu1 < 1) return false;
   if (state.sau1 < 1 || state.sau2 < 1 || state.sau3 < 1 || state.sau4 < 1) return false;
   // 所有单次奇点升级（AU 全系列）——未实装的 cost=Infinity 永远无法购买，
   // 故 A45 在全部实装并购买后才能达成
@@ -7379,8 +7340,8 @@ function onHiddenClick(id) {
     if (!state.ach.hidden.includes("S10") && Math.random() < 0.003) grantHidden("S10");
   }
 
-  // S12：就你特殊？？！！ —— 点击 QoL（A32）成就单元格 10 次
-  // （在 buildAchievementsOnce 中给 A32 单元格绑定了点击计数）
+  // S12：就你特殊？？！！ —— 点击 QoL（A31）成就单元格 10 次
+  // （在 buildAchievementsOnce 中给 A31 单元格绑定了点击计数）
 
   // S5：哼哼哼啊—— 按序列 S1,S1,S4,S5,S1,S4 点击
   // （即便目标单元格已完成或未揭示，点击均计入序列）
@@ -7451,8 +7412,8 @@ function buildAchievementsOnce() {
           cell.classList.toggle("show-tip");
         });
       }
-      // S12：就你特殊？？！！ —— 点击 QoL（A32）成就单元格 10 次
-      if (a && a.id === "A32") {
+      // S12：就你特殊？？！！ —— 点击 QoL（A31）成就单元格 10 次
+      if (a && a.id === "A31") {
         let qolClicks = 0;
         cell.addEventListener("click", () => {
           qolClicks++;
@@ -7996,14 +7957,13 @@ function buyAllPreAnnihilation() {
 function buyAllPostAnnihilation() {
   // 湮灭后升级：最大购买（同款收敛判定）
   for (let round = 0; round < 200; round++) {
-    const before = [state.spu1, state.sau1, state.sau2, state.sau3, state.sau4, state.sbu1, state.sbu2, state.sbu3, state.svpu1, state.svpu2, state.svpu3, Object.keys(state.au).length].join(",");
+    const before = [state.sau1, state.sau2, state.sau3, state.sau4, state.sbu1, state.sbu2, state.sbu3, state.svpu1, state.svpu2, state.svpu3, Object.keys(state.au).length].join(",");
     buySAU("sau1"); buySAU("sau2"); buySAU("sau3"); buySAU("sau4");
-    buySAU("spu1");
     for (const grp of AU_DEFS) for (const u of grp) buyAU(u.id);
     if (bhUnlocked()) { buySBU("sbu1"); buySBU("sbu2"); buySBU("sbu3"); }
     for (const u of SVPU_DEFS) buySVPU(u.id);
     for (const u of VPU_DEFS) buyVPU(u.id);
-    const after = [state.spu1, state.sau1, state.sau2, state.sau3, state.sau4, state.sbu1, state.sbu2, state.sbu3, state.svpu1, state.svpu2, state.svpu3, Object.keys(state.au).length].join(",");
+    const after = [state.sau1, state.sau2, state.sau3, state.sau4, state.sbu1, state.sbu2, state.sbu3, state.svpu1, state.svpu2, state.svpu3, Object.keys(state.au).length].join(",");
     if (after === before) return;
   }
 }
