@@ -2241,6 +2241,15 @@ function annihilationReady() {
   return tLog >= targetLog;
 }
 
+// 10 次湮灭前（自动湮灭解锁前）达到湮灭条件即暂停游戏计算：
+// 停止生产与购买自动化，让可获得的奇点数保持在当前上限温度对应的最大值——
+// 早期阈值=当前普朗克温度，自动化购买会花掉声子/波速把温度拉低、削弱待获取的 Sp。
+// 扭曲/虚空各用自己的目标温度，不在此列；达到 10 次（解锁自动湮灭）后不再暂停
+function annihilationFrozen() {
+  return state.annihilations >= 1 && !hasMilestone(10)
+    && !state.distortActive && !state.voidActive && annihilationReady();
+}
+
 // 记录一次湮灭到历史（最近十次）
 function pushAnnHistory(entry) {
   state.annHistory.push(entry);
@@ -7580,8 +7589,8 @@ function runOfflineSimulation(cappedSec) {
     while (remaining > 1e-9) {
       const dt = Math.min(step, remaining);
       simTimeOffset += dt * 1000;
-      applyProduction(dt);
-      runAutomation();
+      // 与在线一致：10 次湮灭前达到湮灭条件即暂停（不推进生产与购买）
+      if (!annihilationFrozen()) { applyProduction(dt); runAutomation(); }
       remaining -= dt;
     }
     res.simmed = true;
@@ -7837,7 +7846,7 @@ function tick() {
   const realDt = Math.min(Math.max(rawDt, 0), 60);
   state.lastTick = now;
   state.realTime += realDt;
-  applyProduction(realDt);
+  if (!annihilationFrozen()) applyProduction(realDt); // 10 次湮灭前就绪即暂停（保持可获取 Sp 最大）
   autoAnnTick(); // 生产后立即检查自动湮灭（同 tick 反应，不必等渲染与购买自动化段）
 
   // 虚空升级 tick：SVU1 填充（真实时间，任意位置可运转）；
@@ -7939,7 +7948,7 @@ function tick() {
   applyAnnihilationVisibility();
   applyCompactVisibility();
   updateCompactButton();
-  runAutomation();
+  if (!annihilationFrozen()) runAutomation(); // 暂停期间不自动购买（防花掉声子/波速拉低待获取 Sp）
   if (state.annihilations >= 1) {
     updateSpUI();
     updateAutomationUI();
