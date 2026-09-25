@@ -8191,13 +8191,16 @@ function setupUI() {
     const file = saveFileInput.files && saveFileInput.files[0];
     if (!file) return;
     const reader = new FileReader();
+    // 读取结束再清空 input.value（允许连续选择同一文件）——
+    // 若在 readAsText 后立即清空，个别浏览器可能取消挂起的读取（选了文件却毫无反应）
+    const done = () => { saveFileInput.value = ""; };
     reader.onload = () => {
       document.getElementById("save-io").value = String(reader.result || "");
+      done();
       importSaveFromIo();
     };
-    reader.onerror = () => setAutosaveStatus("读取文件失败");
+    reader.onerror = () => { setAutosaveStatus("读取文件失败"); done(); };
     reader.readAsText(file);
-    saveFileInput.value = ""; // 清空以允许连续选择同一文件
   });
   // 导出并复制：存档同步写入文本框呈现，再复制到剪贴板（备用方式：选中后 execCommand）
   document.getElementById("save-copy").addEventListener("click", async () => {
