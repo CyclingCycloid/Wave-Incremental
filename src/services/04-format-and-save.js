@@ -111,7 +111,7 @@ function fmtAnnNum(n) {
 // 迁移旧存档：旧版 up3 叠加除法、无 up3LastF；按当前波长反推等效峰值频率。
 // rawObj = 合并前的原始存档对象（S01）：加载路径先用 defaultState() 合并，旧档缺失的
 // log 权威字段会被默认值遮蔽——"字段缺失才回填"必须以原始对象的存在性为准才能触发
-function migrateState(rawObj) {
+function migrateState(rawObj, rawSave) {
   const rawHas = (k) => !!(rawObj && Object.prototype.hasOwnProperty.call(rawObj, k));
   // 旧档可能直接写 state.L（无 logL10）：同步 log 表示
   if (!rawHas("logL10") || state.logL10 === undefined || state.logL10 === null || !isFinite(state.logL10)) {
@@ -442,11 +442,14 @@ function migrateState(rawObj) {
   // 集中在 [2.3e14, 1e15]：0.23×LOG_CAP 与 LOG_CAP 本体；正常游玩 log ≥1e12
   // 需连续不湮灭挂机十余小时才会触及）。检测即修复：U 重置为湮灭初值，
   // 派生统计跟随，Sp/声子等资源清为对应零值。
-  const SANITY_MAX = 1e12;
+  // S03：指纹收紧到实际观测污染带 [2.3e14, 1e15]（旧阈值 1e12 会误清合法深度挂机进度）；
+  // 净化前把原存档串隔离备份到独立 key，可人工恢复
+  const SANITY_MAX = 2.3e14;
   const polluted = [state.logU10, state.logL10, state.logTotalF, state.logMaxF, state.logMaxU, state.logDsp, state.logDtotal, state.logDph, state.logUp3LastF, state.logVP, state.logBhMass,
     state.logDss, state.logDtotalSS, state.logBestSS, state.logBestSSRate, state.logDins, state.logDtotalIns, state.logCM, state.compGameElapsedLog, state.logED, state.logDinf]
     .some(v => v !== undefined && v !== null && isFinite(v) && Math.abs(v) >= SANITY_MAX);
   if (polluted) {
+    try { if (rawSave) localStorage.setItem(SAVE_KEY + '_quarantine_' + Date.now(), rawSave); } catch {}
     setU(resetU());
     setTotalFGained(resetU());
     state.L = 1; state.logL10 = 0;
@@ -471,11 +474,12 @@ function loadGame() {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return false;
+    const prev = state; // S04：迁移/渲染抛错时回滚，避免半迁移状态被自动保存覆盖
     const obj = decodeSave(raw);
     state = Object.assign(defaultState(), obj);
     state.settings = Object.assign({ theme: "black", decimals: 3, uiFps: 33, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true }, obj.settings || {});
     state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
-    migrateState(obj);
+    migrateState(obj, raw);
     // 迁移：v0.1 旧存档用 frequency 字段
     if (obj.frequency !== undefined && obj.U === undefined) {
       setU(obj.frequency);
@@ -497,6 +501,7 @@ function loadGame() {
     return true;
   } catch (e) {
     console.error("存档读取失败:", e);
+    state = prev; // S04：回滚半迁移状态
     return false;
   }
 }
@@ -540,11 +545,12 @@ function importSaveFromIo() {
       else setAutosaveStatus("导入失败：存档无效");
       return;
     }
+    const prev = state; // S04：失败回滚快照
     const obj = decodeSave(str);
     state = Object.assign(defaultState(), obj);
     state.settings = Object.assign({ theme: "black", decimals: 3, uiFps: 33, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true }, obj.settings || {});
     state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
-    migrateState(obj);
+    migrateState(obj, str.trim());
     // 重置瞬时成就状态（与 init 一致）：旧档携带的计时数组会干扰 S3/S5/S6 判定
     state.hiddenClicks = [];
     state.metaClicks = [];
@@ -561,7 +567,7 @@ function importSaveFromIo() {
     saveGame();
     renderAll();
     setAutosaveStatus("已导入存档");
-  } catch { setAutosaveStatus("导入失败：存档无效"); }
+  } catch (e) { state = (typeof prev === "object" && prev) ? prev : state; setAutosaveStatus("导入失败：存档无效"); }
 }
 
 // ---------- Save slots ----------
@@ -602,11 +608,12 @@ function loadFromSlot(i) {
   try {
     const raw = localStorage.getItem(slotKey(i));
     if (!raw) { setAutosaveStatus("该槽为空"); return; }
+    const prev = state; // S04：失败回滚快照
     const obj = decodeSave(raw);
     state = Object.assign(defaultState(), obj);
     state.settings = Object.assign({ theme: "black", decimals: 3, uiFps: 33, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true }, obj.settings || {});
     state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
-    migrateState(obj);
+    migrateState(obj, raw);
     queueOfflineProgress();
     state.lastTick = Date.now();
     currentSlot = i;
@@ -617,7 +624,7 @@ function loadFromSlot(i) {
     saveGame();
     renderAll();
     setAutosaveStatus(`已从存档槽 ${i + 1} 载入`);
-  } catch { setAutosaveStatus("读取槽失败！"); }
+  } catch (e) { state = (typeof prev === "object" && prev) ? prev : state; setAutosaveStatus("读取槽失败！"); }
 }
 function deleteSlot(i) {
   if (!confirm(`确定删除「${getSlotName(i)}」的存档？`)) return;

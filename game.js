@@ -1197,7 +1197,7 @@ function fmtAnnNum(n) {
 // 迁移旧存档：旧版 up3 叠加除法、无 up3LastF；按当前波长反推等效峰值频率。
 // rawObj = 合并前的原始存档对象（S01）：加载路径先用 defaultState() 合并，旧档缺失的
 // log 权威字段会被默认值遮蔽——"字段缺失才回填"必须以原始对象的存在性为准才能触发
-function migrateState(rawObj) {
+function migrateState(rawObj, rawSave) {
   const rawHas = (k) => !!(rawObj && Object.prototype.hasOwnProperty.call(rawObj, k));
   // 旧档可能直接写 state.L（无 logL10）：同步 log 表示
   if (!rawHas("logL10") || state.logL10 === undefined || state.logL10 === null || !isFinite(state.logL10)) {
@@ -1528,11 +1528,14 @@ function migrateState(rawObj) {
   // 集中在 [2.3e14, 1e15]：0.23×LOG_CAP 与 LOG_CAP 本体；正常游玩 log ≥1e12
   // 需连续不湮灭挂机十余小时才会触及）。检测即修复：U 重置为湮灭初值，
   // 派生统计跟随，Sp/声子等资源清为对应零值。
-  const SANITY_MAX = 1e12;
+  // S03：指纹收紧到实际观测污染带 [2.3e14, 1e15]（旧阈值 1e12 会误清合法深度挂机进度）；
+  // 净化前把原存档串隔离备份到独立 key，可人工恢复
+  const SANITY_MAX = 2.3e14;
   const polluted = [state.logU10, state.logL10, state.logTotalF, state.logMaxF, state.logMaxU, state.logDsp, state.logDtotal, state.logDph, state.logUp3LastF, state.logVP, state.logBhMass,
     state.logDss, state.logDtotalSS, state.logBestSS, state.logBestSSRate, state.logDins, state.logDtotalIns, state.logCM, state.compGameElapsedLog, state.logED, state.logDinf]
     .some(v => v !== undefined && v !== null && isFinite(v) && Math.abs(v) >= SANITY_MAX);
   if (polluted) {
+    try { if (rawSave) localStorage.setItem(SAVE_KEY + '_quarantine_' + Date.now(), rawSave); } catch {}
     setU(resetU());
     setTotalFGained(resetU());
     state.L = 1; state.logL10 = 0;
@@ -1557,11 +1560,12 @@ function loadGame() {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return false;
+    const prev = state; // S04：迁移/渲染抛错时回滚，避免半迁移状态被自动保存覆盖
     const obj = decodeSave(raw);
     state = Object.assign(defaultState(), obj);
     state.settings = Object.assign({ theme: "black", decimals: 3, uiFps: 33, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true }, obj.settings || {});
     state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
-    migrateState(obj);
+    migrateState(obj, raw);
     // 迁移：v0.1 旧存档用 frequency 字段
     if (obj.frequency !== undefined && obj.U === undefined) {
       setU(obj.frequency);
@@ -1583,6 +1587,7 @@ function loadGame() {
     return true;
   } catch (e) {
     console.error("存档读取失败:", e);
+    state = prev; // S04：回滚半迁移状态
     return false;
   }
 }
@@ -1626,11 +1631,12 @@ function importSaveFromIo() {
       else setAutosaveStatus("导入失败：存档无效");
       return;
     }
+    const prev = state; // S04：失败回滚快照
     const obj = decodeSave(str);
     state = Object.assign(defaultState(), obj);
     state.settings = Object.assign({ theme: "black", decimals: 3, uiFps: 33, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true }, obj.settings || {});
     state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
-    migrateState(obj);
+    migrateState(obj, str.trim());
     // 重置瞬时成就状态（与 init 一致）：旧档携带的计时数组会干扰 S3/S5/S6 判定
     state.hiddenClicks = [];
     state.metaClicks = [];
@@ -1647,7 +1653,7 @@ function importSaveFromIo() {
     saveGame();
     renderAll();
     setAutosaveStatus("已导入存档");
-  } catch { setAutosaveStatus("导入失败：存档无效"); }
+  } catch (e) { state = (typeof prev === "object" && prev) ? prev : state; setAutosaveStatus("导入失败：存档无效"); }
 }
 
 // ---------- Save slots ----------
@@ -1688,11 +1694,12 @@ function loadFromSlot(i) {
   try {
     const raw = localStorage.getItem(slotKey(i));
     if (!raw) { setAutosaveStatus("该槽为空"); return; }
+    const prev = state; // S04：失败回滚快照
     const obj = decodeSave(raw);
     state = Object.assign(defaultState(), obj);
     state.settings = Object.assign({ theme: "black", decimals: 3, uiFps: 33, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true }, obj.settings || {});
     state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
-    migrateState(obj);
+    migrateState(obj, raw);
     queueOfflineProgress();
     state.lastTick = Date.now();
     currentSlot = i;
@@ -1703,7 +1710,7 @@ function loadFromSlot(i) {
     saveGame();
     renderAll();
     setAutosaveStatus(`已从存档槽 ${i + 1} 载入`);
-  } catch { setAutosaveStatus("读取槽失败！"); }
+  } catch (e) { state = (typeof prev === "object" && prev) ? prev : state; setAutosaveStatus("读取槽失败！"); }
 }
 function deleteSlot(i) {
   if (!confirm(`确定删除「${getSlotName(i)}」的存档？`)) return;
@@ -3910,23 +3917,33 @@ function tickBlackhole(dt) {
   } else if (state.bhState === "distorl") {
     // 扭曲：无质量变化，无虚粒子（时间倍率由 bhTimeMult 给予）
   } else if (state.bhState === "pulse") {
-    // 脉冲质量衰减：M>1e30 时每秒指数 -(1+lg(M)×0.1)（质量越大衰减越快）；
-    // M≤1e30 时每秒 ÷10（log 每 -1/秒）。到 M=1（log 0）为止。
-    if (mLog > 0) {
-      const decayRate = mLog > 30 ? -(1 + mLog * 0.1) : -1;
-      const newLog = Math.max(0, mLog + decayRate * dt);
-      setBhMassLog(newLog);
+    // N10：脉冲改为解析推进，消除长步长/短步长积分口径差异——
+    // x=lg(M)>30 段 dx/dt=−(1+0.1x) 的精确解 x(t)=(x0+10)e^(−0.1t)−10，越过 x=30 的时刻
+    // t*=10·ln((x0+10)/40)；x≤30 段线性 −1/s 至 0。VP 按两段各自起点速率 × 段时长累计
+    //（小速率保留既有 floor 语义），在线短 tick 与离线长步长结果一致
+    const segVp = (rateLog, dur) => {
+      if (dur <= 0 || !(rateLog > NLOG + 1)) return;
+      const rl = rateLog > 15 ? rateLog : Math.log10(Math.max(Math.floor(Math.pow(10, rateLog)), 1));
+      vpSegLog = logAddLogs(vpSegLog, clampLog(rl + Math.log10(Math.max(dur, 1e-300))));
+    };
+    const x0 = mLog;
+    let vpSegLog = NLOG;
+    if (x0 > 30) {
+      const tStar = 10 * Math.log((x0 + 10) / 40); // 高段（x>30）持续时间
+      const tHigh = Math.min(dt, tStar);
+      segVp(bhVPGainLog(), tHigh); // 段起点速率
+      setBhMassLog((x0 + 10) * Math.exp(-0.1 * tHigh) - 10);
+      if (dt > tStar) {
+        const tLow = dt - tStar;
+        setBhMassLog(30);
+        segVp(bhVPGainLog(), tLow); // 低段起点（x=30）速率
+        setBhMassLog(Math.max(30 - tLow, 0));
+      }
+    } else if (x0 > 0) {
+      setBhMassLog(Math.max(0, x0 - dt));
+      segVp(bhVPGainLog(), dt);
     }
-    // 虚粒子获取：每秒速率 = floor(mult × (M^0.1 − 1))（整数速率），按 dt 连续累计。
-    // floor 按「每秒速率」取整而非按 tick 取整，否则小速率会永远取 0。
-    // 速率 >1e15 时直接用 log 速率：10^vRateLog 会溢出为 Infinity，
-    // 再取对数变回 LOG_CAP 会把 logVP 打到 1e15 触发存档净化全清（大质量 M 下真实可达）
-    const vRateLog = bhVPGainLog();
-    if (vRateLog > NLOG + 1) {
-      const rateLog = vRateLog > 15 ? vRateLog : Math.log10(Math.max(Math.floor(Math.pow(10, vRateLog)), 1));
-      const addLog = clampLog(rateLog + Math.log10(Math.max(dt, 1e-300)));
-      setVPLog(logAddLogs(getLogVP(), addLog));
-    }
+    if (vpSegLog > NLOG + 1) setVPLog(logAddLogs(getLogVP(), vpSegLog));
   }
 }
 
@@ -7686,6 +7703,15 @@ function queueOfflineProgress() {
   pendingOffline = { raw, capped: Math.min(raw, OFFLINE_CAP_SEC) };
 }
 // log 差值 b−a（b 为零哨兵按无增量处理；a 为零哨兵时增量即 b）
+// D05：离线收益按绝对增量表述——offlineLogDiff 是倍率 lg(new/old)，不能直接当增量显示。
+// old/new 为 log10；双方可表示时取真实绝对差，超大值取 log 域减法 lg(new−old)，无旧值取绝对值。
+function offlineAbsGain(oldLog, newLog) {
+  const hasOld = oldLog > NLOG + 1, hasNew = newLog > NLOG + 1;
+  if (!hasNew) return null;
+  if (!hasOld) return newLog < 300 ? fmt(Math.pow(10, newLog)) : fmtLog(newLog);
+  if (newLog < 300 && oldLog < 300) return fmt(Math.pow(10, newLog) - Math.pow(10, oldLog));
+  return fmtLog(logAddSigned(newLog, 1, oldLog, -1));
+}
 function offlineLogDiff(a, b) {
   if (b <= NLOG + 1) return -Infinity;
   if (a <= NLOG + 1) return b;
@@ -7780,28 +7806,32 @@ function processPendingOffline() {
 // 离线收益弹窗（收益已先行入账，按钮仅关闭；无实质收益则不弹）
 function showOfflineModal(raw, capped, res) {
   const lines = ["你离开了 " + fmtTime(raw) + (raw > capped + 1 ? "（结算上限 " + fmtTime(capped) + "）" : "")];
-  const uD = offlineLogDiff(res.uLog0, res.uLog1);
-  if (uD > 1e-4) lines.push("波速 +" + (uD < 308 ? fmt(Math.pow(10, uD)) : fmtLog(uD)) + " m/s");
+  const uAbs = offlineAbsGain(res.uLog0, res.uLog1);
+  if (uAbs !== null) lines.push("波速 +" + uAbs + " m/s");
   // 声子优先显示绝对增量（大基数上的小增量 log 差趋 0 会漏报），超 double 回退 log 差
   const phAbsD = (isFinite(res.phAbs0) && isFinite(res.phAbs1)) ? res.phAbs1 - res.phAbs0 : NaN;
   const phD = offlineLogDiff(res.ph0, res.ph1);
   if (isFinite(phAbsD) && phAbsD >= 1) lines.push("声子 +" + fmt(Math.floor(phAbsD)));
-  else if (phD > 1e-4) lines.push("声子 +" + fmtLog(phD));
+  else { const phAbs = offlineAbsGain(res.ph0, res.ph1); if (phAbs !== null) lines.push("声子 +" + phAbs); }
   if (bhUnlocked()) {
     const mD = offlineLogDiff(res.m0, res.m1);
-    if (mD > 1e-4) lines.push("黑洞质量 +" + (mD < 308 ? fmt(Math.pow(10, mD)) : fmtLog(mD)) + " M☉");
+    const mAbs = offlineAbsGain(res.m0, res.m1);
+    if (mAbs !== null) lines.push("黑洞质量 +" + mAbs + " M☉");
     else if (isFinite(mD) && mD < -1e-4) lines.push("黑洞质量 ÷" + fmt(Math.pow(10, -mD)) + "（脉冲衰减）");
     const vpD = offlineLogDiff(res.vp0, res.vp1);
-    if (vpD > 1e-4) lines.push("虚粒子 +" + (vpD < 15 ? fmt(Math.floor(Math.pow(10, vpD))) : fmtLog(vpD)));
+    const vpAbs = offlineAbsGain(res.vp0, res.vp1);
+    if (vpAbs !== null) lines.push("虚粒子 +" + vpAbs);
     else if (isFinite(vpD) && vpD < -1e-4) lines.push("虚粒子 ÷" + fmt(Math.pow(10, -vpD)) + "（吸积衰减）");
   }
   const annD = res.ann1 - res.ann0;
   if (annD >= 1) lines.push("湮灭 +" + fmt(Math.floor(annD)) + " 次");
   const spD = offlineLogDiff(res.sp0, res.sp1);
-  if (spD > 1e-4) lines.push("奇点 +" + (spD < 308 ? fmt(Math.pow(10, spD)) : fmtLog(spD)));
+  const spAbs = offlineAbsGain(res.sp0, res.sp1);
+  if (spAbs !== null) lines.push("奇点 +" + spAbs);
   // 卡拉比-丘流形（卷缩层离线产出；显示 floor 与页面口径一致）
   const cmD = offlineLogDiff(res.cm0, res.cm1);
-  if (cmD > 1e-4) lines.push("卡拉比-丘流形 +" + (cmD < 15 ? fmt(Math.floor(Math.pow(10, cmD))) : fmtLog(cmD)));
+  const cmAbs = offlineAbsGain(res.cm0, res.cm1);
+  if (cmAbs !== null) lines.push("卡拉比-丘流形 +" + cmAbs);
   if (lines.length <= 1) return; // 无实质收益（如生产为 0 挂机）不弹
   document.getElementById("offline-text").textContent = lines.join("\n");
   document.getElementById("offline-overlay").classList.remove("hidden");
@@ -7833,9 +7863,11 @@ function applyProduction(realDt) {
       gameDtLog = clampLog(trLog + Math.log10(Math.max(realDt, 1e-300)));
     }
   }
-  if (dtOverDouble) {
+  // N09：现有累计 + dt 溢出 double 时同样转入 log 权威（旧判定只查单次 dt）
+  const timeOverDouble = dtOverDouble || !Number.isFinite(state.playTime + dt);
+  if (timeOverDouble) {
     // 倍率超 double：游戏时间以 log 权威累积，double 缓存封顶 MAX_VALUE
-    if (state.playTimeLog === undefined) state.playTimeLog = Math.log10(Math.max(state.playTime, 1e-300));
+    if (state.playTimeLog === undefined || !Number.isFinite(state.playTimeLog)) state.playTimeLog = Math.log10(Math.max(state.playTime, 1e-300));
     state.playTimeLog = clampLog(logAddLogs(state.playTimeLog, gameDtLog));
     state.playTime = Number.MAX_VALUE;
     dt = Number.MAX_VALUE; // 仅作下游量级标记；生产累积一律走 gameDtLog
@@ -7844,14 +7876,15 @@ function applyProduction(realDt) {
   }
   // 本次湮灭的游戏时长独立累计（避免 playTime 饱和后 playTime-annStartGame 恒为 0）。
   // double 缓存封顶 MAX_VALUE（与 playTime 同语义），log 权威持续累积用于显示
+  const annOver = timeOverDouble || !Number.isFinite((state.annGameElapsed || 0) + dt);
   if (state.annihilations >= 1) {
-    state.annGameElapsed = dtOverDouble
+    state.annGameElapsed = annOver
       ? Number.MAX_VALUE
       : (state.annGameElapsed || 0) + dt;
-    if (dtOverDouble) {
+    if (annOver) {
       if (state.annGameElapsedLog === undefined || !isFinite(state.annGameElapsedLog)) state.annGameElapsedLog = NLOG;
       state.annGameElapsedLog = clampLog(logAddLogs(Math.max(state.annGameElapsedLog, NLOG), gameDtLog));
-    } else if (!dtOverDouble && dt > 0) {
+    } else if (dt > 0) {
       // 注意：必须排除 dtOverDouble——此时 dt=MAX_VALUE 占位，log10(dt)=308.25
       // 会把 log 权威反复覆盖成 308 量级（加速 e338 也恒显示 2.08e303d 的根因）
       state.annGameElapsedLog = clampLog(logAddLogs(Math.max(state.annGameElapsedLog ?? NLOG, NLOG), Math.log10(dt)));
@@ -7866,13 +7899,14 @@ function applyProduction(realDt) {
 
   // 本次卷缩的游戏时长独立累计（与 annGameElapsed 同款：double 缓存封顶 MAX_VALUE，
   // log 权威持续累积用于显示；统计-通用的「本次卷缩所花费时间」读取）
+  const compOver = timeOverDouble || !Number.isFinite((state.compGameElapsed || 0) + dt);
   if (state.compactions >= 1) {
-    state.compGameElapsed = dtOverDouble
+    state.compGameElapsed = compOver
       ? Number.MAX_VALUE
       : (state.compGameElapsed || 0) + dt;
-    if (dtOverDouble) {
+    if (compOver) {
       if (state.compGameElapsedLog === undefined || !isFinite(state.compGameElapsedLog)) state.compGameElapsedLog = NLOG;
-      state.compGameElapsedLog = clampLog(logAddLogs(Math.max(state.compGameElapsedLog, NLOG), gameDtLog));
+      state.compGameElapsedLog = clampLog(logAddLogs(Math.max(state.compGameElapsedLog ?? NLOG, NLOG), gameDtLog));
     } else if (dt > 0) {
       state.compGameElapsedLog = clampLog(logAddLogs(Math.max(state.compGameElapsedLog ?? NLOG, NLOG), Math.log10(dt)));
     }
@@ -7907,8 +7941,11 @@ function applyProduction(realDt) {
     if (!state.distortActive && !state.voidActive) {
       const wE = wavelengthExp();
       const gOverLLog = gainPerLLog((gFinite ? Math.log10(Math.max(Math.abs(g), 1e-300)) : gainRateLog().log) + gameDtLog);
-      if (gFinite && uFinite && isFinite(state.totalFGained) && state.totalFGained < LOG_FALLBACK && Math.abs(state.totalFGained + gd / Math.max(state.L, 1e-300)) < LOG_FALLBACK) {
-        state.totalFGained += (wE === 1 ? (g / state.L) : (g / Math.pow(state.L, wE))) * dt;
+      // N02：安全判定改用实际增量的 log（gd/L^e）——旧判定 gd/L 在 e>1 时漏判溢出
+      const incSafe = Number.isFinite(gOverLLog) && gOverLLog < Math.log10(LOG_FALLBACK);
+      const incDouble = (wE === 1 ? (g / state.L) : (g / Math.pow(state.L, wE))) * dt;
+      if (gFinite && uFinite && incSafe && isFinite(state.totalFGained) && state.totalFGained < LOG_FALLBACK && isFinite(incDouble)) {
+        state.totalFGained += incDouble;
         state.logTotalF = state.totalFGained > 0 ? Math.log10(state.totalFGained) : NLOG;
       } else {
         // log 域：logTotalF 与 gOverLLog·sign 累积（带符号）

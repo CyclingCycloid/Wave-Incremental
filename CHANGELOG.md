@@ -2,6 +2,16 @@
 
 ## v0.6.3.2 — The Research Update（测试中，数值待调）
 
+### Issue 审查修复（批次 5：原延后项，P1/P2/P3 各一）
+
+- **N02 修正（P1）：累计频率的 double 安全判定改用实际增量的 log**——旧判定 `gd/L` 在卷缩 e>1 时漏判溢出（L=1e-280、e=1.2、gd≈1 时前者低于 1e290 而实际累加 gd/L^e 超过 double 上限），totalFGained 与 logTotalF 可双双写成 Infinity 污染存档；现按 `gainPerLLog` 的实际增量 log 判定（< 1e290 才走 double，且要求增量计算本身有限），e=1 的现有结果不变
+- **N09 修正（P3）：时间累计的溢出检查补「现有累计 + dt」**——单次 dt 有限但 playTime/annGameElapsed/compGameElapsed 已接近 Number.MAX_VALUE 时，相加仍会溢出为 Infinity 且 log 权威滞后；现三个累计器在溢出时转入 log 域累积并把 double 缓存封顶 MAX_VALUE
+- **N10 修正（P3）：黑洞脉冲改为解析推进，消除步长口径差异**——质量衰减按 ODE 精确解 x(t)=(x0+10)e^(−0.1t)−10（x>30 段）/线性 −1/s（x≤30 段）推进，任意步长（在线 0.1s / 离线 36s）结果一致（lg(M)=1000 走 36s：旧离散实现直接钳 0，解析 ≈17.6）；VP 按两段各自起点速率 × 段时长累计（小速率保留 floor 语义）
+- **D05 修正（P3）：离线收益弹窗按绝对增量表述**——旧实现把 lg(new/old) 的倍率写成「+资源」（波速 100→200 显示 +2，实际增加 100）；现双方可表示时取真实绝对差、超大值走 log 域减法、零起点取绝对值，衰减仍按倍率显示
+- **S03 修正（P3）：存档净化阈值收紧至实际观测污染带 [2.3e14, 1e15] 并增加隔离备份**——旧阈值 1e12 会误清合法深度挂机进度；净化前把原存档串写入 `waveIncremental_save_quarantine_<时间戳>` 可人工恢复
+- **S04 修正（P3）：三条加载路径（启动/导入/槽位）失败时回滚到加载前状态**——迁移、渲染或离线结算中抛错不再保留半迁移状态，杜绝其被自动保存覆盖原档的风险
+- 验证：N02 e>1 边界（权威有限、无 LOG_CAP 污染）、N09 饱和转 log、N10 解析推进两段口径、S03 阈值/隔离备份、S04 回滚等专项断言 + tail55 全量回归通过
+
 ### 结构更新：主代码模块化（src/ + 构建管线）
 
 - **采纳 Issue/help 候选的模块化结构**：游戏逻辑源码迁入 `src/`（25 个按序分段：core/rules/engine/services/ui/app + `modules/log-math.js`、`modules/save-codec.js` 纯函数模块 + `adapters/storage.js` 存储端口），`tools/build.mjs` 按 `source-manifest.json` 顺序拼接并前置两模块，产出根 `game.js`；index.html 不变（仍加载单文件产物），无 IIFE/无作用域隔离/无预览调试面，经典脚本语义与 tail55 工作流完全兼容

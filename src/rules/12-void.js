@@ -548,23 +548,33 @@ function tickBlackhole(dt) {
   } else if (state.bhState === "distorl") {
     // 扭曲：无质量变化，无虚粒子（时间倍率由 bhTimeMult 给予）
   } else if (state.bhState === "pulse") {
-    // 脉冲质量衰减：M>1e30 时每秒指数 -(1+lg(M)×0.1)（质量越大衰减越快）；
-    // M≤1e30 时每秒 ÷10（log 每 -1/秒）。到 M=1（log 0）为止。
-    if (mLog > 0) {
-      const decayRate = mLog > 30 ? -(1 + mLog * 0.1) : -1;
-      const newLog = Math.max(0, mLog + decayRate * dt);
-      setBhMassLog(newLog);
+    // N10：脉冲改为解析推进，消除长步长/短步长积分口径差异——
+    // x=lg(M)>30 段 dx/dt=−(1+0.1x) 的精确解 x(t)=(x0+10)e^(−0.1t)−10，越过 x=30 的时刻
+    // t*=10·ln((x0+10)/40)；x≤30 段线性 −1/s 至 0。VP 按两段各自起点速率 × 段时长累计
+    //（小速率保留既有 floor 语义），在线短 tick 与离线长步长结果一致
+    const segVp = (rateLog, dur) => {
+      if (dur <= 0 || !(rateLog > NLOG + 1)) return;
+      const rl = rateLog > 15 ? rateLog : Math.log10(Math.max(Math.floor(Math.pow(10, rateLog)), 1));
+      vpSegLog = logAddLogs(vpSegLog, clampLog(rl + Math.log10(Math.max(dur, 1e-300))));
+    };
+    const x0 = mLog;
+    let vpSegLog = NLOG;
+    if (x0 > 30) {
+      const tStar = 10 * Math.log((x0 + 10) / 40); // 高段（x>30）持续时间
+      const tHigh = Math.min(dt, tStar);
+      segVp(bhVPGainLog(), tHigh); // 段起点速率
+      setBhMassLog((x0 + 10) * Math.exp(-0.1 * tHigh) - 10);
+      if (dt > tStar) {
+        const tLow = dt - tStar;
+        setBhMassLog(30);
+        segVp(bhVPGainLog(), tLow); // 低段起点（x=30）速率
+        setBhMassLog(Math.max(30 - tLow, 0));
+      }
+    } else if (x0 > 0) {
+      setBhMassLog(Math.max(0, x0 - dt));
+      segVp(bhVPGainLog(), dt);
     }
-    // 虚粒子获取：每秒速率 = floor(mult × (M^0.1 − 1))（整数速率），按 dt 连续累计。
-    // floor 按「每秒速率」取整而非按 tick 取整，否则小速率会永远取 0。
-    // 速率 >1e15 时直接用 log 速率：10^vRateLog 会溢出为 Infinity，
-    // 再取对数变回 LOG_CAP 会把 logVP 打到 1e15 触发存档净化全清（大质量 M 下真实可达）
-    const vRateLog = bhVPGainLog();
-    if (vRateLog > NLOG + 1) {
-      const rateLog = vRateLog > 15 ? vRateLog : Math.log10(Math.max(Math.floor(Math.pow(10, vRateLog)), 1));
-      const addLog = clampLog(rateLog + Math.log10(Math.max(dt, 1e-300)));
-      setVPLog(logAddLogs(getLogVP(), addLog));
-    }
+    if (vpSegLog > NLOG + 1) setVPLog(logAddLogs(getLogVP(), vpSegLog));
   }
 }
 

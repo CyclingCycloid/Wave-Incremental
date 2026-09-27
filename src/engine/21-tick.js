@@ -24,9 +24,11 @@ function applyProduction(realDt) {
       gameDtLog = clampLog(trLog + Math.log10(Math.max(realDt, 1e-300)));
     }
   }
-  if (dtOverDouble) {
+  // N09：现有累计 + dt 溢出 double 时同样转入 log 权威（旧判定只查单次 dt）
+  const timeOverDouble = dtOverDouble || !Number.isFinite(state.playTime + dt);
+  if (timeOverDouble) {
     // 倍率超 double：游戏时间以 log 权威累积，double 缓存封顶 MAX_VALUE
-    if (state.playTimeLog === undefined) state.playTimeLog = Math.log10(Math.max(state.playTime, 1e-300));
+    if (state.playTimeLog === undefined || !Number.isFinite(state.playTimeLog)) state.playTimeLog = Math.log10(Math.max(state.playTime, 1e-300));
     state.playTimeLog = clampLog(logAddLogs(state.playTimeLog, gameDtLog));
     state.playTime = Number.MAX_VALUE;
     dt = Number.MAX_VALUE; // 仅作下游量级标记；生产累积一律走 gameDtLog
@@ -35,14 +37,15 @@ function applyProduction(realDt) {
   }
   // 本次湮灭的游戏时长独立累计（避免 playTime 饱和后 playTime-annStartGame 恒为 0）。
   // double 缓存封顶 MAX_VALUE（与 playTime 同语义），log 权威持续累积用于显示
+  const annOver = timeOverDouble || !Number.isFinite((state.annGameElapsed || 0) + dt);
   if (state.annihilations >= 1) {
-    state.annGameElapsed = dtOverDouble
+    state.annGameElapsed = annOver
       ? Number.MAX_VALUE
       : (state.annGameElapsed || 0) + dt;
-    if (dtOverDouble) {
+    if (annOver) {
       if (state.annGameElapsedLog === undefined || !isFinite(state.annGameElapsedLog)) state.annGameElapsedLog = NLOG;
       state.annGameElapsedLog = clampLog(logAddLogs(Math.max(state.annGameElapsedLog, NLOG), gameDtLog));
-    } else if (!dtOverDouble && dt > 0) {
+    } else if (dt > 0) {
       // 注意：必须排除 dtOverDouble——此时 dt=MAX_VALUE 占位，log10(dt)=308.25
       // 会把 log 权威反复覆盖成 308 量级（加速 e338 也恒显示 2.08e303d 的根因）
       state.annGameElapsedLog = clampLog(logAddLogs(Math.max(state.annGameElapsedLog ?? NLOG, NLOG), Math.log10(dt)));
@@ -57,13 +60,14 @@ function applyProduction(realDt) {
 
   // 本次卷缩的游戏时长独立累计（与 annGameElapsed 同款：double 缓存封顶 MAX_VALUE，
   // log 权威持续累积用于显示；统计-通用的「本次卷缩所花费时间」读取）
+  const compOver = timeOverDouble || !Number.isFinite((state.compGameElapsed || 0) + dt);
   if (state.compactions >= 1) {
-    state.compGameElapsed = dtOverDouble
+    state.compGameElapsed = compOver
       ? Number.MAX_VALUE
       : (state.compGameElapsed || 0) + dt;
-    if (dtOverDouble) {
+    if (compOver) {
       if (state.compGameElapsedLog === undefined || !isFinite(state.compGameElapsedLog)) state.compGameElapsedLog = NLOG;
-      state.compGameElapsedLog = clampLog(logAddLogs(Math.max(state.compGameElapsedLog, NLOG), gameDtLog));
+      state.compGameElapsedLog = clampLog(logAddLogs(Math.max(state.compGameElapsedLog ?? NLOG, NLOG), gameDtLog));
     } else if (dt > 0) {
       state.compGameElapsedLog = clampLog(logAddLogs(Math.max(state.compGameElapsedLog ?? NLOG, NLOG), Math.log10(dt)));
     }
@@ -98,8 +102,11 @@ function applyProduction(realDt) {
     if (!state.distortActive && !state.voidActive) {
       const wE = wavelengthExp();
       const gOverLLog = gainPerLLog((gFinite ? Math.log10(Math.max(Math.abs(g), 1e-300)) : gainRateLog().log) + gameDtLog);
-      if (gFinite && uFinite && isFinite(state.totalFGained) && state.totalFGained < LOG_FALLBACK && Math.abs(state.totalFGained + gd / Math.max(state.L, 1e-300)) < LOG_FALLBACK) {
-        state.totalFGained += (wE === 1 ? (g / state.L) : (g / Math.pow(state.L, wE))) * dt;
+      // N02：安全判定改用实际增量的 log（gd/L^e）——旧判定 gd/L 在 e>1 时漏判溢出
+      const incSafe = Number.isFinite(gOverLLog) && gOverLLog < Math.log10(LOG_FALLBACK);
+      const incDouble = (wE === 1 ? (g / state.L) : (g / Math.pow(state.L, wE))) * dt;
+      if (gFinite && uFinite && incSafe && isFinite(state.totalFGained) && state.totalFGained < LOG_FALLBACK && isFinite(incDouble)) {
+        state.totalFGained += incDouble;
         state.logTotalF = state.totalFGained > 0 ? Math.log10(state.totalFGained) : NLOG;
       } else {
         // log 域：logTotalF 与 gOverLLog·sign 累积（带符号）
