@@ -76,7 +76,7 @@ function defaultState() {
     voidRules: [],         // 虚空中生效的扭曲宇宙削弱（id 数组，D1-D8）
     voidVF: 0,             // 虚空泡沫（double 缓存；极端值看 logVoidVF10）
     logVoidVF10: NLOG,     // log10(虚空泡沫) 权威表示（选满削弱时 VF 可超 double）
-    logVoidVFCap10: NLOG,  // log10(VF 上限) 权威（退出虚空结算时只增不减；虚空外 current 每秒追赶差值的 10%）
+    logVoidVFCap10: NLOG,  // log10(VF 上限) 权威（退出虚空结算时只增不减；虚空外 current 每秒追赶差值的 5%）
     voidBestRules: 0,      // 虚空里程碑：已完成的虚空最大同时生效削弱数（0=未完成过）
     logVoidVFBest10: NLOG, // 历史最高持有的虚空泡沫 log10（里程碑3 latch，只增不减）
     svu1SpLog: NLOG,       // SVU1 虚空共振：累计投入的 Sp（log10；投入持久）
@@ -775,7 +775,7 @@ function vpSpMultLog() {
 }
 // Sp 获取基础值的 log10（log 域全链路，温度超 double 也不产生 Infinity）。
 // 三段连续：T<1e50 为 1~10 线性（1 Sp @ T_P0）；1e50≤T<1e100 为 lg(T)/5（10~20）；
-// T≥1e100 为 2·T^0.01（在 1e50 与 1e100 处值与导数均连续）
+// T≥1e100 为 2·T^0.01（在 1e50 与 1e100 处值连续；斜率不连续 1/5→1/50）
 function spGainBaseLog() {
   // R5「热焓极点回溯」：改用本次湮灭的最高有效温度（与公式同口径的时间最大值）
   const tLog = researchBought("R5") ? Math.max(temperatureCappedLog(), state.annMaxTLog) : temperatureCappedLog();
@@ -950,7 +950,7 @@ function gainRateLog(uncapped) {
     if (ge <= 0) return { log: NLOG, sign: 1 };
     log *= ge;
   }
-  // 研究·双缝干涉实验（v0.6.3）：整体幂次 ×0.6^等级
+  // 研究·双缝干涉实验（v0.6.3.2）：整体幂次 ×slitMult(n)（=0.6·0.8^(n−1)，5 级起每级再 ×0.5）
   {
     const slit = researchSlitLevel();
     if (slit >= 1) log *= slitMult(slit);
@@ -1624,6 +1624,7 @@ function importSaveFromIo() {
     state.lastTick = Date.now();
     applyTheme(state.settings.theme);
     applyDecimals(state.settings.decimals);
+    applyUiFps(state.settings.uiFps); // D04：导入路径补 UI 帧率同步
     processPendingOffline(); // 导入发生在 init 之后：离线结算须就地执行
     saveGame();
     renderAll();
@@ -1678,6 +1679,8 @@ function loadFromSlot(i) {
     state.lastTick = Date.now();
     currentSlot = i;
     applyTheme(state.settings.theme);
+    applyDecimals(state.settings.decimals); // D04：槽位加载补小数位与 UI 帧率同步
+    applyUiFps(state.settings.uiFps);
     processPendingOffline(); // 槽位加载发生在 init 之后：离线结算须就地执行
     saveGame();
     renderAll();
@@ -1832,6 +1835,7 @@ function buyUp3() {
   if (annihilationFrozen()) return; // 冻结态禁购（只能湮灭）
   if (inDistort("rigid")) return; // 刚性宇宙：升级 3 无效
   if (narrowBlocked()) return; // 狭窄宇宙：总共只能购买十次升级
+  if (FLog() < 0) return; // N08：F≥1 Hz 才可购（F<1 时缩减量为负会反向延长波长）
   // 仅当当前频率超过上次记录的峰值时才更新（log 域比较，超 double 不截断；不再用 Infinity 哨兵）
   const fLog = FLog();
   const lastLog = getLogUp3LastF();
@@ -2002,7 +2006,7 @@ function updateUpgradesUI() {
   });
   if (up3Card) {
     const lastLog = getLogUp3LastF();
-    const affordable3 = FLog() > lastLog;
+    const affordable3 = FLog() >= 0 && FLog() > lastLog; // N08：F≥1 Hz 门槛
     const wLog2 = up3WavelengthFromFLog(FLog());
     const multLog = getLogL10() + wLog2;
     // R6「态矢量相干保持」：卡片名称/描述随研究动态切换
@@ -2257,8 +2261,11 @@ function hasDistortMilestone(n) { return distortDA() >= n; }
 const LOG_T_P0 = Math.log10(T_P0);
 function annihilationReady() {
   // log 域比较：用**有效温度**（滞涨为平方根后的温度，其余宇宙等于 raw）与目标比较；
-  // 打破规则时无上限，直接用 raw。
-  const tLog = state.rulesBroken || state.testBreakRules ? temperatureLog() : temperatureCappedLog();
+  // D01：打破规则/测试模式读 raw 温度绕过上限，但滞涨的有效温度开方仍须应用——
+  // 否则可在有效温度远低于目标时完成滞涨宇宙
+  const tLog = state.rulesBroken || state.testBreakRules
+    ? (inDistort("inflation") ? temperatureLog() / 2 : temperatureLog())
+    : temperatureCappedLog();
   // 扭曲宇宙：目标是该宇宙自己的普朗克温度（未知宇宙 id 视为不在扭曲中）
   if (state.distortActive) {
     const u = DISTORT_UNIVERSES.find(x => x.id === state.distortActive);
@@ -3390,25 +3397,23 @@ function voidVFRegenTick(realDt) {
     if (curLog > capLog) setVoidVFLog(capLog); // 异常档归位（防更新期负增长放大）
     return;
   }
-  // cur' = cur + (cap−cur)×(1−0.95^dt)：log 域 = cur + log10(1 + (cap/cur−1)×(1−0.95^dt))
-  const ratio = Math.pow(10, Math.min(capLog - curLog, 300)); // (cap−cur)/cur 之比（差值可能巨大，钳比防溢出）
-  const addLog = Math.log10(Math.max((ratio - 1) * (1 - Math.pow(0.95, realDt)) + 1, 1));
-  let next = curLog + addLog;
+  // cur' = cur + (cap−cur)×(1−0.95^dt)：N03——cap−cur 用 logAddSigned（差值可超 1e300，不得钳比截断）
+  const diffLog = logAddSigned(capLog, 1, curLog, -1).log; // lg(cap−cur)
+  const addLog = clampLog(diffLog + Math.log10(1 - Math.pow(0.95, realDt)));
+  let next = logAddLogs(curLog, addLog);
   if (next >= capLog) next = capLog; // 吸附到上限（浮点余量）
   setVoidVFLog(next);
 }
-// VF 对虚粒子获取的加成（log10）：×(1+VF^((lg(VF+1)+3)/(4lg(VF+1)+6)))。无 VF 时 0。
-// 里程碑3 后按 VF^1.1 计算（lg 与幂次均放大 1.1 倍）
+// VF 对虚粒子获取的加成（log10）：×(1+VF^((lg(VF+1)+3)/(4lg(VF+1)+6)))。VF=0 无加成；
+// N04：0<VF≤1 时 lg(VF+1)≤0，旧代码直接归零——现用稳定 lg(1+10^x) 式按定义计算；
+// N05：移除内层 min(...,300) 的无声明截顶，大 VF 按定义增长
 function vfVPMultLog() {
   const lg0 = state.logVoidVF10;
-  if (!(lg0 > NLOG + 1)) return 0;
-  const lg = vfEffectVFLog(lg0);
-  if (!(lg > 0)) return 0;
-  // lg(VF'+1)（VF' 为里程碑3 后的等效值）：≤1e15 用 double 精确算 +1，超出后 +1 可忽略
-  const lgVF1 = lg <= 15 ? Math.log10(Math.pow(10, lg) + 1) : lg;
+  if (!(lg0 > NLOG + 1)) return 0; // VF=0：无加成
+  const lgVF1 = logAddLogs(0, vfEffectVFLog(lg0)); // lg(1+VF)——稳定式，0<VF≤1 亦精确
   const e = (lgVF1 + 3) / (4 * lgVF1 + 6);
-  const inner = Math.min(lg * e, 300);
-  return clampLog(Math.log10(1 + Math.pow(10, inner)));
+  const lgVF = vfEffectVFLog(lg0); // lg(VF)——定义的底数是 VF 本身（指数的分母用 lg(VF+1)）
+  return clampLog(logAddLogs(0, lgVF * e)); // lg(1+VF^e)
 }
 // 进入虚空：湮灭重置后应用选中的削弱集合
 function enterVoid(ids) {
@@ -4045,7 +4050,9 @@ function cmSpeedBonusLog() {
   }
   if (voidMilestone3()) {
     const lgVF = state.logVoidVF10;
-    if (lgVF > NLOG + 1) add += 0.1 * lgVF;
+    // N06：规则为 max(1, VF^0.1)——0<VF<1 时不得产生负加成（低于无 VF 基线）
+    const term = 0.1 * lgVF;
+    if (term > 0) add += term;
   }
   return add;
 }
@@ -5324,8 +5331,8 @@ function updateCompactUI() {
     if (line) line.setAttribute("visibility", visible ? "visible" : "hidden");
     if (!visible) continue;
     const owned = theoryOwned(def.id);
-    // 深于当前理论深度的节点不隐藏：名字/效果/价格全部显示？？？（td 判定含 1e-9 容差）
-    const tdGated = +def.id[0] > state.theoryDepth + 1e-9;
+    // D02：显示遮蔽与 theoryAvailable 判购共用同一有效深度（含课题加成）
+    const tdGated = +def.id[0] > theoryDepthEff() + 1e-9;
     el.nm.textContent = tdGated ? "？？？" : def.name;
     el.node.classList.toggle("bought", owned);
     el.node.classList.toggle("available", theoryAvailable(def));
@@ -5376,7 +5383,9 @@ function buildResearchOnce() {
     const cnt = document.createElement("span"); cnt.className = "research-exp-cnt";
     const inc = document.createElement("button"); inc.className = "comp-btn small"; inc.textContent = "+";
     // 等级 0 = 未选择：− 到 0 移除条目，+ 从 0 新增等级 1（无独立的选择按钮）
+    // D03：实验运行中锁定编辑（researchSel 属于下一次实验，运行时不得被改动）
     dec.addEventListener("click", () => {
+      if (state.researchRun) return;
       const s = getSelEntry(def.id);
       if (!s) return;
       if (s.level <= 1) state.researchSel.splice(state.researchSel.indexOf(s), 1);
@@ -5384,6 +5393,7 @@ function buildResearchOnce() {
       saveGame(); updateResearchUI();
     });
     inc.addEventListener("click", () => {
+      if (state.researchRun) return;
       const s = getSelEntry(def.id);
       if (!s) state.researchSel.push({ id: def.id, level: 1 });
       else if (s.level < 10) s.level++;
@@ -5393,7 +5403,7 @@ function buildResearchOnce() {
     lv.append(dec, cnt, inc);
     card.append(nm, sc, db, lv);
     list.appendChild(card);
-    researchEls.exps[def.id] = { card, db, cnt };
+    researchEls.exps[def.id] = { card, db, cnt, dec, inc };
   }
   const predict = document.getElementById("research-predict");
   predict.addEventListener("change", () => {
@@ -5515,6 +5525,9 @@ function updateResearchUI() {
     const n = run ? (runEntry ? runEntry.level : 0) : researchSelLevel(def.id);
     el.db.textContent = "削弱：" + def.debuff(n);
     el.cnt.textContent = n >= 1 ? "等级 " + n : "未选择";
+    // D03：运行中按钮真正置灰（配合处理器早退）
+    if (el.dec) el.dec.disabled = !!run;
+    if (el.inc) el.inc.disabled = !!run;
     el.card.classList.toggle("selected", n >= 1);
     el.card.classList.toggle("running", !!run);
   }
@@ -6583,21 +6596,27 @@ function autoBuySauLoop() {
   }
 }
 function autoBuySbuLoop() {
+  let changed = false;
   for (let i = 0; i < 100; i++) {
     const before = state.sbu1 + "," + state.sbu2 + "," + state.sbu3;
-    for (const u of SBU_DEFS) buySBU(u.id);
+    for (const u of SBU_DEFS) buySBU(u.id, true); // A03：bulk 跳过逐次保存与 DOM 刷新
     if (before === state.sbu1 + "," + state.sbu2 + "," + state.sbu3) break;
+    changed = true;
   }
+  if (changed) { saveGame(); updateBlackholeUI(); }
 }
 function autoBuySvpuLoop() {
+  let changed = false;
   for (let i = 0; i < 100; i++) {
     const before = state.svpu1 + "," + state.svpu2 + "," + state.svpu3 + "," + state.svpu4 + "," + state.svpu5;
     for (const u of SVPU_DEFS) {
       if ((u.id === "svpu4" || u.id === "svpu5") && !vpuOwned("vpu5")) continue; // VPU5 解锁后才可购买
-      buySVPU(u.id);
+      buySVPU(u.id, true); // A03：bulk 跳过逐次保存与 DOM 刷新
     }
     if (before === state.svpu1 + "," + state.svpu2 + "," + state.svpu3 + "," + state.svpu4 + "," + state.svpu5) break;
+    changed = true;
   }
+  if (changed) { saveGame(); updateBlackholeUI(); }
 }
 // ---------- 自动化批量购买：闭式精确计数（消除巨量等级下的逐级卡顿）----------
 // 背景：lg(F)≈1e6 时一次可负担的升级1约 330 万级，逐级循环每级一次价格/扣款计算会卡数秒。
@@ -7677,6 +7696,9 @@ function runOfflineSimulation(cappedSec) {
       simTimeOffset += dt * 1000;
       // 与在线一致：10 次湮灭前达到湮灭条件即暂停（不推进生产与购买）
       if (!annihilationFrozen()) { applyProduction(dt); runAutomation(); }
+      // S05/O04：离线同口径执行 SVU 投入/增长、自动化解锁与成就检查
+      tickProgression(dt);
+      checkAchievements();
       remaining -= dt;
     }
     res.simmed = true;
@@ -7920,19 +7942,10 @@ function applyProduction(realDt) {
   voidVFRegenTick(realDt); // 虚空泡沫：虚空外每秒追赶上限差值的 5%（真实时间）
 }
 
-function tick() {
-  const now = Date.now();
-  // realDt 钳制：挂起标签的一次性补发上限 60s（真正的离线收益由加载时的
-  // 离线模拟系统结算），系统时钟回拨产生的负值归 0（负 dt 会倒扣资源）
-  const rawDt = (now - state.lastTick) / 1000;
-  const realDt = Math.min(Math.max(rawDt, 0), 60);
-  state.lastTick = now;
-  state.realTime += realDt;
-  if (!annihilationFrozen()) applyProduction(realDt); // 10 次湮灭前就绪即暂停（保持可获取 Sp 最大）
-  autoAnnTick(); // 生产后立即检查自动湮灭（同 tick 反应，不必等渲染与购买自动化段）
-
-  // 虚空升级 tick：SVU1 填充（真实时间，任意位置可运转）；
-  // SVU2 能标偏移仅在虚空外增长（进入虚空不增长、不清零）
+// 在线 tick 与离线模拟共用的非界面推进阶段（S05/O04：离线同口径）——
+// SVU1 投入、SVU2 增长、量子狂潮 latch、自动化解锁（1e10/1e20/里程碑 8/10、卷缩 16/18/20/30）。
+// setAutosaveStatus 由 simActive 早退，离线调用安全；不改「真实游玩时长」规则
+function tickProgression(realDt) {
   if (state.ach.normal.includes("A52")) {
     svu1FillTick(realDt);
     if (!state.voidActive) {
@@ -7947,8 +7960,6 @@ function tick() {
       setAutosaveStatus("虚幻升级解锁：量子狂潮（虚空中达到 1e7000 Hz）");
     }
   }
-
-  // 自动化解锁门槛（首次湮灭后生效）
   if (state.annihilations >= 1) {
     if (!state.autoWaveUpg && F() >= 1e10) { state.autoWaveUpg = 1; setAutosaveStatus("自动化解锁：主要页升级"); }
     if (!state.autoPhononUpg && F() >= 1e20) { state.autoPhononUpg = 1; setAutosaveStatus("自动化解锁：声子页升级"); }
@@ -7956,13 +7967,27 @@ function tick() {
     if (!state.autoUp3 && hasMilestone(8)) state.autoUp3 = 1;
     if (!state.autoAnn && hasMilestone(10)) state.autoAnn = 1;
   }
-  // 卷缩里程碑解锁的自动化（老存档补发；新档在 compactify 内授予）
   if (state.testMode && state.compactions >= 1) {
     if (!state.autoSau && compMilestone(16)) { state.autoSau = 1; setAutosaveStatus("自动化解锁：可重复奇点升级（卷缩里程碑 16）"); }
     if (!state.autoSbu && compMilestone(18)) { state.autoSbu = 1; setAutosaveStatus("自动化解锁：黑洞升级（卷缩里程碑 18）"); }
     if (!state.autoSvpu && compMilestone(20)) { state.autoSvpu = 1; setAutosaveStatus("自动化解锁：虚粒子升级（卷缩里程碑 20）"); }
     if (!state.autoComp && compMilestone(30)) { state.autoComp = 1; setAutosaveStatus("自动化解锁：自动卷缩（卷缩里程碑 30）"); }
   }
+}
+
+function tick() {
+  const now = Date.now();
+  // realDt 钳制：挂起标签的一次性补发上限 60s（真正的离线收益由加载时的
+  // 离线模拟系统结算），系统时钟回拨产生的负值归 0（负 dt 会倒扣资源）
+  const rawDt = (now - state.lastTick) / 1000;
+  const realDt = Math.min(Math.max(rawDt, 0), 60);
+  state.lastTick = now;
+  state.realTime += realDt;
+  if (!annihilationFrozen()) applyProduction(realDt); // 10 次湮灭前就绪即暂停（保持可获取 Sp 最大）
+  autoAnnTick(); // 生产后立即检查自动湮灭（同 tick 反应，不必等渲染与购买自动化段）
+
+  // 虚空升级/自动化解锁（S05/O04：提取为 tickProgression，离线模拟同口径调用）
+  tickProgression(realDt);
 
   // 更新统计极值（log 域 max/min，防 maxU 恒 Infinity、minL 下溢 0 丢精度）
   const f = F();
