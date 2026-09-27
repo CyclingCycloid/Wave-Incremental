@@ -6658,8 +6658,13 @@ function bulkBuyUp1(maxN) {
   const sumLog = (m) => {
     if (m <= 0) return NLOG;
     if (infl || !softcapped() || n0 + m - 1 <= 332) return bulkGeomSumLog(costAt(n0), slope1, m);
-    const k1 = 333 - n0;
-    return logAddLogs(bulkGeomSumLog(costAt(n0), slope1, k1), bulkGeomSumLog(costAt(333), slope2, m - k1));
+    // A02：高段起点为 max(n0, 333)——n0>332 时旧代码 k1=333−n0 为负、从 333 级重复合计
+    const k1 = Math.min(Math.max(333 - n0, 0), m);
+    const hiStart = Math.max(n0, 333);
+    return logAddLogs(
+      k1 > 0 ? bulkGeomSumLog(costAt(n0), slope1, k1) : NLOG,
+      bulkGeomSumLog(costAt(hiStart), slope2, m - k1)
+    );
   };
   // 购买 m 级的总价格（F 项 log10；不含 Le）——逐级停止条件：Σ_{<m} + cost(m) ≤ F0
   const totalLog = (m) => logAddLogs(m <= 1 ? NLOG : sumLog(m - 1), costAt(n0 + m - 1));
@@ -6695,17 +6700,80 @@ function bulkBuyUp1(maxN) {
 function bulkPayLe() {
   return wavelengthExp() * (getLogL10() + distortLModLog());
 }
-// 批量购买升级2：指数段闭式 + 阶乘段（lgamma10）——「总花费(含最后一级)×Le ≤ 池」二分
+// up2 分段总和（log10）。分段：普通=前段(1-99 级, 每级 ×10)+阶乘段(≥100 级, 每级比率≥100)；
+// 通胀=前段(1-11 级, 每级 ×100)+阶乘段(≥12 级, 每级比率≥121)。
+// N01：通胀前段斜率此前误用 ×10（实际 ×100，少扣多买）。阶乘段价格无单闭式，
+// 用「末级反向固定 6 项精确价 + 保守余项」O(1) 计算（比率下界 99 → 6 项后余项相对 <1e-12），
+// 无随可买等级增长的循环（热路径约束）
 function up2SumLog(n0, m) {
-  const kExpEnd = 99 - (n0 - 1); // 级数 ≤ 99 为等比段（×10/级）
-  if (m <= kExpEnd) return bulkGeomSumLog(up2CostLogAt(n0), Math.log10(10), m);
-  let sum = kExpEnd > 0 ? bulkGeomSumLog(up2CostLogAt(n0), Math.log10(10), kExpEnd) : NLOG;
-  const lastLog = up2CostLogAt(n0 + m - 1);
-  const prevLog = m >= 2 ? up2CostLogAt(n0 + m - 2) : NLOG;
-  const slope = Math.max(lastLog - (prevLog > NLOG + 1 ? prevLog : lastLog - 1), 1);
-  // 阶乘段和由末项主导：≤ 末项×1/(1−10^−末级斜率)（斜率 ≥1 → 上界因子 ≤1.12）
-  sum = logAddLogs(sum, clampLog(lastLog + Math.log10(1 / (1 - Math.pow(10, -slope)))));
+  if (m <= 0) return NLOG;
+  const infl = inDistort("inflation");
+  const expEnd = infl ? 11 : 99; // 等比段最后一级（通胀第 11/12 级同价换段，普通第 99/100 级）
+  const last = n0 + m - 1;
+  let sum = NLOG;
+  const expHi = Math.min(last, expEnd);
+  if (expHi >= n0) sum = bulkGeomSumLog(up2CostLogAt(n0), infl ? 2 : 1, expHi - n0 + 1);
+  const fLo = Math.max(n0, expEnd + 1);
+  if (last >= fLo) {
+    let terms = NLOG, prev = NLOG, counted = 0;
+    for (let j = 0; j < 6; j++) {
+      const lvl = last - j;
+      if (lvl < fLo) break;
+      prev = up2CostLogAt(lvl);
+      terms = logAddLogs(terms, prev);
+      counted++;
+    }
+    if (last - fLo + 1 > counted) {
+      // 余项上界：未计入各级 ≤ prev/99（每级比率≥99）的几何和 = prev/98
+      terms = logAddLogs(terms, prev - Math.log10(98));
+    }
+    sum = logAddLogs(sum, terms);
+  }
   return sum;
+}
+// 逆 lgamma10（A01）：求 k 使 lgamma10(k) ≈ y（k ≥ 2，y 需 ≥ lgamma10(2)）。
+// Stirling 主部 k·ln k − k = y·ln10 → w=ln k − 1 满足 w·e^w = y·ln10/e——
+// Lambert W 的固定 3 次 Halley 精化（显式近似，O(1)，非迭代求根循环）；
+// Stirling 的 0.5·ln(2πk) 项带来的 ~1 级误差由调用方固定 ±2 级精确校正吸收
+function invLgamma10(y) {
+  const z = (y * Math.LN10) / Math.E;
+  if (!(z > 0)) return 2;
+  let w = Math.log(z);
+  for (let i = 0; i < 3; i++) {
+    const ew = Math.exp(w);
+    const f = w * ew - z;
+    const p = w + 1;
+    w = w - f / (ew * p - (f * (w + 2)) / (2 * p));
+  }
+  return Math.exp(w + 1);
+}
+// A01：免费 up2 的末项门槛计数（免费只免扣款不免门槛——余额不因扣款下降，
+// 逐级「该级单价 ≤ 余额」皆可购）。等比段闭式；阶乘段逆 lgamma10 + 固定 ±2 级精确校正
+//（校正只向下保证保守少买；向上至多补 1 级）
+function up2FreeGateCount(n0, maxN, resLog) {
+  const infl = inDistort("inflation");
+  const expEnd = infl ? 11 : 99;
+  let k = 0;
+  if (n0 <= expEnd) {
+    k = Math.min(bulkAffordableExp(up2CostLogAt(n0), infl ? 2 : 1, resLog), expEnd - n0 + 1);
+  }
+  k = Math.min(k, maxN);
+  const fLo = Math.max(n0, expEnd + 1);
+  if (k < maxN && resLog >= up2CostLogAt(fLo)) {
+    // 阶乘段第 L 级价格：普通 lg = 100 + lgamma10(L−1) − lgamma10(99)；
+    // 通胀 lg = 26 + 2·(lgamma10(L−1) − lgamma10(10))。解 lgamma10(L−1) = y
+    const y = infl ? (resLog - 26) / 2 + lgamma10(10) : resLog - 100 + lgamma10(99);
+    let j = Math.floor(invLgamma10(Math.max(y, lgamma10(2)))) + 1 - fLo;
+    j = Math.max(0, Math.min(j, maxN - k));
+    // 授予级别为 fLo..fLo+j−1，末级价格必须 ≤ 余额（向下校正，Stirling 误差 ≤~2 级）
+    let steps = 0;
+    while (j > 0 && steps < 32 && up2CostLogAt(fLo + j - 1) > resLog) { j--; steps++; }
+    // 向上校正（有界 8 次，每步精确验价——不会超发；吸收近似残差）
+    let ups = 0;
+    while (k + j < maxN && ups < 8 && up2CostLogAt(fLo + j) <= resLog) { j++; ups++; }
+    k = Math.min(k + j, maxN);
+  }
+  return k;
 }
 function bulkBuyUp2(maxN) {
   if (inDistort("simple") || narrowBlocked()) return 0;
@@ -6714,6 +6782,15 @@ function bulkBuyUp2(maxN) {
   if (maxN <= 0) return 0;
   const n0 = state.up2 + 1;
   const resLog = FLog();
+  if (upgradesFree()) {
+    // A01：免费按末项门槛计数（累计总价口径会保守少买，与免费语义不符）
+    const k = up2FreeGateCount(n0, maxN, resLog);
+    if (k <= 0) return 0;
+    if (inDistort("narrow")) state.narrowPurchases += k - 1;
+    markPurchase();
+    state.up2 += k;
+    return k;
+  }
   const sumLog = (m) => up2SumLog(n0, m);
   const totalLog = (m) => logAddLogs(m <= 1 ? NLOG : sumLog(m - 1), up2CostLogAt(n0 + m - 1));
   if (!(totalLog(1) <= resLog)) return 0;
@@ -6778,6 +6855,16 @@ function bulkBuyPG1(maxN) {
 function bulkBuyPG2(maxN) {
   if (narrowBlocked()) return 0;
   if (inDistort("narrow")) maxN = Math.min(maxN, Math.max(0, 10 - state.narrowPurchases));
+  if (maxN <= 0) return 0;
+  if (upgradesFree()) {
+    // A01：免费按末项门槛计数（纯等比价格，闭式）
+    const k = Math.min(maxN, bulkAffordableExp(pg2CostLog(), inDistort("inflation") ? Math.log10(4) : Math.log10(2), getLogPhonons()));
+    if (k <= 0) return 0;
+    if (inDistort("narrow")) state.narrowPurchases += k - 1;
+    markPurchase();
+    state.pg2 += k;
+    return k;
+  }
   const slope = inDistort("inflation") ? Math.log10(2) * 2 : Math.log10(2); // 每级 ×2
   const k = bulkBuyGeneric(pg2CostLog(), slope, maxN, getLogPhonons(),
     (sumLog) => { if (!upgradesFree()) subPhononsLog(sumLog); });
@@ -6794,6 +6881,16 @@ function bulkBuyPG3(maxN) {
   if (inDistort("rigid") || inDistort("adiabatic") || inDistort("simple")) return 0;
   if (inDistort("narrow")) maxN = Math.min(maxN, Math.max(0, 10 - state.narrowPurchases));
   maxN = Math.min(maxN, pg3Cap() - state.pg3);
+  if (maxN <= 0) return 0;
+  if (upgradesFree()) {
+    // A01：免费按末项门槛计数（纯等比价格，闭式）
+    const k = Math.min(Math.floor(maxN), bulkAffordableExp(pg3CostLog(), inDistort("inflation") ? 2 : 1, getLogPhonons()));
+    if (k <= 0) return 0;
+    if (inDistort("narrow")) state.narrowPurchases += k - 1;
+    markPurchase();
+    state.pg3 += k;
+    return k;
+  }
   const slope = inDistort("inflation") ? 2 : 1; // 每级 ×10
   const k = bulkBuyGeneric(pg3CostLog(), slope, maxN, getLogPhonons(),
     (sumLog) => { if (!upgradesFree()) subPhononsLog(sumLog); });
