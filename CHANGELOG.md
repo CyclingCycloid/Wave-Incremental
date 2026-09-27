@@ -2,6 +2,13 @@
 
 ## v0.6.3.2 — The Research Update（测试中，数值待调）
 
+### 结构更新：主代码模块化（src/ + 构建管线）
+
+- **采纳 Issue/help 候选的模块化结构**：游戏逻辑源码迁入 `src/`（25 个按序分段：core/rules/engine/services/ui/app + `modules/log-math.js`、`modules/save-codec.js` 纯函数模块 + `adapters/storage.js` 存储端口），`tools/build.mjs` 按 `source-manifest.json` 顺序拼接并前置两模块，产出根 `game.js`；index.html 不变（仍加载单文件产物），无 IIFE/无作用域隔离/无预览调试面，经典脚本语义与 tail55 工作流完全兼容
+- **构建期哈希锁**：分段/模块被改动后构建拒绝，需 `node tools/build.mjs --update` 审查后显式重建指纹；`tools/rebase-from-git.mjs` 可从任意基线提交重放抽取（字节级还原自校验）；`.gitattributes` 强制 src/tools/tests/game.js/manifest 为 LF（CRLF/BOM 会安全拒建）
+- **零行为变化**：src 分段 = 提交 50a1540 的 game.js 逐字切分，仅有的差异是 clampLog 等五函数与 WI1 编解码移入工厂模块（272 组随机 log 差分 + WI1 编解码往返已证零漂移）；新增 `tests/log-math-invariants.mjs`（log 算术 vs break_infinity 独立参照的随机差分 + 编解码往返 + 哨兵/饱和边界）
+- `Issue/help` 与 `Issue/Plans` 保留为只读审查存档，不参与构建；后续开发一律改 src/ 后构建提交
+
 ### Issue 审查修复（批次 1：P1 存档）
 
 - **S01 修正：旧档迁移改为以合并前的原始存档对象判断字段缺失**——此前加载先用 `Object.assign(defaultState(), obj)` 合并，旧档缺失的 log 权威字段（logU10/logL10/logTotalF/logMaxF/logMaxU/logMinL/logUp3LastF/logBhMass/logVP/logVoidVF10 等）已被默认值遮蔽，migrateState 的「字段缺失才回填」永不触发，权威值停留在默认（如 U=100 的旧档权威被顶成 10 m/s）；现三个加载路径把原始 obj 传入 migrateState，`rawHas(k)` 判定存在性（含 VF 当前值/历史最高/上限三字段），缺失才从 double 重建

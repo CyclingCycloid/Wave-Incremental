@@ -1,0 +1,143 @@
+{
+  "baselineCommit": "50a1540",
+  "baselineSha256": "07e65cc8c7d4733375b55e98a8f214a9aa497f208617f652e76ec7f2513ce69a",
+  "files": [
+    {
+      "path": "src/core/00-state.js",
+      "firstLine": 1,
+      "lastLine": 228
+    },
+    {
+      "path": "src/core/01-numbers-and-distortion.js",
+      "firstLine": 229,
+      "lastLine": 448
+    },
+    {
+      "path": "src/rules/02-physics.js",
+      "firstLine": 449,
+      "lastLine": 742
+    },
+    {
+      "path": "src/rules/03-annihilation-formulas.js",
+      "firstLine": 743,
+      "lastLine": 1058
+    },
+    {
+      "path": "src/services/04-format-and-save.js",
+      "firstLine": 1059,
+      "lastLine": 1728
+    },
+    {
+      "path": "src/ui/05-shell.js",
+      "firstLine": 1729,
+      "lastLine": 1805
+    },
+    {
+      "path": "src/engine/06-wave-purchase.js",
+      "firstLine": 1806,
+      "lastLine": 2042
+    },
+    {
+      "path": "src/rules/07-phonon.js",
+      "firstLine": 2043,
+      "lastLine": 2225
+    },
+    {
+      "path": "src/engine/08-annihilation.js",
+      "firstLine": 2226,
+      "lastLine": 2734
+    },
+    {
+      "path": "src/rules/09-singularity.js",
+      "firstLine": 2735,
+      "lastLine": 2824
+    },
+    {
+      "path": "src/ui/10-void.js",
+      "firstLine": 2825,
+      "lastLine": 3182
+    },
+    {
+      "path": "src/rules/11-blackhole.js",
+      "firstLine": 3183,
+      "lastLine": 3344
+    },
+    {
+      "path": "src/rules/12-void.js",
+      "firstLine": 3345,
+      "lastLine": 3914
+    },
+    {
+      "path": "src/rules/13-compact-and-research.js",
+      "firstLine": 3915,
+      "lastLine": 5028
+    },
+    {
+      "path": "src/ui/14-compact-and-research.js",
+      "firstLine": 5029,
+      "lastLine": 5609
+    },
+    {
+      "path": "src/ui/15-blackhole.js",
+      "firstLine": 5610,
+      "lastLine": 6175
+    },
+    {
+      "path": "src/ui/16-distortion.js",
+      "firstLine": 6176,
+      "lastLine": 6229
+    },
+    {
+      "path": "src/engine/17-automation-and-bulk.js",
+      "firstLine": 6230,
+      "lastLine": 6968
+    },
+    {
+      "path": "src/ui/18-render.js",
+      "firstLine": 6969,
+      "lastLine": 7315
+    },
+    {
+      "path": "src/rules/19-achievements.js",
+      "firstLine": 7316,
+      "lastLine": 7657
+    },
+    {
+      "path": "src/engine/20-offline.js",
+      "firstLine": 7658,
+      "lastLine": 7791
+    },
+    {
+      "path": "src/engine/21-tick.js",
+      "firstLine": 7792,
+      "lastLine": 8071
+    },
+    {
+      "path": "src/ui/22-hotkeys.js",
+      "firstLine": 8072,
+      "lastLine": 8249
+    },
+    {
+      "path": "src/ui/23-bindings.js",
+      "firstLine": 8250,
+      "lastLine": 8605
+    },
+    {
+      "path": "src/app/24-boot.js",
+      "firstLine": 8606,
+      "lastLine": 8677
+    }
+  ],
+  "modules": [
+    "src/modules/log-math.js",
+    "src/modules/save-codec.js"
+  ],
+  "notes": [
+    "firstLine/lastLine 是抽取时基线（50a1540）中的行号；00-state/01-numbers/04-format 三段随后做过模块抽取编辑，实际行数少于记录值。",
+    "构建产物 game.js = src/modules/log-math.js + src/modules/save-codec.js + 25 段按序拼接（无 IIFE/无作用域隔离，经典脚本）。",
+    "两模块的解构绑定位于 src/core/00-state.js（createLogMath/createSaveCodec），src 自含接线、不依赖构建注入。"
+  ],
+  "candidateSourceSha256": "f8cc542f524588bb148ef09de1385e675dffd5b6bcaf55bae2857cd864c5e05d",
+  "candidateInputsSha256": "617ece822bba7030ebb9206696222d9e44aa78304b5929fa16803c57112dec04",
+  "build": "node tools/build.mjs（改 src 后运行；指纹不符时用 --update 显式重建指纹）"
+}

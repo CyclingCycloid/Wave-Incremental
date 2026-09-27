@@ -1,3 +1,58 @@
+/** Pure log-domain arithmetic. Constants are supplied by the game schema. */
+function createLogMath({ NLOG, LOG_CAP, LOG_FALLBACK }) {
+  function clampLog(v) {
+    if (v === -Infinity || v !== v || v < NLOG) return NLOG;
+    if (v === Infinity || v > LOG_CAP) return LOG_CAP;
+    return v;
+  }
+
+  function logAddLogs(la, lb) {
+    la = clampLog(la); lb = clampLog(lb);
+    if (la === -Infinity) return lb;
+    if (lb === -Infinity) return la;
+    const mx = Math.max(la, lb), mn = Math.min(la, lb);
+    if (mn <= NLOG + 1) return mx;
+    return clampLog(mx + Math.log10(1 + Math.pow(10, mn - mx)));
+  }
+
+  function logAddSigned(la, sa, lb, sb) {
+    la = clampLog(la); lb = clampLog(lb);
+    if (la <= NLOG + 1) return { log: lb, sign: sb };
+    if (lb <= NLOG + 1) return { log: la, sign: sa };
+    if (sa === sb) return { log: logAddLogs(la, lb), sign: sa };
+    if (la >= lb) return { log: clampLog(la + Math.log10(1 - Math.pow(10, lb - la))), sign: sa };
+    return { log: clampLog(lb + Math.log10(1 - Math.pow(10, la - lb))), sign: sb };
+  }
+
+  function cmpGE(a, b, aLog, bLog) {
+    if (isFinite(a) && isFinite(b) && a < LOG_FALLBACK && b < LOG_FALLBACK) return a >= b;
+    return aLog >= bLog;
+  }
+
+  function cmpLT(a, b, aLog, bLog) { return !cmpGE(a, b, aLog, bLog); }
+
+  return Object.freeze({ clampLog, logAddLogs, logAddSigned, cmpGE, cmpLT });
+}
+
+/** WI1 save encoding. No game-state or DOM dependency; relies on the host's
+ * btoa/atob and the legacy escape/unescape globals (standard idiom, universally supported). */
+function createSaveCodec(browser) {
+  function encodeSave(obj) {
+    const json = JSON.stringify(obj);
+    const b64 = browser.btoa(browser.unescape(browser.encodeURIComponent(json)));
+    return 'WI1-' + b64;
+  }
+
+  function decodeSave(str) {
+    str = str.trim();
+    if (str.startsWith('WI1-')) str = str.slice(4);
+    const json = browser.decodeURIComponent(browser.escape(browser.atob(str)));
+    return JSON.parse(json);
+  }
+
+  return Object.freeze({ encodeSave, decodeSave });
+}
+
 /* ===== Wave Incremental v0.6.3 — game logic ===== */
 
 // ---------- Save schema ----------
@@ -207,11 +262,9 @@ const LOG_CAP = 1e15;
 // 钳制 log 值到 [NLOG, LOG_CAP]：-Infinity/NaN 归 NLOG（零语义），+Infinity 归 LOG_CAP。
 // 注意 -Infinity 必须归 NLOG：湮灭重置后声子=0 时 getLogPhonons()=-Infinity，
 // 若被钳到 LOG_CAP 会让温度直接等于上限（T 开局定在 Tcap 的根因）。
-function clampLog(v) {
-  if (v === -Infinity || v !== v || v < NLOG) return NLOG; // -Inf / NaN / 超下界
-  if (v === Infinity || v > LOG_CAP) return LOG_CAP;
-  return v;
-}
+const { clampLog, logAddLogs, logAddSigned, cmpGE, cmpLT } =
+  createLogMath({ NLOG, LOG_CAP, LOG_FALLBACK });
+const { encodeSave, decodeSave } = createSaveCodec(globalThis);
 
 let state = defaultState();
 let currentSlot = 0;
@@ -420,32 +473,7 @@ function setUp3LastF(fLog) {
   state.up3LastF = fLog > 308 ? Infinity : (fLog <= 0 ? 0 : Math.pow(10, fLog)); // double 缓存（>1e308 存 Infinity）
 }
 // ---------- log 域算术助手 ----------
-// log10(a+b)，已知 la=log10(a)、lb=log10(b)（均含符号无关的量级）
-function logAddLogs(la, lb) {
-  la = clampLog(la); lb = clampLog(lb);
-  if (la === -Infinity) return lb;
-  if (lb === -Infinity) return la;
-  const mx = Math.max(la, lb), mn = Math.min(la, lb);
-  if (mn <= NLOG + 1) return mx; // 较小项可忽略
-  return clampLog(mx + Math.log10(1 + Math.pow(10, mn - mx)));
-}
-// 带符号的 log 加法：sa/sb 为 ±1，返回 {log, sign} 表示 log10(|a+b|) 与符号
-function logAddSigned(la, sa, lb, sb) {
-  la = clampLog(la); lb = clampLog(lb);
-  if (la <= NLOG + 1) return { log: lb, sign: sb };
-  if (lb <= NLOG + 1) return { log: la, sign: sa };
-  if (sa === sb) return { log: logAddLogs(la, lb), sign: sa };
-  // 异号相减
-  if (la >= lb) return { log: clampLog(la + Math.log10(1 - Math.pow(10, lb - la))), sign: sa };
-  return { log: clampLog(lb + Math.log10(1 - Math.pow(10, la - lb))), sign: sb };
-}
-// 比较 helper：a、b 均有限且 < LOG_FALLBACK 时走原 double 比较（零回归），
-// 任一非有限或 ≥ LOG_FALLBACK 时退化为 log 域比较（aLog >= bLog）
-function cmpGE(a, b, aLog, bLog) {
-  if (isFinite(a) && isFinite(b) && a < LOG_FALLBACK && b < LOG_FALLBACK) return a >= b;
-  return aLog >= bLog;
-}
-function cmpLT(a, b, aLog, bLog) { return !cmpGE(a, b, aLog, bLog); }
+// clampLog/logAddLogs/logAddSigned/cmpGE/cmpLT 见 src/modules/log-math.js（文件头部解构绑定）。
 // ---------- 派生物理量 ----------
 // L 的双表示：logL10 权威（永不下溢），L 为 double 缓存（极端小时可能下溢为 0）
 function getLogL10() { return (state.logL10 !== undefined && isFinite(state.logL10)) ? state.logL10 : Math.log10(state.L || 1e-300); }
@@ -1163,17 +1191,7 @@ function fmtAnnNum(n) {
 }
 
 // ---------- Base64 (Unicode-safe) ----------
-function encodeSave(obj) {
-  const json = JSON.stringify(obj);
-  const b64 = btoa(unescape(encodeURIComponent(json)));
-  return "WI1-" + b64;
-}
-function decodeSave(str) {
-  str = str.trim();
-  if (str.startsWith("WI1-")) str = str.slice(4);
-  const json = decodeURIComponent(escape(atob(str)));
-  return JSON.parse(json);
-}
+// WI1 编解码实现见 src/modules/save-codec.js；此处保留原段落位置作审查锚点。
 
 // ---------- Persistence ----------
 // 迁移旧存档：旧版 up3 叠加除法、无 up3LastF；按当前波长反推等效峰值频率。

@@ -1,0 +1,6 @@
+# 构建哈希对字节敏感：强制 LF（CRLF/BOM 会导致 build.mjs 拒建，属安全失败）
+/src/** text eol=lf
+/tools/** text eol=lf
+/tests/** text eol=lf
+/game.js text eol=lf
+/source-manifest.json text eol=lf
