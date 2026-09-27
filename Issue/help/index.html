@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wave Incremental</title>
+  <link rel="stylesheet" href="../../style.css" />
+</head>
+<body data-theme="black">
+  <div id="ach-popup-stack"></div>
+  <div id="app">
+    <header id="topbar">
+      <div class="title">Wave Incremental</div>
+      <div class="version" id="version-label">v0.5.1 The Void Update</div>
+      <button id="annihilate-btn" class="annihilate-btn hidden">湮灭</button>
+      <button id="compactify-btn" class="annihilate-btn compactify-btn hidden">卷缩</button>
+    </header>
+
+    <div id="challenge-status">你现在处于主要游戏中（没有激活的挑战）</div>
+
+    <div id="global-resource">
+      <div class="gr-freq-prefix" id="freq-prefix">你的波动的频率为：</div>
+      <span class="gr-freq" id="freq-value">10.00</span>
+      <span class="gr-unit">Hz &nbsp;<span class="abbrev">(F)</span></span>
+      <span class="gr-gain" id="freq-gain">+0.00 Hz/s</span>
+      <span class="gr-sp hidden" id="sp-display">奇点 <span id="sp-value">0</span></span>
+      <span class="gr-sp gr-ss hidden" id="ss-display">超弦 <span id="ss-value">0</span></span>
+      <span class="gr-timerate hidden" id="timerate-display">当前游戏速率：×1.000</span>
+      <span class="gr-cooldown hidden" id="cooldown-display">当前指数 k = 1.00</span>
+      <span class="gr-cooldown hidden" id="narrow-display">剩余购买次数：10</span>
+    </div>
+
+    <!-- 前三次湮灭过场遮罩 -->
+
+    <div id="first-annihilation-overlay" class="ann-overlay hidden">
+      <div class="ann-phase1" id="ann-phase1">你达到了普朗克温度</div>
+      <div class="ann-phase2" id="ann-phase2">
+        <div class="ann-overlay-text">现在的宇宙无法承载你的波动，<br />你需要<span class="purple">「湮灭」</span>一切</div>
+        <button id="ann-overlay-btn" class="ann-overlay-btn">湮灭</button>
+      </div>
+    </div>
+    <div id="ann-flash" class="ann-flash hidden"></div>
+
+    <!-- 离线收益结算弹窗 -->
+    <div id="offline-overlay" class="hidden">
+      <div id="offline-box">
+        <h2>欢迎回来</h2>
+        <div id="offline-text"></div>
+        <button id="offline-claim">收取</button>
+      </div>
+    </div>
+
+    <nav id="tabs">
+      <button class="tab active" data-tab="wave">波动</button>
+      <button class="tab ann-tab hidden" data-tab="annihilation" id="tab-annihilation">湮灭</button>
+      <button class="tab compact-tab hidden" data-tab="compact" id="tab-compact">卷缩</button>
+      <button class="tab" data-tab="stats">统计</button>
+      <button class="tab hidden" data-tab="automation" id="tab-automation">自动化</button>
+      <button class="tab" data-tab="achievements">成就</button>
+      <button class="tab" data-tab="help">帮助</button>
+      <button class="tab" data-tab="settings">设置</button>
+    </nav>
+
+    <main id="content">
+      <!-- ===== 波动 ===== -->
+      <section class="page" id="page-wave">
+        <nav class="subtabs">
+          <button class="subtab active" data-subtab="main">主要</button>
+          <button class="subtab" data-subtab="upgrades">升级</button>
+          <button class="subtab hidden" data-subtab="phonon" id="subtab-phonon">声子</button>
+        </nav>
+
+        <!-- 主要 -->
+        <div class="subpage" id="sub-main">
+          <div class="stat-tri">
+            <div class="tri-cell">
+              <div class="tri-label">波速 U</div>
+              <div class="tri-value" id="u-value">10.00</div>
+              <div class="tri-unit">m/s</div>
+            </div>
+            <div class="tri-cell">
+              <div class="tri-label">波长 L</div>
+              <div class="tri-value" id="l-value">1.00</div>
+              <div class="tri-unit">m</div>
+            </div>
+          </div>
+
+          <div id="upgrades-list" class="upgrades"></div>
+          <div class="softcap-note hidden" id="softcap-note">当频率超过 1e100 Hz 时，升级的价格和效果将被软上限</div>
+        </div>
+
+        <!-- 升级 -->
+        <div class="subpage hidden" id="sub-upgrades">
+          <h2 class="page-title">升级</h2>
+          <div id="meta-upgrades-list" class="upgrades"></div>
+        </div>
+
+        <!-- 声子 -->
+        <div class="subpage hidden" id="sub-phonon">
+          <h2 class="page-title">声子</h2>
+          <div class="ph-resources">
+            <div class="ph-res-text" id="ph-res-text">你拥有0声子，温度为0 K</div>
+            <div class="ph-thermal" id="ph-thermal">热涨落把你的波速获取变为原来的1.000倍</div>
+            <div class="ph-softcap-note hidden" id="ph-softcap-note">超过普朗克温度的部分将受到软上限限制</div>
+          </div>
+          <div class="btn-row ph-gen-row">
+            <button id="ph-gen-btn">启动声子发生器</button>
+          </div>
+          <div class="ph-section">
+            <h3>发生器升级（可重复）</h3>
+            <div id="ph-upg-list" class="upgrades"></div>
+          </div>
+          <div class="ph-section">
+            <h3>单次升级</h3>
+            <div id="ph-meta-list" class="upgrades"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 统计 ===== -->
+      <section class="page hidden" id="page-stats">
+        <nav class="subtabs">
+          <button class="subtab active" data-subtab="stats-data">数据</button>
+          <button class="subtab" data-subtab="stats-reset">重置</button>
+          <button class="subtab hidden" data-subtab="stats-challenge" id="subtab-stats-challenge">挑战</button>
+        </nav>
+
+        <!-- 数据 -->
+        <div class="subpage" id="sub-stats-data">
+          <div class="stat-group">
+            <h3 class="sg-title">通用</h3>
+            <div class="stat-list">
+              <div class="stat-row">
+                <span class="stat-label">游戏时间</span>
+                <span class="stat-value" id="stat-playtime">0s</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">真实时间</span>
+                <span class="stat-value" id="stat-realtime">0s</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">累计频率 (F)</span>
+                <span class="stat-value" id="stat-total">10.00 Hz</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">历史最高频率</span>
+                <span class="stat-value" id="stat-maxf">10.00 Hz</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">最高波速 (U)</span>
+                <span class="stat-value" id="stat-maxu">10.00 m/s</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">最低波长 (L)</span>
+                <span class="stat-value" id="stat-minl">1.00 m</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">完成普通成就</span>
+                <span class="stat-value" id="stat-ach-n">0 / 30</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">完成隐藏成就</span>
+                <span class="stat-value" id="stat-ach-h">0 / 29</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">时间速率</span>
+                <span class="stat-value" id="stat-timerate">×1.000</span>
+              </div>
+            </div>
+          </div>
+          <div class="stat-group ann-group hidden" id="stat-ann-group">
+            <h3 class="sg-title purple-title">湮灭</h3>
+            <div class="stat-list">
+              <div class="stat-row">
+                <span class="stat-label">本次湮灭所花费时间（真实/游戏）</span>
+                <span class="stat-value" id="stat-ann-time">— / —</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">总奇点获取</span>
+                <span class="stat-value" id="stat-ann-total-sp">0</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">最好单次奇点获取</span>
+                <span class="stat-value" id="stat-ann-best-sp">0</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">最好单次奇点/分</span>
+                <span class="stat-value" id="stat-ann-best-rate">0</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">最快湮灭时间</span>
+                <span class="stat-value" id="stat-ann-fastest">—</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">总湮灭次数</span>
+                <span class="stat-value" id="stat-ann-count">0</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">当前宇宙温度上限</span>
+                <span class="stat-value" id="stat-ann-tp">1.417e32 K</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">湮灭的扭曲宇宙数量</span>
+                <span class="stat-value" id="stat-ann-distort">0</span>
+              </div>
+            </div>
+          </div>
+          <div class="stat-group comp-group hidden" id="stat-comp-area">
+            <h3 class="sg-title orange-title">卷缩</h3>
+            <div class="stat-list">
+              <div class="stat-row">
+                <span class="stat-label">本次卷缩所花费时间（真实/游戏）</span>
+                <span class="stat-value" id="stat-comp-time">— / —</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">总超弦获取</span>
+                <span class="stat-value" id="stat-total-ss">0</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">卷缩次数</span>
+                <span class="stat-value" id="stat-compactions">0</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">总灵感</span>
+                <span class="stat-value" id="stat-total-ins">0</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">最好单次超弦获取</span>
+                <span class="stat-value" id="stat-best-ss">0</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">最快卷缩时间</span>
+                <span class="stat-value" id="stat-comp-fastest">—</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">最佳SS/分</span>
+                <span class="stat-value" id="stat-best-ss-rate">0</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 重置 -->
+        <div class="subpage hidden" id="sub-stats-reset">
+          <h3 class="sg-title purple-title">最近十次湮灭</h3>
+          <div id="ann-history-list" class="ann-history-list"></div>
+          <div id="comp-history-area" class="hidden">
+            <h3 class="sg-title orange-title">最近十次卷缩</h3>
+            <div id="comp-history-list" class="ann-history-list"></div>
+          </div>
+        </div>
+
+        <!-- 挑战 -->
+        <div class="subpage hidden" id="sub-stats-challenge">
+          <div class="stat-list" id="challenge-list"></div>
+        </div>
+      </section>
+
+      <!-- ===== 设置 ===== -->
+      <section class="page hidden" id="page-settings">
+        <h2 class="page-title">设置</h2>
+
+        <div class="setting-group">
+          <h3>主题</h3>
+          <div class="btn-row">
+            <button id="theme-white">白色</button>
+            <button id="theme-black">黑色</button>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <h3>离线收益</h3>
+          <div class="btn-row">
+            <button id="offline-on">开启</button>
+            <button id="offline-off">关闭</button>
+          </div>
+          <p class="muted small">重新打开页面时结算离开期间的波速、声子与自动化（上限 8 小时）。</p>
+        </div>
+
+        <div class="setting-group">
+          <h3>小数位数</h3>
+          <div class="btn-row">
+            <label class="decimals-label">显示位数（3–6）：
+              <input type="number" id="decimals-input" min="3" max="6" step="1" value="3" />
+            </label>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <h3>界面刷新频率</h3>
+          <div class="btn-row" id="uifps-row">
+            <button data-uifps="16">流畅（60fps）</button>
+            <button data-uifps="33">平衡（30fps）</button>
+            <button data-uifps="100">省电（10fps）</button>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <h3>存档</h3>
+          <textarea id="save-io" placeholder="导出/导入的 base64 存档将显示在此处..." rows="3"></textarea>
+          <div class="btn-row">
+            <button id="save-copy">导出并复制到剪贴板</button>
+            <button id="save-download">导出为 TXT 文件</button>
+            <button id="save-load-txt">从 TXT 文件导入</button>
+            <button id="save-load-from-io">从文本框导入</button>
+            <input type="file" id="save-file-input" accept=".txt,text/plain" class="hidden" />
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <h3>存档槽</h3>
+          <div id="slot-list"></div>
+        </div>
+
+        <div class="setting-group">
+          <h3>更新日志</h3>
+          <a href="../../CHANGELOG.md" target="_blank" class="changelog-link">查看 Changelog</a>
+        </div>
+
+        <div class="setting-group">
+          <h3>仓库</h3>
+          <a href="https://github.com/CyclingCycloid/Wave-Incremental" target="_blank" class="repo-link">GitHub 仓库</a>
+          <p class="muted small">关注摆线谢谢喵，给摆线点星星谢谢喵</p>
+        </div>
+
+        <div class="setting-group">
+          <h3>rua摆线</h3>
+          <button id="rua-btn">rua摆线！</button>
+          <p class="muted small" id="rua-status">好感度 0</p>
+          <button id="rua-boost-btn">获取倍率</button>
+          <p class="muted small" id="rua-boost-info">点击获取随机倍率加成（持续 10 分钟，CD 1 小时）</p>
+        </div>
+
+        <div class="setting-group danger">
+          <h3>危险操作</h3>
+          <button id="hard-reset" class="danger-btn">硬重置（清除一切）</button>
+          <div class="btn-row" id="test-mode-row">
+            <button id="enter-test-btn">进入测试</button>
+            <button id="clear-vf-btn" class="hidden" title="仅当前 VF 归 0（VF 上限不动，归 0 后自动向上限追赶）">清零VF</button>
+            <button id="clear-vf-cap-btn" class="hidden" title="仅 VF 上限归 0（当前 VF 不动）——重测虚空外追赶用；下次退出虚空结算会重新写入上限">清空VF上限</button>
+            <button id="clear-vp-btn" class="hidden">清除VP·质量归一</button>
+            <button id="clear-void-btn" class="hidden">清零VF与虚空升级</button>
+            <button id="clear-vf-best-btn" class="hidden" title="历史最高持有虚空泡沫记录归 0（里程碑3「度规塌缩」的判定 latch，当前 VF 不动）">清空历史最高VF</button>
+            <button id="clear-research-btn" class="hidden">清空ED与推论</button>
+            <button id="clear-inf-btn" class="hidden" title="仅推论归 0（不动 ED 与已购买的研究）">清空推论</button>
+            <button id="clear-research-bought-btn" class="hidden" title="清空全部已购买的研究（推论不返还，理论深度 −1/3×数量回退）">清空已购研究</button>
+            <button id="reset-ins-btn" class="hidden" title="总灵感与可用灵感归 0、灵感购买价格回初始并清空理论树（不执行卷缩重置）">重置灵感·清空理论树</button>
+            <button id="reset-tp-cm-btn" class="hidden" title="拓扑节点（TP 与点/边/面配置）与卡拉比-丘流形（CM）归 0（不执行卷缩重置）">重置TP和CM</button>
+            <button id="clear-cm-btn" class="hidden" title="仅卡拉比-丘流形（CM）归 0，拓扑节点不动（不执行卷缩重置）">清空CM</button>
+            <button id="clear-ss-btn" class="hidden" title="仅持有的超弦（SS）归 0，总超弦统计与拓扑节点不动（不执行卷缩重置）">清空SS</button>
+            <button id="force-ann-btn" class="hidden">无Sp湮灭</button>
+            <button id="force-compact-btn" class="hidden">导致一次卷缩重置</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 成就 ===== -->
+      <section class="page hidden" id="page-achievements">
+        <h2 class="page-title">成就</h2>
+        <div class="ach-time-rate" id="ach-time-rate">你的成就将时间速率变为原来的1.000倍</div>
+        <div class="ach-filters">
+          <label><input type="checkbox" id="ach-hide-locked"> 隐藏不可见的成就行</label>
+          <label><input type="checkbox" id="ach-hide-done"> 隐藏已完成的成就行</label>
+        </div>
+        <div class="ach-hint">带五角星的成就具有特殊奖励，点击单元格查看</div>
+
+        <div class="ach-section">
+          <h3>普通成就</h3>
+          <p class="muted small">每行 5 个；完成一整行后解锁下一行的达成条件。</p>
+          <div id="normal-ach-grid" class="ach-grid"></div>
+        </div>
+
+        <div class="ach-section">
+          <h3>隐藏成就</h3>
+          <p class="muted small">无明确达成条件。未解锁显示 ？？？，点击可查看名称。</p>
+          <div id="hidden-ach-grid" class="ach-grid hidden-grid"></div>
+        </div>
+      </section>
+
+      <!-- ===== 湮灭 ===== -->
+      <section class="page hidden" id="page-annihilation">
+        <nav class="subtabs">
+          <button class="subtab active" data-subtab="ann-milestones">里程碑</button>
+          <button class="subtab" data-subtab="ann-sp">奇点</button>
+          <button class="subtab hidden distort-subtab" data-subtab="ann-distort" id="subtab-distort">扭曲</button>
+          <button class="subtab hidden blackhole-subtab" data-subtab="ann-blackhole" id="subtab-blackhole">黑洞</button>
+          <button class="subtab hidden void-subtab" data-subtab="ann-void" id="subtab-void">虚空</button>
+        </nav>
+
+        <!-- 里程碑 -->
+        <div class="subpage" id="sub-ann-milestones">
+          <div class="milestone-list" id="milestone-list"></div>
+        </div>
+
+        <!-- 奇点 -->
+        <div class="subpage hidden" id="sub-ann-sp">
+          <button id="break-rules-btn" class="break-rules-btn hidden">打破多元宇宙的规则</button>
+          <div class="sp-bonus-panel" id="sp-bonus-panel"></div>
+          <div class="sp-upgrade-list" id="sp-upgrade-list"></div>
+        </div>
+
+        <!-- 扭曲（测试版） -->
+        <div class="subpage hidden" id="sub-ann-distort">
+          <p class="muted" style="font-size: 14px;">进入扭曲宇宙会立刻进行一次湮灭重置。达到该宇宙的普朗克温度即可湮灭它（每个宇宙仅首次给予奖励），扭曲宇宙内的目标即为该宇宙普朗克温度（温度上限），与主宇宙温度上限无关；未达标时点击正上方湮灭按钮将退出该宇宙，如果启动了自动湮灭，则会在可以湮灭扭曲宇宙的时候尽快完成一次湮灭。</p>
+          <div class="distort-summary" id="distort-summary"></div>
+          <div class="distort-active-controls hidden" id="distort-active-controls">
+            <button id="distort-retry-btn">重试</button>
+            <button id="distort-exit-btn">退出</button>
+          </div>
+          <div id="distort-list" class="distort-grid"></div>
+        </div>
+
+        <!-- 黑洞 -->
+        <div class="subpage hidden" id="sub-ann-blackhole">
+          <div class="bh-canvas-wrap">
+            <canvas id="bh-canvas" width="600" height="360"></canvas>
+          </div>
+          <div class="bh-stats" id="bh-stats"></div>
+          <div class="bh-state-row" id="bh-state-row">
+            <button class="bh-state-btn" data-bh-state="accrete">吸积</button>
+            <button class="bh-state-btn" data-bh-state="distorl">扭曲</button>
+            <button class="bh-state-btn" data-bh-state="pulse">脉冲</button>
+          </div>
+          <div class="bh-upg-list" id="bh-upg-list"></div>
+        </div>
+
+        <!-- 虚空（A52 解锁）-->
+        <div class="subpage hidden" id="sub-ann-void">
+          <div id="void-particles" aria-hidden="true"></div>
+          <h3 class="void-title">虚 空</h3>
+          <p class="void-desc">选择扭曲宇宙的削弱，让它们同时生效。在频率达到 <strong><span id="void-target">1e2000</span> Hz</strong> 后退出虚空，即可根据已生效的削弱与最终频率获得<strong>虚空泡沫（VF）</strong>——VF 可增强虚粒子的获取，并在聚合浪潮后加成黑洞吸积；VF 也可作为货币消耗（量子狂潮、虚空共振的填充）。</p>
+          <div id="void-stats" class="void-stats"></div>
+          <div id="void-rules" class="void-rule-grid"></div>
+          <div id="void-enter-row" class="void-enter-row">
+            <button id="void-enter-btn" class="void-enter-btn">进入虚空</button>
+            <button id="void-quick-all-btn" class="void-enter-btn hidden" title="一次性勾选全部 8 种削弱并进入虚空（购买研究「虚空探测器」后解锁）">进入全扭曲虚空</button>
+          </div>
+          <div id="void-active-panel" class="hidden">
+            <div id="void-progress"></div>
+            <button id="void-exit-btn" class="void-exit-btn">退出虚空</button>
+          </div>
+          <h3 class="void-sub">虚空升级</h3>
+          <div id="void-upg-list" class="bh-upg-row void-upg-grid"></div>
+          <h3 class="void-sub">虚空里程碑</h3>
+          <div id="void-milestone-list" class="void-ms-grid"></div>
+        </div>
+      </section>
+
+      <!-- ===== 卷缩（v0.6.1 测试，橙色主题）===== -->
+      <section class="page hidden" id="page-compact">
+        <nav class="subtabs">
+          <button class="subtab active" data-subtab="comp-ms">里程碑</button>
+          <button class="subtab" data-subtab="comp-dim">维度</button>
+          <button class="subtab" data-subtab="comp-theory">理论树</button>
+          <button class="subtab research-subtab hidden" data-subtab="research" id="subtab-research">研究</button>
+        </nav>
+
+        <!-- 里程碑（参照湮灭里程碑横条） -->
+        <div class="subpage" id="sub-comp-ms">
+          <div id="comp-milestone-list" class="milestone-list comp-ms-list"></div>
+        </div>
+
+        <!-- 维度 -->
+        <div class="subpage hidden" id="sub-comp-dim">
+          <h3 class="compact-title">维度折叠器</h3>
+          <div class="comp-dim-top">
+            <div class="comp-cm-value">卡拉比-丘流形（CM）：<span id="comp-cm-value">0</span></div>
+            <div class="comp-cm-rate" id="comp-cm-rate">每秒 +0（真实时间）</div>
+          </div>
+          <div class="comp-dim-formulas">
+            <div id="comp-betti-line"></div>
+            <div id="comp-formula-line"></div>
+          </div>
+          <div class="comp-dim-effect" id="comp-dim-effect"></div>
+          <div class="comp-section">
+            <div id="comp-tp-line" class="comp-tp-line"></div>
+            <button id="comp-tp-buy" class="comp-btn">购买拓扑节点</button>
+          </div>
+          <div class="comp-section">
+          <div class="comp-geo-hint">几何转换（每个消耗 1 拓扑节点，可退回）</div>
+          <div class="comp-auto-row"><button id="comp-auto-alloc" class="comp-btn small hidden" title="按当前拓扑节点总数计算整数约束下的最优点/边/面分配并应用（成就 A64 奖励）">自动最佳分配</button></div>
+          <div id="comp-geo-row" class="comp-geo-row"></div>
+          </div>
+        </div>
+
+        <!-- 理论树 -->
+        <div class="subpage hidden" id="sub-comp-theory">
+          <div class="comp-ins-box">
+            <div class="comp-ins-head" id="comp-ins-line"></div>
+            <div class="comp-ins-tools">
+              <button id="theory-respec-btn" class="comp-btn small">卷缩重置理论树：关</button>
+              <button id="theory-export-btn" class="comp-btn small">导出到剪贴板</button>
+              <button id="theory-import-btn" class="comp-btn small">导入理论树</button>
+            </div>
+            <div id="comp-ins-presets" class="comp-ins-presets"></div>
+            <div id="theory-preset-menu" class="comp-ins-presets hidden">
+              <button class="comp-btn small">加载</button>
+              <button class="comp-btn small">保存</button>
+              <button class="comp-btn small">导入</button>
+              <button class="comp-btn small">命名</button>
+            </div>
+            <div id="comp-ins-cells" class="comp-ins-cells"></div>
+          </div>
+          <div class="tree-viewport" id="tree-viewport">
+            <div class="tree-world" id="tree-world">
+              <svg id="tree-lines" xmlns="http://www.w3.org/2000/svg"></svg>
+            </div>
+            <div class="tree-controls">
+              <button id="tree-zoom-in" class="comp-btn small">＋</button>
+              <button id="tree-zoom-out" class="comp-btn small">−</button>
+              <button id="tree-zoom-reset" class="comp-btn small">重置</button>
+            </div>
+            <div class="tree-hint">拖动移动 · 滚轮 / 按钮缩放</div>
+          </div>
+        </div>
+
+        <!-- 研究（v0.6.3 测试，天蓝实验室风；购买节点51 解锁） -->
+        <div class="subpage hidden" id="sub-research">
+          <div class="research-bg" aria-hidden="true"></div>
+          <h3 class="research-title">研 究</h3>
+          <div class="research-stats">
+            <div class="research-res-line ed-line">
+              <span class="research-res-label">实验数据（ED）</span>
+              <span class="research-res-val" id="research-ed">0</span>
+            </div>
+            <div class="research-res-line inf-line">
+              <span class="research-res-label">推论（Inf）</span>
+              <span class="research-res-val" id="research-inf">0</span>
+              <div class="research-res-rate" id="research-inf-rate">（每秒 +0）</div>
+            </div>
+            <div class="research-res-line depth-line">
+              <span class="research-res-label">当前理论深度</span>
+              <span class="research-res-val" id="research-depth">5.000</span>
+              <div class="research-res-rate">你的理论深度等于可解锁的最深节点</div>
+            </div>
+          </div>
+          <p class="research-desc">完成实验获得实验数据（ED），只记录历史最高的一次——难度分取决于选择的实验，预测分取决于与预测奇点的接近程度，附加分取决于各个加成和总奇点（超过预测时按预测计算）。</p>
+          <div class="research-mult-line" id="research-mult-line"></div>
+          <div class="research-start-row">
+            <button id="research-start-btn" class="research-action-btn">开始实验</button>
+          </div>
+          <div class="research-predict-row">
+            <label>预测总奇点：<input type="text" id="research-predict" class="research-predict" placeholder="如 1e300" /></label>
+          </div>
+          <!-- 研究项目（v0.6.3.2 测试；成就 A71「乌云」解锁） -->
+          <div id="research-projects" class="hidden">
+            <h3 class="research-projects-title">研究项目</h3>
+            <div id="research-proj-row" class="research-proj-row"></div>
+            <div class="research-projects-hint">购买研究可以增加你的理论深度</div>
+            <button id="research-done-toggle" class="comp-btn small research-done-toggle">查看/隐藏已经完成的研究</button>
+            <div id="research-done-grid" class="research-modal-grid hidden"></div>
+          </div>
+          <!-- 课题（v0.6.3.2 测试；购买 R9 解锁，A72「立论」为其成就） -->
+          <div id="research-subjects" class="hidden">
+            <h3 class="research-projects-title">课题</h3>
+            <div id="research-sr-row" class="research-proj-row"></div>
+          </div>
+          <h3 class="research-sub">实验列表</h3>
+          <div id="research-list" class="research-list"></div>
+        </div>
+      </section>
+
+      <!-- ===== 自动化 ===== -->
+      <section class="page hidden" id="page-automation">
+        <h2 class="page-title">自动化</h2>
+        <div class="auto-list" id="auto-list"></div>
+      </section>
+
+      <!-- ===== 帮助 ===== -->
+      <section class="page hidden" id="page-help">
+        <h2 class="page-title">帮助</h2>
+        <p class="muted small">机制讲解随游戏进度逐步开放：解锁对应页面后，相关章节会在此出现。</p>
+
+        <details class="help-section" id="help-wave">
+          <summary>波与频率 <span class="help-ver">v0.1–v0.2</span></summary>
+          <div class="help-body">
+            <p><strong>频率</strong>：<span class="help-formula">F = U / L</span>。波速 U 随时间增长，波长 L 越短频率越高。</p>
+            <p>升级1/2 分别以 +1、×2 提升波速获取；升级3 按历史峰值频率缩短波长（仅当 F 超过峰值时可再购），并重置波速与升级1/2。</p>
+            <p>频率超过 1e100 Hz 后，升级的价格与效果受软上限。</p>
+          </div>
+        </details>
+
+        <details class="help-section hidden" id="help-phonon">
+          <summary>声子与温度 <span class="help-ver">v0.3</span></summary>
+          <div class="help-body">
+            <p><span class="help-formula">T = n · h · F / k_B</span>——声子数与频率共同决定温度；热涨落使波速获取 ×max(1,T)^指数，声子与波速互相喂养。</p>
+            <p>升级：发生器效率（间隔 ÷1.5/级）、倍率（第 n 级 ×(n+1)²）、升级3指数加成（+0.01/级）；单次：声子涨落（温度加成声子获取）、声波耦合（波速加成声子获取）。</p>
+          </div>
+        </details>
+
+        <details class="help-section hidden" id="help-annihilation">
+          <summary>湮灭与奇点 <span class="help-ver purple-text">v0.4</span></summary>
+          <div class="help-body">
+            <p>温度达到当前的普朗克温度即可湮灭：重置波速与升级，换取奇点 Sp。前 10 次湮灭期间，达到湮灭条件后计算暂停（可获得的奇点保持在最大值），湮灭后恢复。前三次湮灭播放过场动画；10 次湮灭后只需最初的普朗克温度（1.4168e32 K）。里程碑见湮灭页。</p>
+            <p>Sp 获取（按有效温度 T）：T &lt; 1e50 时 1~10（线性）；1e50 ≤ T &lt; 1e100 时 lg(T)/5；T ≥ 1e100 时 2·T^0.01。单次超过 1.79e308 的部分按 (Sp/1.79e308)^(1/lg(Sp)^0.15) 压缩。</p>
+            <p>总奇点加成波速获取、普朗克常数与温度上限（当前数值见奇点页面板）。</p>
+          </div>
+        </details>
+
+        <details class="help-section hidden" id="help-distort">
+          <summary>扭曲 <span class="help-ver darkred-text">v0.4.2.1</span></summary>
+          <div class="help-body">
+            <p>进入扭曲宇宙会立刻湮灭重置；达到该宇宙的普朗克温度即可<strong>湮灭它</strong>——初次完成奖励 Sp 获取 ×2。扭曲宇宙内普朗克温度与主宇宙普朗克温度无关，为扭曲宇宙的湮灭条件。宇宙内湮灭不获得 Sp；未达标时点击湮灭按钮 = 退出该宇宙。</p>
+            <p>开启自动湮灭时，会在能湮灭宇宙时尽快完成一次。</p>
+            <p class="muted">各宇宙的削弱、目标与完成状态见「扭曲」页；里程碑见湮灭页「里程碑」。</p>
+          </div>
+        </details>
+
+        <details class="help-section hidden" id="help-sp-upgrades">
+          <summary>奇点升级 <span class="help-ver purple-text">v0.4.2</span></summary>
+          <div class="help-body">
+            <p>3DA 解锁；消耗 Sp 购买、永久保留。可重复升级的软上限与当前总效果见卡片。</p>
+            <ul>
+              <li>机械共振：^max(1, √n/5)（n = 升级1等级）</li>
+              <li>光子共振：+min(2, lg(1+n)/4)（升级2底数）</li>
+              <li>黑体辐射：×max(1, L^-0.1)</li>
+              <li>时间之矢：×(1 + lg(1+t)^0.6)（t = 真实游玩时间）</li>
+              <li>绝对零度：×min(200, max(1, min((1000/T)^0.5, 60/T)))（T = 冷却最佳完成时间）</li>
+              <li>共轭湮灭：×(1 + lg(1+A)/3)^0.5（A = 湮灭次数）</li>
+              <li>虚幻凝聚：×(1+VP)^0.4</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="help-section hidden" id="help-blackhole">
+          <summary>黑洞 <span class="help-ver black-text">v0.4.3</span></summary>
+          <div class="help-body">
+            <p>黑洞独立于湮灭之外（重置不清空）。三个状态随时切换（吸积/脉冲按真实时间，不受时间倍率影响）：</p>
+            <ul>
+              <li><strong>吸积</strong>：质量增长；虚粒子持续衰减（VP ≥ 1e10 后加快衰变速度）</li>
+              <li><strong>扭曲</strong>：时间倍率 ×(1 + M^效果指数)；无质量与虚粒子变化</li>
+              <li><strong>脉冲</strong>：质量衰减，虚粒子 +floor(倍率×(M^0.1−1))/s</li>
+            </ul>
+            <p>质量获取超过软上限的部分受压缩（达到时页内提示）。</p>
+            <span id="help-svpu-extra" class="hidden">购买临界湮灭后追加虚粒子升级：热能超载（削弱温度软上限）、潮汐撕裂（质量软上限起始每级 +10 个数量级）。</span>
+            <p class="muted hidden" id="help-vpu-extra">虚幻升级：各升级的解锁条件见卡片；<strong>达成一次即永久有效</strong>。</p>
+          </div>
+        </details>
+
+        <details class="help-section hidden" id="help-void">
+          <summary>虚空 <span class="help-ver">v0.5.1</span></summary>
+          <div class="help-body">
+            <p>选择任意多个扭曲削弱同时生效进入虚空（进入即湮灭重置，需 1e50 总奇点）。频率达到 <strong>1e2000 Hz</strong> 后从虚空页退出，按以下公式结算出本次 <strong>VF 上限</strong>（与历史上限取大，只增不减）：</p>
+            <p class="help-formula">VF = 8^(N-1) × 乘数之积 × (F/1e2000)^min(0.0003, √(0.0009/lg(F+1)))</p>
+            <p>在虚空外，当前 VF 每秒增长上限差值的 5%（指数逼近，真实时间）；虚空中不增长。虚空中的波速获取超过 1e20000 的部分将受到很强的软上限影响。虚空内禁用湮灭；VF 的各项效果、虚空升级与里程碑均见虚空页。</p>
+          </div>
+        </details>
+
+        <details class="help-section hidden" id="help-void2">
+          <summary>虚空 II <span class="help-ver research-text">v0.6.3.2（测试）</span></summary>
+          <div class="help-body">
+            <p>购买研究「虚空探测器」（R2）后：</p>
+            <ul>
+              <li>「进入全扭曲虚空」快捷按钮</li>
+              <li>全扭曲虚空中 VF 频率项在 1e20000 封顶，超出部分 ×(F/1e20000)^(1/3000)</li>
+              <li>里程碑3「度规塌缩」（历史最高 VF ≥ 1e22）：定向削弱在虚空中失效、VF 前三效果 ^1.1、折叠器速度 ×VF^0.1，并解锁 SVU3</li>
+            </ul>
+            <p><strong>SVU3 虚数相变</strong>：ρ 只在全扭曲虚空按真实时间增长（速率 w/(1+ρ)^(1+N/3)，w = 超出软上限的波速获取对数）；ρ ≥ 500+100N 可相变（N+1、ρ 清零，获取更难但软上限推迟更强）。相变与无序化仅虚空外可用；完整说明见虚空页 ⓘ。</p>
+          </div>
+        </details>
+
+        <details class="help-section hidden" id="help-compact">
+          <summary>卷缩 <span class="help-ver orange-text">v0.6.1（测试）</span></summary>
+          <div class="help-body">
+            <p>A55 解锁（测试）。虚粒子 ≥ 1e36、持有 Sp ≥ 1.79e308 且完成全扭曲虚空时可卷缩：重置此前所有内容（黑洞与虚空一并重置，里程碑按卷缩次数给予保留项），获得超弦 SS。</p>
+            <p class="help-formula">SS = floor(((VP/1e36)^(1/30) × (Sp/1.79e308)^(1/300))^0.8)</p>
+            <p>首次固定 1 SS；保留统计、成就与卷缩层自身（SS/灵感/折叠器配置）。</p>
+          </div>
+        </details>
+
+        <details class="help-section hidden" id="help-compact-dim">
+          <summary>维度折叠器 <span class="help-ver orange-text">v0.6.1（测试）</span></summary>
+          <div class="help-body">
+            <p>SS 购买拓扑节点 TP（第 n 个 floor(1.5^n)），TP 可转换为点 V/边 E/面 F（可退回）：</p>
+            <p class="help-formula">b₁ = max(0, E−V+1)　　b₂ = max(0, min(F, ⌊2E/3⌋)−E+V)</p>
+            <p class="help-formula">CM/s = TP² × 3^√(3·b₁·b₂)（真实时间，不受游戏速度影响）</p>
+            <p>CM 效果：波速获取 ×(1+CM)^4；F = U/L^e（e = 1 + lg(1+lg(1+CM)/3)/10）；奇点获取 ×max(1+lg(CM+1)², CM^0.1)。CM 在卷缩时清零（R4 后保留）。</p>
+          </div>
+        </details>
+
+        <details class="help-section hidden" id="help-compact-theory">
+          <summary>理论树 <span class="help-ver orange-text">v0.6.1–v0.6.3.2（测试）</span></summary>
+          <div class="help-body">
+            <p>灵感（Ins）购买途径（第 n 次价格）：F：10^25000n（超 1e200000 后每级 +5e4，超 1e3000000 后 +1e5）；Sp：10^200(n-1)；SS：2^(n-1)（需先购拓扑节点）。</p>
+            <p>节点效果与价格见树上节点；任意父节点已购即可购买。<strong>理论深度</strong>（初始 5）决定可购的最深层（研究项目每个 +1/3、课题另有加成）。</p>
+            <p>导出格式：层用「;」、同层用「,」、末尾 0d（如 01;11;21,22;31;41;0d）。</p>
+          </div>
+        </details>
+
+        <details class="help-section hidden" id="help-compact-research">
+          <summary>研究 <span class="help-ver research-text">v0.6.3–v0.6.3.2（测试）</span></summary>
+          <div class="help-body">
+            <p>选择实验与等级、预测总奇点后开始（开始/结束各执行一次卷缩重置并清空 VP 与黑洞质量）；持有 Sp 达 1.79e308 后可结束实验。</p>
+            <p class="help-formula">ED = 难度 × 预测 × 附加　　推论/s = Multi × ED^0.8</p>
+            <p>难度 = 3^等级和 × 10^(实验数−1)；预测 = 100×(1−|lg(实际)−lg(预测)|/lg(预测))；附加 = min(10, lg(min(实际,预测)+1)^0.25) × √理论深度（A72 奖励；10 硬上限只针对奇点相关部分）。ED 只记历史最高。</p>
+            <p><strong>研究项目</strong>（A71 后）：按顺序出现的待办卡片，满足需求并花费推论购买；每个理论深度 +1/3，效果见卡片。</p>
+            <p class="muted hidden" id="help-sr-extra"><strong>课题</strong>：一次只研究一个，激活时每秒投入当前持有对应资源的 1%（消耗）；全部课题的总等级 n 使理论深度 +min(n, 5√n)/20。SR1 晶格弛豫调制：投入推论，等级 = √(lg(累计投入推论+1))，升级3 软上限起点每级 +0.1。</p>
+          </div>
+        </details>
+
+        <details class="help-section" id="help-general">
+          <summary>通用：时间速率、统计与存档 <span class="help-ver">v0.2–v0.4</span></summary>
+          <div class="help-body">
+            <p><strong>时间速率</strong>：每个普通成就 ×1.1。<strong>离线收益</strong>：重开页面结算生产与自动化（上限 8 小时，可关）。<strong>存档</strong>：15 秒自动保存 + 6 个槽位 + 文本框/TXT 导出导入。</p>
+            <p><strong>快捷键</strong>（获得 A25 后可用）：←/→ 与 ↑/↓ 切换标签页；U 买全部湮灭前升级、R 买全部湮灭后升级、A 湮灭、L 升级3、C 卷缩；按住 B + 1/2/3 切换黑洞状态；Shift+1~8 进入扭曲宇宙；Shift+A/T/L/M 自动化开关与批量切换。</p>
+          </div>
+        </details>
+      </section>
+    </main>
+
+    <footer id="footer">
+      <span id="autosave-status">已自动保存</span>
+    </footer>
+  </div>
+
+  <script src="../../break_infinity.js"></script>
+  <script src="./game.js"></script>
+</body>
+</html>

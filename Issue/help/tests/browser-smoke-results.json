@@ -1,0 +1,134 @@
+{
+  "baseline": "6523dfc7257ca29003eb6e429ea1b858ffc7ec70",
+  "checks": [
+    {
+      "name": "baseline boot",
+      "pass": true
+    },
+    {
+      "name": "candidate boot and fresh isolated save",
+      "pass": true,
+      "methods": [
+        "baselineCommit",
+        "call",
+        "load",
+        "snapshot",
+        "storagePrefix"
+      ]
+    },
+    {
+      "name": "storage isolation and browser exceptions",
+      "pass": true,
+      "newKeys": [
+        "waveIncremental_help_waveIncremental_lastTab",
+        "waveIncremental_help_waveIncremental_save"
+      ]
+    },
+    {
+      "name": "candidate refresh restores isolated save",
+      "pass": true
+    },
+    {
+      "name": "manual slot, slot name, and tab UI isolation",
+      "pass": true
+    },
+    {
+      "name": "wave purchases",
+      "pass": true,
+      "baselineMs": 3.3,
+      "helpMs": 2.4
+    },
+    {
+      "name": "phonon purchases",
+      "pass": true,
+      "baselineMs": 1.1,
+      "helpMs": 0.4
+    },
+    {
+      "name": "online production step",
+      "pass": true,
+      "baselineMs": 0.7,
+      "helpMs": 0.6
+    },
+    {
+      "name": "60 second offline simulation",
+      "pass": true,
+      "baselineMs": 1.1,
+      "helpMs": 0.8
+    },
+    {
+      "name": "8 hour offline simulation",
+      "pass": true,
+      "baselineMs": 2.6,
+      "helpMs": 2.8
+    },
+    {
+      "name": "extreme formulas and price segment boundaries",
+      "pass": true
+    },
+    {
+      "name": "log math extrema and deterministic differential cases",
+      "pass": true,
+      "cases": 272
+    },
+    {
+      "name": "bulk purchase over cost breakpoints",
+      "pass": true,
+      "baselineMs": 0.5,
+      "helpMs": 0.6
+    },
+    {
+      "name": "PG3 fractional cap below one level",
+      "pass": true,
+      "baselineMs": 1.2,
+      "helpMs": 0.5
+    },
+    {
+      "name": "PG3 fractional cap allows exactly one level",
+      "pass": true,
+      "baselineMs": 1.1,
+      "helpMs": 0.4
+    },
+    {
+      "name": "WI1 save bytes and Unicode round trip",
+      "pass": true,
+      "bytes": 4592
+    },
+    {
+      "name": "unprefixed legacy base64 decode",
+      "pass": true
+    },
+    {
+      "name": "high resource automatic bulk purchase",
+      "pass": true,
+      "baselineMs": 0.7,
+      "helpMs": 1.2
+    },
+    {
+      "name": "8 hour offline with active automatic purchases",
+      "pass": true,
+      "baselineMs": 6.1,
+      "helpMs": 15.2
+    },
+    {
+      "name": "automatic purchase performance samples",
+      "pass": true,
+      "samples": 20,
+      "medianMs": 0.1,
+      "p95Ms": 0.2,
+      "maxMs": 1.1
+    },
+    {
+      "name": "8 hour offline performance samples",
+      "pass": true,
+      "samples": 10,
+      "medianMs": 1.3,
+      "p95Ms": 4.8,
+      "maxMs": 4.8
+    },
+    {
+      "name": "file:// direct-open startup",
+      "pass": true
+    }
+  ]
+}

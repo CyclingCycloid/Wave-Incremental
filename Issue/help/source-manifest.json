@@ -1,0 +1,133 @@
+{
+  "baselineCommit": "6523dfc7257ca29003eb6e429ea1b858ffc7ec70",
+  "baselineSha256": "327fe30a5a331c68835b95170a52b21f0271d37e90e3f41258db41e496ac72e4",
+  "candidateSourceSha256": "ab720de6a746e274404ea0c44b1b1000549b7835acdbcd0ebe0b18204d22f98a",
+  "candidateInputsSha256": "c2cf1dcac9ce773641e0ab35ebbbb137836e21129426fdd118fca9c150147507",
+  "files": [
+    {
+      "path": "src/core/00-state.js",
+      "firstLine": 1,
+      "lastLine": 228
+    },
+    {
+      "path": "src/core/01-numbers-and-distortion.js",
+      "firstLine": 229,
+      "lastLine": 448
+    },
+    {
+      "path": "src/rules/02-physics.js",
+      "firstLine": 449,
+      "lastLine": 742
+    },
+    {
+      "path": "src/rules/03-annihilation-formulas.js",
+      "firstLine": 743,
+      "lastLine": 1058
+    },
+    {
+      "path": "src/services/04-format-and-save.js",
+      "firstLine": 1059,
+      "lastLine": 1725
+    },
+    {
+      "path": "src/ui/05-shell.js",
+      "firstLine": 1726,
+      "lastLine": 1802
+    },
+    {
+      "path": "src/engine/06-wave-purchase.js",
+      "firstLine": 1803,
+      "lastLine": 2038
+    },
+    {
+      "path": "src/rules/07-phonon.js",
+      "firstLine": 2039,
+      "lastLine": 2221
+    },
+    {
+      "path": "src/engine/08-annihilation.js",
+      "firstLine": 2222,
+      "lastLine": 2727
+    },
+    {
+      "path": "src/rules/09-singularity.js",
+      "firstLine": 2728,
+      "lastLine": 2817
+    },
+    {
+      "path": "src/ui/10-void.js",
+      "firstLine": 2818,
+      "lastLine": 3175
+    },
+    {
+      "path": "src/rules/11-blackhole.js",
+      "firstLine": 3176,
+      "lastLine": 3337
+    },
+    {
+      "path": "src/rules/12-void.js",
+      "firstLine": 3338,
+      "lastLine": 3909
+    },
+    {
+      "path": "src/rules/13-compact-and-research.js",
+      "firstLine": 3910,
+      "lastLine": 5021
+    },
+    {
+      "path": "src/ui/14-compact-and-research.js",
+      "firstLine": 5022,
+      "lastLine": 5596
+    },
+    {
+      "path": "src/ui/15-blackhole.js",
+      "firstLine": 5597,
+      "lastLine": 6162
+    },
+    {
+      "path": "src/ui/16-distortion.js",
+      "firstLine": 6163,
+      "lastLine": 6216
+    },
+    {
+      "path": "src/engine/17-automation-and-bulk.js",
+      "firstLine": 6217,
+      "lastLine": 6852
+    },
+    {
+      "path": "src/ui/18-render.js",
+      "firstLine": 6853,
+      "lastLine": 7199
+    },
+    {
+      "path": "src/rules/19-achievements.js",
+      "firstLine": 7200,
+      "lastLine": 7541
+    },
+    {
+      "path": "src/engine/20-offline.js",
+      "firstLine": 7542,
+      "lastLine": 7672
+    },
+    {
+      "path": "src/engine/21-tick.js",
+      "firstLine": 7673,
+      "lastLine": 7949
+    },
+    {
+      "path": "src/ui/22-hotkeys.js",
+      "firstLine": 7950,
+      "lastLine": 8127
+    },
+    {
+      "path": "src/ui/23-bindings.js",
+      "firstLine": 8128,
+      "lastLine": 8483
+    },
+    {
+      "path": "src/app/24-boot.js",
+      "firstLine": 8484,
+      "lastLine": 8555
+    }
+  ]
+}
