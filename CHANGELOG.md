@@ -2,6 +2,11 @@
 
 ## v0.6.3.2 — The Research Update（测试中，数值待调）
 
+### Issue 审查修复（批次 1：P1 存档）
+
+- **S01 修正：旧档迁移改为以合并前的原始存档对象判断字段缺失**——此前加载先用 `Object.assign(defaultState(), obj)` 合并，旧档缺失的 log 权威字段（logU10/logL10/logTotalF/logMaxF/logMaxU/logMinL/logUp3LastF/logBhMass/logVP/logVoidVF10 等）已被默认值遮蔽，migrateState 的「字段缺失才回填」永不触发，权威值停留在默认（如 U=100 的旧档权威被顶成 10 m/s）；现三个加载路径把原始 obj 传入 migrateState，`rawHas(k)` 判定存在性（含 VF 当前值/历史最高/上限三字段），缺失才从 double 重建
+- **S02 修正：膨胀进入时刻随存档持久化**——`distortEnterAt` 原为 JS 全局变量，在膨胀扭曲或含膨胀规则的虚空中刷新/导入后归 0，波长倍率按 Unix 纪元计算成天文数字、挑战不可继续；现改为存档字段 `distortEnterAtMs`（进入/重试/虚空入口写入，三个读取函数改读字段），迁移时正处于膨胀规则中且字段缺失则以同次进入写入的 `annStartReal` 恢复，仍无效则重新计时（倍率从 1 重启）；离线快照的 `__distortEnterAt` 特殊处理随之移除
+
 ### 存档可靠性（玩家 bug 修复，已随 hotfix 提交先行推送）
 
 - **修正：批量购买上限/自动湮灭 CD 缩减等一批购买与开关操作不写入存档，购买后 15 秒内刷新即丢**——这些处理器改完状态既不 `saveGame()` 也不置 dirty，落盘只靠 15 秒自动存档与 beforeunload 兜底；已为全部购买/转换/开关处理器补上立即 `saveGame()`（buyAnnCD/buyBatch/buyTheoryNode/buyIns/buyTP/convertTP/buySpUpgrade/buySAU/buyAU/buyVPU/buyPG1-3/buySBU/buySVPU/setBhState/applyAutoAlloc/自动化开关/批量切换/模式切换/理论树导入；自动化循环的批量购买路径除外，仍走 15 秒存档）。此修复已先于本节其余内容推送到远端（0d01686）

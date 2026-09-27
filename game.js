@@ -42,6 +42,7 @@ function defaultState() {
     annMaxTLog: NLOG,      // R4 热焓极点回溯：本次湮灭的最高有效温度 log10（各湮灭类重置清零）
     // 扭曲系统（v0.4.2.1 测试）
     distortActive: "",     // 当前所在扭曲宇宙 id（空=普通宇宙）
+    distortEnterAtMs: 0,   // 进入扭曲/虚空规则的现实时刻 ms（S02：随存档持久化；膨胀倍率的时间基）
     distortDone: [],       // 已湮灭的扭曲宇宙 id（每宇宙只计一次奖励）
     distortMult: 1,        // 湮灭扭曲宇宙给的 Sp 倍率（×2/个）
     distortFails: 0,       // S14：扭曲宇宙失败次数
@@ -270,8 +271,6 @@ const DISTORT_UNIVERSES = [
     tp: 1e100,
   },
 ];
-// 膨胀宇宙的进入时刻（真实 ms），用于计算波长倍率
-let distortEnterAt = 0;
 
 function inDistort(id) {
   // 里程碑3「度规塌缩」：定向的削弱在虚空中不再生效（VF 结算的乘数与生效数仍按 voidRules 保留）
@@ -453,21 +452,21 @@ function getLogL10() { return (state.logL10 !== undefined && isFinite(state.logL
 // F = U / L（定向宇宙：波速取绝对值；膨胀宇宙：波长乘以膨胀倍率）
 function distortLMod() {
   if (!inDistort("expand")) return 1;
-  const t = (gameNow() - distortEnterAt) / 1000;
+  const t = (gameNow() - state.distortEnterAtMs) / 1000;
   if (t <= 1) return 1;
   return Math.pow(1e20, t - 1); // 进入 1 秒后，每秒波长 ×1e20
 }
 // 波长倍率的 log10（代数式，避免 double 溢出）
 function distortLModLog() {
   if (!inDistort("expand")) return 0;
-  const t = (gameNow() - distortEnterAt) / 1000;
+  const t = (gameNow() - state.distortEnterAtMs) / 1000;
   if (t <= 1) return 0;
   return 20 * (t - 1);
 }
 // 膨胀宇宙：波速获取指数随时间下降，每秒 -0.1，到 0 为止（gain^exp → log *= exp）
 function distortGainExp() {
   if (!inDistort("expand")) return 1;
-  const t = (gameNow() - distortEnterAt) / 1000;
+  const t = (gameNow() - state.distortEnterAtMs) / 1000;
   if (t <= 1) return 1;
   return Math.max(0, 1 - 0.1 * (t - 1));
 }
@@ -1178,30 +1177,33 @@ function decodeSave(str) {
 
 // ---------- Persistence ----------
 // 迁移旧存档：旧版 up3 叠加除法、无 up3LastF；按当前波长反推等效峰值频率。
-function migrateState() {
+// rawObj = 合并前的原始存档对象（S01）：加载路径先用 defaultState() 合并，旧档缺失的
+// log 权威字段会被默认值遮蔽——"字段缺失才回填"必须以原始对象的存在性为准才能触发
+function migrateState(rawObj) {
+  const rawHas = (k) => !!(rawObj && Object.prototype.hasOwnProperty.call(rawObj, k));
   // 旧档可能直接写 state.L（无 logL10）：同步 log 表示
-  if (state.logL10 === undefined || state.logL10 === null || !isFinite(state.logL10)) {
+  if (!rawHas("logL10") || state.logL10 === undefined || state.logL10 === null || !isFinite(state.logL10)) {
     state.logL10 = (state.L > 0) ? Math.log10(state.L) : 0;
   }
   // 存档若带有 logL10 且 L 已下溢为 0：L 保持 0，读取走 getLogL10
   // v0.4.2.5：U/累计频率/极值/升级3峰值 的 log 权威字段回填
-  if (state.logU10 === undefined || state.logU10 === null || !isFinite(state.logU10)) {
+  if (!rawHas("logU10") || state.logU10 === undefined || state.logU10 === null || !isFinite(state.logU10)) {
     state.logU10 = state.U > 0 ? Math.log10(state.U) : NLOG;
   }
-  if (state.logTotalF === undefined || state.logTotalF === null || !isFinite(state.logTotalF)) {
+  if (!rawHas("logTotalF") || state.logTotalF === undefined || state.logTotalF === null || !isFinite(state.logTotalF)) {
     state.logTotalF = state.totalFGained > 0 ? Math.log10(state.totalFGained) : NLOG;
   }
-  if (state.logMaxF === undefined || state.logMaxF === null || !isFinite(state.logMaxF)) {
+  if (!rawHas("logMaxF") || state.logMaxF === undefined || state.logMaxF === null || !isFinite(state.logMaxF)) {
     state.logMaxF = state.maxF > 0 ? (isFinite(state.maxF) ? Math.log10(state.maxF) : getLogU10()) : 1;
   }
-  if (state.logMaxU === undefined || state.logMaxU === null || !isFinite(state.logMaxU)) {
+  if (!rawHas("logMaxU") || state.logMaxU === undefined || state.logMaxU === null || !isFinite(state.logMaxU)) {
     state.logMaxU = state.maxU > 0 ? (isFinite(state.maxU) ? Math.log10(state.maxU) : getLogU10()) : 1;
   }
-  if (state.logMinL === undefined || state.logMinL === null || !isFinite(state.logMinL)) {
+  if (!rawHas("logMinL") || state.logMinL === undefined || state.logMinL === null || !isFinite(state.logMinL)) {
     state.logMinL = (state.minL > 0) ? Math.log10(state.minL) : getLogL10();
   }
   // 升级3 峰值：旧档 up3LastF 可能是 Infinity（JSON 存为 null）或 0；用 log 重建
-  if (state.logUp3LastF === undefined || state.logUp3LastF === null || !isFinite(state.logUp3LastF) || state.logUp3LastF <= NLOG + 1) {
+  if (!rawHas("logUp3LastF") || state.logUp3LastF === undefined || state.logUp3LastF === null || !isFinite(state.logUp3LastF) || state.logUp3LastF <= NLOG + 1) {
     if (state.up3LastF > 0) {
       state.logUp3LastF = isFinite(state.up3LastF) ? Math.log10(state.up3LastF) : 308;
     } else if (state.up3 > 0) {
@@ -1235,13 +1237,13 @@ function migrateState() {
     if (state.logBhMass === undefined || !isFinite(state.logBhMass)) { state.bhMass = 1; state.logBhMass = 0; }
     else setBhMassLog(state.logBhMass);
   }
-  if (state.logBhMass === undefined || !isFinite(state.logBhMass)) state.logBhMass = clampLog(Math.log10(Math.max(state.bhMass, 0)));
+  if (!rawHas("logBhMass") || state.logBhMass === undefined || !isFinite(state.logBhMass)) state.logBhMass = clampLog(Math.log10(Math.max(state.bhMass, 0)));
   if (!state.bhState) state.bhState = "accrete";
   if (state.virtualParticles === undefined || state.virtualParticles === null) {
     if (state.logVP === undefined || !isFinite(state.logVP)) { state.virtualParticles = 0; state.logVP = NLOG; }
     else setVPLog(state.logVP);
   }
-  if (state.logVP === undefined || !isFinite(state.logVP)) state.logVP = clampLog(Math.log10(Math.max(state.virtualParticles, 0)));
+  if (!rawHas("logVP") || state.logVP === undefined || !isFinite(state.logVP)) state.logVP = clampLog(Math.log10(Math.max(state.virtualParticles, 0)));
   if (state.sbu1 === undefined) state.sbu1 = 0;
   if (state.sbu2 === undefined) state.sbu2 = 0;
   if (state.sbu3 === undefined) state.sbu3 = 0;
@@ -1272,6 +1274,17 @@ function migrateState() {
   if (state.voidActive && !(state.ach.normal && state.ach.normal.includes("A52"))) {
     state.voidActive = false;
     state.voidRules = [];
+  }
+  // S02：膨胀进入时刻随存档恢复——正处于膨胀规则（扭曲或虚空规则）中且字段缺失/为 0 时，
+  // 以同次进入写入的 annStartReal 恢复（两条进入路径同时写这两个时间）；仍无效则重新计时
+  //（倍率从 1 重启，避免旧档 distortEnterAtMs=0 造成的波长倍率天文数字）
+  {
+    const inExpand = state.distortActive === "expand"
+      || (state.voidActive && Array.isArray(state.voidRules) && state.voidRules.includes("expand"));
+    if (inExpand && !(typeof state.distortEnterAtMs === "number" && state.distortEnterAtMs > 0)) {
+      state.distortEnterAtMs = (typeof state.annStartReal === "number" && state.annStartReal > 0 && state.annStartReal <= Date.now() + 5000)
+        ? state.annStartReal : Date.now();
+    }
   }
   // 修复离线模拟虚拟时钟污染的存量坏档：时间戳落在未来会使 CD 计时（now - 时间戳）
   // 为负、自动湮灭/自动升级3卡死直至现实时间追上（最长 8h）；归位为当前时刻立即恢复。
@@ -1348,7 +1361,7 @@ function migrateState() {
   if (state.bhMass === null || state.bhMass === undefined) state.bhMass = fromLog(getLogBhMass());
   if (state.virtualParticles === null || state.virtualParticles === undefined) state.virtualParticles = fromLog(getLogVP());
   // v0.5.1：虚空泡沫 log 权威回填（旧档只有 voidVF；JSON 把 Infinity 存为 null 后由 log 重建）
-  if (state.logVoidVF10 === undefined || state.logVoidVF10 === null || !isFinite(state.logVoidVF10)) {
+  if (!rawHas("logVoidVF10") || state.logVoidVF10 === undefined || state.logVoidVF10 === null || !isFinite(state.logVoidVF10)) {
     state.logVoidVF10 = (state.voidVF > 0 && isFinite(state.voidVF)) ? Math.log10(state.voidVF) : NLOG;
   }
   if (state.voidVF === null || state.voidVF === undefined) {
@@ -1422,13 +1435,13 @@ function migrateState() {
   if (state.annMaxTLog === undefined || !isFinite(state.annMaxTLog)) state.annMaxTLog = NLOG;
   // 历史最高持有 VF：仅对缺失/损坏的字段做一次性初始化（取当前持有量）。
   // 不得用「当前持有量」回填已清零的记录——「清空历史最高VF」测试按钮就是要把记录归 0 重测
-  if (state.logVoidVFBest10 === undefined || !isFinite(state.logVoidVFBest10)) {
+  if (!rawHas("logVoidVFBest10") || state.logVoidVFBest10 === undefined || !isFinite(state.logVoidVFBest10)) {
     state.logVoidVFBest10 = (state.logVoidVF10 !== undefined && isFinite(state.logVoidVF10)) ? state.logVoidVF10 : NLOG;
   }
   // v0.6.3.2 虚空泡沫机制改造：新增 VF 上限字段。旧机制下持有量即「曾入账的最大结算值」，
   // 迁移直接把旧持有量写入 cap（等价 max(current,cap)，零跳变）——此后 current ≤ cap 恒成立，
   // 更新不会引发 VF 负增长
-  if (state.logVoidVFCap10 === undefined || !isFinite(state.logVoidVFCap10)) {
+  if (!rawHas("logVoidVFCap10") || state.logVoidVFCap10 === undefined || !isFinite(state.logVoidVFCap10)) {
     state.logVoidVFCap10 = (state.logVoidVF10 !== undefined && isFinite(state.logVoidVF10)) ? state.logVoidVF10 : NLOG;
   }
   // 补发 A71「乌云」：更新前已完成过实验（ED>0 或拥有 S29 均证明结束过实验）的玩家直接获得
@@ -1530,7 +1543,7 @@ function loadGame() {
     state = Object.assign(defaultState(), obj);
     state.settings = Object.assign({ theme: "black", decimals: 3, uiFps: 33, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true }, obj.settings || {});
     state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
-    migrateState();
+    migrateState(obj);
     // 迁移：v0.1 旧存档用 frequency 字段
     if (obj.frequency !== undefined && obj.U === undefined) {
       setU(obj.frequency);
@@ -1599,7 +1612,7 @@ function importSaveFromIo() {
     state = Object.assign(defaultState(), obj);
     state.settings = Object.assign({ theme: "black", decimals: 3, uiFps: 33, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true }, obj.settings || {});
     state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
-    migrateState();
+    migrateState(obj);
     // 重置瞬时成就状态（与 init 一致）：旧档携带的计时数组会干扰 S3/S5/S6 判定
     state.hiddenClicks = [];
     state.metaClicks = [];
@@ -1660,7 +1673,7 @@ function loadFromSlot(i) {
     state = Object.assign(defaultState(), obj);
     state.settings = Object.assign({ theme: "black", decimals: 3, uiFps: 33, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true }, obj.settings || {});
     state.ach = Object.assign({ normal: [], hidden: [], hiddenRevealed: [] }, obj.ach || {});
-    migrateState();
+    migrateState(obj);
     queueOfflineProgress();
     state.lastTick = Date.now();
     currentSlot = i;
@@ -2423,7 +2436,7 @@ function enterDistort(id) {
   // AU24 的「湮灭保留声子」在进出扭曲宇宙时不生效：进入扭曲必须清零声子
   setPhonons(0);
   state.distortActive = id;
-  distortEnterAt = gameNow();
+  state.distortEnterAtMs = gameNow();
   if (id === "simple") setPhonons(1); // 简洁宇宙：声子恒 1
   if (id === "narrow") state.narrowPurchases = 0; // 狭窄宇宙：进入时购买次数强制重置（防残留）
   startCooldownRamp(); // 冷却宇宙：进入时视为已完全生效（k=0.75）
@@ -2539,7 +2552,7 @@ function retryDistort() {
   state.lastPurchaseAt = 0; state.narrowPurchases = 0;
   // 再次进入
   state.distortActive = id;
-  distortEnterAt = gameNow();
+  state.distortEnterAtMs = gameNow();
   startCooldownRamp(); // 冷却宇宙：进入时视为已完全生效（k=0.75）
   state.annStartReal = gameNow();
   state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG; state.annMaxTLog = NLOG;
@@ -3416,7 +3429,7 @@ function enterVoid(ids) {
     setAutosaveStatus("隐藏成就达成：你才是挑战者");
   }
   state.narrowPurchases = 0; // 狭窄削弱：进入时购买次数清零
-  distortEnterAt = gameNow(); // 膨胀削弱的时间基
+  state.distortEnterAtMs = gameNow(); // 膨胀削弱的时间基
   startCooldownRamp(); // 冷却削弱：进入时视为已完全生效（k=0.75）
   state.annStartReal = gameNow();
   state.annStartGame = state.playTime; state.annGameElapsed = 0; state.annGameElapsedLog = NLOG; state.annMaxTLog = NLOG;
@@ -7596,7 +7609,6 @@ const SIM_TS_KEYS = [
 function snapshotSimTimestamps() {
   const snap = {};
   for (const k of SIM_TS_KEYS) snap[k] = state[k];
-  snap.__distortEnterAt = distortEnterAt;
   return snap;
 }
 // 模拟结束后：对「模拟期间被写入且落在虚拟未来」的字段平移回现实时间线
@@ -7608,9 +7620,6 @@ function restoreSimTimestamps(before, simStartReal, shift) {
     if (typeof v === "number" && isFinite(v) && v !== before[k] && v > simStartReal) {
       state[k] = Math.max(v - shift, simStartReal);
     }
-  }
-  if (distortEnterAt !== before.__distortEnterAt && distortEnterAt > simStartReal) {
-    distortEnterAt = Math.max(distortEnterAt - shift, simStartReal);
   }
 }
 // 设置页开关高亮随当前档同步（init、导入、槽位加载后各调一次）
