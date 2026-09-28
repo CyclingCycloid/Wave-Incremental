@@ -1094,8 +1094,11 @@ function fmt(num) {
   const sign = num < 0 ? "-" : "";
   const abs = Math.abs(num);
   // 对数计数法（eXXX）：直接显示 log10 值——上限只受 log 权威（≈10^(9e15)）约束，
-  // 远超 double 上限，超大数值下永不溢出（稳定运行更久）
+  // 远超 double 上限，超大数值下永不溢出（稳定运行更久）；
+  // <1000 保留常规定点小数显示（e0.334 这类小值对数表示可读性差）
   if ((state.settings && state.settings.notation) === "e") {
+    // 极小值（< 10^-(d-1)）：定点会显示成 0.000，仍走 eXXX 保精度
+    if (abs < 1000 && abs >= Math.pow(10, 1 - d)) return sign + abs.toFixed(d);
     return sign + "e" + Math.log10(abs).toFixed(d);
   }
   const tiny = Math.pow(10, -d); // 小于此值用科学计数法
@@ -1112,8 +1115,12 @@ function fmtLog(logV) {
   if (!isFinite(logV) || logV >= LOG_CAP) return "∞"; // LOG_CAP 钳制值视为无穷
   if (logV <= NLOG + 1e6) return "0"; // 哨兵噪声区（NLOG~NLOG+1e6）：语义为零，防 1e-9999999xx 误报
   // 对数计数法（eXXX）：直接显示 log10 值本身——上限只受 log 权威（≈1e15）约束，
-  // 超大数值（10^(1e15) 量级）下永不溢出（稳定运行更久）
-  if ((state.settings && state.settings.notation) === "e") return "e" + logV.toFixed(d3or6());
+  // 超大数值（10^(1e15) 量级）下永不溢出（稳定运行更久）；
+  // 值 <1000（logV<3）走 fmt 的定点小数显示（e0.334 这类小值表示可读性差）
+  if ((state.settings && state.settings.notation) === "e") {
+    if (logV < 3) return fmt(Math.pow(10, logV));
+    return "e" + logV.toFixed(d3or6());
+  }
   // 小数位数跟随设置（与 fmt 一致）
   const d = Math.min(6, Math.max(3, (state.settings && state.settings.decimals) || 3));
   if (logV > -308 && logV < 308) return fmt(Math.pow(10, logV));
