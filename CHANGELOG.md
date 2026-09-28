@@ -1,5 +1,7 @@
 # Changelog
 
+> 玩家向精简版更新日志见 [CHANGELOG-player.md](CHANGELOG-player.md)（游戏内「查看 Changelog」入口指向该文件）。本文件为开发向详细日志，后续详细改动仍记录于此。
+
 ## v0.6.3.2 — The Research Update（测试中，数值待调）
 
 ### 离线收益改进：自适应步长 + 可调计算步数
