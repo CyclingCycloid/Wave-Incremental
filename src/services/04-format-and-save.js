@@ -210,6 +210,8 @@ function migrateState(rawObj, rawSave) {
   // v0.6.3.2：数值显示方式设置已删除（超 double 上限后工程/对数记数不可用，显示恒为科学计数）；
   // S6 改按页面主题切换判定——清理旧档残留键；spu1 升级移除（免费效果改为 15 次湮灭里程碑直接奖励）
   delete state.notationSwitches;
+  // 离线计算步数回填（默认 8000；使用时另行钳到 [1000,100000]）
+  if (state.settings && (state.settings.offlineSteps === undefined || !Number.isFinite(state.settings.offlineSteps))) state.settings.offlineSteps = 8000;
   delete state.spu1;
   // 孤儿虚空状态清理：虚空中丢失 A52 的存档会永久软锁
   //（虚空页隐藏、湮灭/自动湮灭/扭曲入口全被阻）。进入虚空时资源已重置，
@@ -537,6 +539,7 @@ function hardReset() {
   localStorage.removeItem(SAVE_KEY);
   state = defaultState();
   applyTheme("black");
+  applyOfflineSteps(state.settings.offlineSteps);
   saveGame();
   renderAll();
   setAutosaveStatus("已硬重置");
@@ -574,6 +577,7 @@ function importSaveFromIo() {
     applyTheme(state.settings.theme);
     applyDecimals(state.settings.decimals);
     applyNotation(state.settings.notation);
+    applyOfflineSteps(state.settings.offlineSteps);
     applyUiFps(state.settings.uiFps); // D04：导入路径补 UI 帧率同步
     processPendingOffline(); // 导入发生在 init 之后：离线结算须就地执行
     saveGame();
@@ -632,6 +636,7 @@ function loadFromSlot(i) {
     applyTheme(state.settings.theme);
     applyDecimals(state.settings.decimals); // D04：槽位加载补小数位与 UI 帧率同步
     applyNotation(state.settings.notation);
+    applyOfflineSteps(state.settings.offlineSteps);
     applyUiFps(state.settings.uiFps);
     processPendingOffline(); // 槽位加载发生在 init 之后：离线结算须就地执行
     saveGame();

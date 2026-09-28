@@ -172,7 +172,7 @@ function defaultState() {
     themeSwitches: [],     // S6 页面主题切换时间戳
     phToggles: [],         // S7 声子发生器开关时间戳
     capReachedAt: 0,       // S11 达到温度上限的时间戳
-    settings: { theme: "black", notation: "scientific", decimals: 3, uiFps: 33, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true },
+    settings: { theme: "black", notation: "scientific", decimals: 3, uiFps: 33, offlineSteps: 8000, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true },
     lastTick: Date.now(),
   };
 }

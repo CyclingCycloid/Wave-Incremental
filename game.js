@@ -227,7 +227,7 @@ function defaultState() {
     themeSwitches: [],     // S6 页面主题切换时间戳
     phToggles: [],         // S7 声子发生器开关时间戳
     capReachedAt: 0,       // S11 达到温度上限的时间戳
-    settings: { theme: "black", notation: "scientific", decimals: 3, uiFps: 33, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true },
+    settings: { theme: "black", notation: "scientific", decimals: 3, uiFps: 33, offlineSteps: 8000, hideLockedRows: true, hideDoneRows: false, offlineEnabled: true },
     lastTick: Date.now(),
   };
 }
@@ -1296,6 +1296,8 @@ function migrateState(rawObj, rawSave) {
   // v0.6.3.2：数值显示方式设置已删除（超 double 上限后工程/对数记数不可用，显示恒为科学计数）；
   // S6 改按页面主题切换判定——清理旧档残留键；spu1 升级移除（免费效果改为 15 次湮灭里程碑直接奖励）
   delete state.notationSwitches;
+  // 离线计算步数回填（默认 8000；使用时另行钳到 [1000,100000]）
+  if (state.settings && (state.settings.offlineSteps === undefined || !Number.isFinite(state.settings.offlineSteps))) state.settings.offlineSteps = 8000;
   delete state.spu1;
   // 孤儿虚空状态清理：虚空中丢失 A52 的存档会永久软锁
   //（虚空页隐藏、湮灭/自动湮灭/扭曲入口全被阻）。进入虚空时资源已重置，
@@ -1623,6 +1625,7 @@ function hardReset() {
   localStorage.removeItem(SAVE_KEY);
   state = defaultState();
   applyTheme("black");
+  applyOfflineSteps(state.settings.offlineSteps);
   saveGame();
   renderAll();
   setAutosaveStatus("已硬重置");
@@ -1660,6 +1663,7 @@ function importSaveFromIo() {
     applyTheme(state.settings.theme);
     applyDecimals(state.settings.decimals);
     applyNotation(state.settings.notation);
+    applyOfflineSteps(state.settings.offlineSteps);
     applyUiFps(state.settings.uiFps); // D04：导入路径补 UI 帧率同步
     processPendingOffline(); // 导入发生在 init 之后：离线结算须就地执行
     saveGame();
@@ -1718,6 +1722,7 @@ function loadFromSlot(i) {
     applyTheme(state.settings.theme);
     applyDecimals(state.settings.decimals); // D04：槽位加载补小数位与 UI 帧率同步
     applyNotation(state.settings.notation);
+    applyOfflineSteps(state.settings.offlineSteps);
     applyUiFps(state.settings.uiFps);
     processPendingOffline(); // 槽位加载发生在 init 之后：离线结算须就地执行
     saveGame();
@@ -1784,6 +1789,15 @@ function applyNotation(n) {
   document.querySelectorAll("#notation-row button").forEach(b => {
     b.classList.toggle("active", b.dataset.notation === n);
   });
+}
+// 离线计算步数（1000–100000）：离线模拟的总步数预算，越高收益越精确、加载计算越久
+function applyOfflineSteps(n) {
+  n = Math.round(Number(n));
+  if (!Number.isFinite(n)) n = 8000;
+  n = Math.min(100000, Math.max(1000, n));
+  state.settings.offlineSteps = n;
+  const inp = document.getElementById("offline-steps-input");
+  if (inp) inp.value = n;
 }
 // 界面刷新频率（显示层）：16/33/100 ms —— 逻辑 tick 恒为 100ms，不影响数值
 let uiFrameInterval = 33;
@@ -7724,14 +7738,21 @@ function queueOfflineProgress() {
   pendingOffline = { raw, capped: Math.min(raw, OFFLINE_CAP_SEC) };
 }
 // log 差值 b−a（b 为零哨兵按无增量处理；a 为零哨兵时增量即 b）
-// D05：离线收益按绝对增量表述——offlineLogDiff 是倍率 lg(new/old)，不能直接当增量显示。
-// old/new 为 log10；双方可表示时取真实绝对差，超大值取 log 域减法 lg(new−old)，无旧值取绝对值。
+// D05：离线收益只写增益——损耗/归零返回 null（条目整个不写）。
+// old/new 为 log10；new−old 用带符号 log 减法求 lg(new−old)（方向与幅度）；
+// 幅度 ≥300（超 double）以 eXXX 形式显示——永不出现 ∞，即使资源已到 log 权威上限（1e15）
 function offlineAbsGain(oldLog, newLog) {
   const hasOld = oldLog > NLOG + 1, hasNew = newLog > NLOG + 1;
-  if (!hasNew) return null;
-  if (!hasOld) return newLog < 300 ? fmt(Math.pow(10, newLog)) : fmtLog(newLog);
-  if (newLog < 300 && oldLog < 300) return fmt(Math.pow(10, newLog) - Math.pow(10, oldLog));
-  return fmtLog(logAddSigned(newLog, 1, oldLog, -1));
+  if (!hasNew) return null;                                    // 结束时为 0（损失）：不写
+  if (!hasOld) return magText(newLog);                         // 从零到有：增益
+  const r = logAddSigned(newLog, 1, oldLog, -1);               // lg(new−old)，带符号
+  if (r.sign < 0 || r.log <= NLOG + 1) return null;             // 损失/完全抵消：不写
+  const mag = Math.abs(r.log);
+  return mag < 300 ? fmt(Math.pow(10, mag)) : "e" + mag.toFixed(3);
+}
+// 幅度显示：|lg| < 300 → 常规 fmt；≥300 → eXXX 形式（永不 ∞）
+function magText(logV) {
+  return Math.abs(logV) < 300 ? fmt(Math.pow(10, logV)) : "e" + Math.abs(logV).toFixed(3);
 }
 function offlineLogDiff(a, b) {
   if (b <= NLOG + 1) return -Infinity;
@@ -7753,11 +7774,24 @@ function runOfflineSimulation(cappedSec) {
   const tsBefore = snapshotSimTimestamps();
   simActive = true;
   try {
-    // 目标约 800 步：8h → 步长 36s；短离线步长收敛到 1s。步长内自动化至多触发一次（保守方向）
-    const step = Math.max(1, Math.min(60, cappedSec / 800));
-    let remaining = cappedSec;
-    while (remaining > 1e-9) {
+    // 自适应步长（修正「收益远低于预期」）：旧版固定 ~800 步（8h → 每步 36s），
+    // 自动化反馈（生产→F 涨→购买→增速涨；湮灭→Sp→倍率涨）每步至多触发一次，
+    // 指数循环被大幅低估。现按活动度自适应：发生购买/湮灭的步 → 步长 ÷4（细分至 0.5s），
+    // 连续 3 步静默 → 步长 ×2（放粗至 60s）；总步数预算由设置提供
+    //（state.settings.offlineSteps，1000–100000，越高越精确、加载计算越久），
+    // 预算耗尽后剩余时间按当前步长走完（生产与 dt 线性，仅反馈粒度损失）
+    const MIN_STEP = 0.5, MAX_STEP = 60;
+    const MAX_STEPS = Math.min(100000, Math.max(1000, Math.round(state.settings && state.settings.offlineSteps) || 8000));
+    let step = Math.min(MAX_STEP, Math.max(MIN_STEP, cappedSec / MAX_STEPS));
+    let quiet = 0, steps = 0, remaining = cappedSec;
+    const activitySig = () => state.annihilations + "," + state.up1 + "," + state.up2 + "," + state.up3 +
+      "," + state.pg1 + "," + state.pg2 + "," + state.pg3;
+    while (remaining > 1e-9 && steps < MAX_STEPS) {
+      // 预算控制：剩余步数不足时抬高步长，保证在预算内走完全程
+      const left = Math.ceil(remaining / step);
+      if (steps + left > MAX_STEPS) step = Math.max(step, remaining / (MAX_STEPS - steps));
       const dt = Math.min(step, remaining);
+      const sig = activitySig();
       simTimeOffset += dt * 1000;
       // 与在线一致：10 次湮灭前达到湮灭条件即暂停（不推进生产与购买）
       if (!annihilationFrozen()) { applyProduction(dt); runAutomation(); }
@@ -7765,6 +7799,20 @@ function runOfflineSimulation(cappedSec) {
       tickProgression(dt);
       checkAchievements();
       remaining -= dt;
+      steps++;
+      if (activitySig() !== sig) { quiet = 0; step = Math.max(MIN_STEP, step / 4); }
+      else if (++quiet >= 3) step = Math.min(MAX_STEP, step * 2);
+    }
+    if (remaining > 1e-9) {
+      // 预算耗尽：剩余时间按当前步长继续（不再细分），保证完整结算
+      while (remaining > 1e-9) {
+        const dt = Math.min(step, remaining);
+        simTimeOffset += dt * 1000;
+        if (!annihilationFrozen()) { applyProduction(dt); runAutomation(); }
+        tickProgression(dt);
+        checkAchievements();
+        remaining -= dt;
+      }
     }
     res.simmed = true;
   } catch (e) {
@@ -7827,32 +7875,26 @@ function processPendingOffline() {
 // 离线收益弹窗（收益已先行入账，按钮仅关闭；无实质收益则不弹）
 function showOfflineModal(raw, capped, res) {
   const lines = ["你离开了 " + fmtTime(raw) + (raw > capped + 1 ? "（结算上限 " + fmtTime(capped) + "）" : "")];
-  const uAbs = offlineAbsGain(res.uLog0, res.uLog1);
-  if (uAbs !== null) lines.push("波速 +" + uAbs + " m/s");
-  // 声子优先显示绝对增量（大基数上的小增量 log 差趋 0 会漏报），超 double 回退 log 差
+  const uCh = offlineAbsGain(res.uLog0, res.uLog1);
+  if (uCh) lines.push("波速 +" + uCh + " m/s");
+  // 声子优先显示绝对增量（大基数上的小增量 log 差趋 0 会漏报），超 double 回退 log 带方向差
   const phAbsD = (isFinite(res.phAbs0) && isFinite(res.phAbs1)) ? res.phAbs1 - res.phAbs0 : NaN;
-  const phD = offlineLogDiff(res.ph0, res.ph1);
   if (isFinite(phAbsD) && phAbsD >= 1) lines.push("声子 +" + fmt(Math.floor(phAbsD)));
-  else { const phAbs = offlineAbsGain(res.ph0, res.ph1); if (phAbs !== null) lines.push("声子 +" + phAbs); }
+  else { const phCh = offlineAbsGain(res.ph0, res.ph1); if (phCh) lines.push("声子 +" + phCh); }
   if (bhUnlocked()) {
-    const mD = offlineLogDiff(res.m0, res.m1);
-    const mAbs = offlineAbsGain(res.m0, res.m1);
-    if (mAbs !== null) lines.push("黑洞质量 +" + mAbs + " M☉");
-    else if (isFinite(mD) && mD < -1e-4) lines.push("黑洞质量 ÷" + fmt(Math.pow(10, -mD)) + "（脉冲衰减）");
-    const vpD = offlineLogDiff(res.vp0, res.vp1);
-    const vpAbs = offlineAbsGain(res.vp0, res.vp1);
-    if (vpAbs !== null) lines.push("虚粒子 +" + vpAbs);
-    else if (isFinite(vpD) && vpD < -1e-4) lines.push("虚粒子 ÷" + fmt(Math.pow(10, -vpD)) + "（吸积衰减）");
+    const mCh = offlineAbsGain(res.m0, res.m1);
+    if (mCh) lines.push("黑洞质量 +" + mCh.text + " M☉");
+    const vpCh = offlineAbsGain(res.vp0, res.vp1);
+    if (vpCh) lines.push("虚粒子 +" + vpCh.text);
   }
   const annD = res.ann1 - res.ann0;
   if (annD >= 1) lines.push("湮灭 +" + fmt(Math.floor(annD)) + " 次");
-  const spD = offlineLogDiff(res.sp0, res.sp1);
-  const spAbs = offlineAbsGain(res.sp0, res.sp1);
-  if (spAbs !== null) lines.push("奇点 +" + spAbs);
-  // 卡拉比-丘流形（卷缩层离线产出；显示 floor 与页面口径一致）
-  const cmD = offlineLogDiff(res.cm0, res.cm1);
-  const cmAbs = offlineAbsGain(res.cm0, res.cm1);
-  if (cmAbs !== null) lines.push("卡拉比-丘流形 +" + cmAbs);
+  const spCh = offlineAbsGain(res.sp0, res.sp1);
+  if (spCh) lines.push("奇点 +" + spCh.text);
+  const cmCh = offlineAbsGain(res.cm0, res.cm1);
+  if (cmCh) lines.push("卡拉比-丘流形 +" + cmCh.text);
+  // 离线期间冻结：明示无进度原因（10 次湮灭前达到上限即暂停，等待手动湮灭）
+  if (annihilationFrozen()) lines.push("湮灭条件已满足：离线期间计算已暂停（湮灭后恢复）");
   if (lines.length <= 1) return; // 无实质收益（如生产为 0 挂机）不弹
   document.getElementById("offline-text").textContent = lines.join("\n");
   document.getElementById("offline-overlay").classList.remove("hidden");
@@ -8364,6 +8406,12 @@ function setupUI() {
     });
   });
 
+  const offStepsInp = document.getElementById("offline-steps-input");
+  offStepsInp.addEventListener("change", () => {
+    applyOfflineSteps(offStepsInp.value);
+    saveGame();
+  });
+
   const decInp = document.getElementById("decimals-input");
   decInp.addEventListener("change", () => {
     applyDecimals(decInp.value);
@@ -8699,6 +8747,7 @@ function init() {
   applyTheme(state.settings.theme);
   applyDecimals(state.settings.decimals);
   applyNotation(state.settings.notation);
+  applyOfflineSteps(state.settings.offlineSteps);
   applyUiFps(state.settings.uiFps);
   setupUI();
   applyTestModeUIGlobal(); // 刷新后同步测试模式 UI（按钮文案/工具显隐/顶栏版本）——缺失会导致刷新后看起来退出测试

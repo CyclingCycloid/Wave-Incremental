@@ -39,6 +39,12 @@ function setupUI() {
     });
   });
 
+  const offStepsInp = document.getElementById("offline-steps-input");
+  offStepsInp.addEventListener("change", () => {
+    applyOfflineSteps(offStepsInp.value);
+    saveGame();
+  });
+
   const decInp = document.getElementById("decimals-input");
   decInp.addEventListener("change", () => {
     applyDecimals(decInp.value);

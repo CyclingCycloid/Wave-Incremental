@@ -10,6 +10,7 @@ function init() {
   applyTheme(state.settings.theme);
   applyDecimals(state.settings.decimals);
   applyNotation(state.settings.notation);
+  applyOfflineSteps(state.settings.offlineSteps);
   applyUiFps(state.settings.uiFps);
   setupUI();
   applyTestModeUIGlobal(); // 刷新后同步测试模式 UI（按钮文案/工具显隐/顶栏版本）——缺失会导致刷新后看起来退出测试

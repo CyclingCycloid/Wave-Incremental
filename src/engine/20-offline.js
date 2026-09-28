@@ -47,11 +47,24 @@ function runOfflineSimulation(cappedSec) {
   const tsBefore = snapshotSimTimestamps();
   simActive = true;
   try {
-    // 目标约 800 步：8h → 步长 36s；短离线步长收敛到 1s。步长内自动化至多触发一次（保守方向）
-    const step = Math.max(1, Math.min(60, cappedSec / 800));
-    let remaining = cappedSec;
-    while (remaining > 1e-9) {
+    // 自适应步长（修正「收益远低于预期」）：旧版固定 ~800 步（8h → 每步 36s），
+    // 自动化反馈（生产→F 涨→购买→增速涨；湮灭→Sp→倍率涨）每步至多触发一次，
+    // 指数循环被大幅低估。现按活动度自适应：发生购买/湮灭的步 → 步长 ÷4（细分至 0.5s），
+    // 连续 3 步静默 → 步长 ×2（放粗至 60s）；总步数预算由设置提供
+    //（state.settings.offlineSteps，1000–100000，越高越精确、加载计算越久），
+    // 预算耗尽后剩余时间按当前步长走完（生产与 dt 线性，仅反馈粒度损失）
+    const MIN_STEP = 0.5, MAX_STEP = 60;
+    const MAX_STEPS = Math.min(100000, Math.max(1000, Math.round(state.settings && state.settings.offlineSteps) || 8000));
+    let step = Math.min(MAX_STEP, Math.max(MIN_STEP, cappedSec / MAX_STEPS));
+    let quiet = 0, steps = 0, remaining = cappedSec;
+    const activitySig = () => state.annihilations + "," + state.up1 + "," + state.up2 + "," + state.up3 +
+      "," + state.pg1 + "," + state.pg2 + "," + state.pg3;
+    while (remaining > 1e-9 && steps < MAX_STEPS) {
+      // 预算控制：剩余步数不足时抬高步长，保证在预算内走完全程
+      const left = Math.ceil(remaining / step);
+      if (steps + left > MAX_STEPS) step = Math.max(step, remaining / (MAX_STEPS - steps));
       const dt = Math.min(step, remaining);
+      const sig = activitySig();
       simTimeOffset += dt * 1000;
       // 与在线一致：10 次湮灭前达到湮灭条件即暂停（不推进生产与购买）
       if (!annihilationFrozen()) { applyProduction(dt); runAutomation(); }
@@ -59,6 +72,20 @@ function runOfflineSimulation(cappedSec) {
       tickProgression(dt);
       checkAchievements();
       remaining -= dt;
+      steps++;
+      if (activitySig() !== sig) { quiet = 0; step = Math.max(MIN_STEP, step / 4); }
+      else if (++quiet >= 3) step = Math.min(MAX_STEP, step * 2);
+    }
+    if (remaining > 1e-9) {
+      // 预算耗尽：剩余时间按当前步长继续（不再细分），保证完整结算
+      while (remaining > 1e-9) {
+        const dt = Math.min(step, remaining);
+        simTimeOffset += dt * 1000;
+        if (!annihilationFrozen()) { applyProduction(dt); runAutomation(); }
+        tickProgression(dt);
+        checkAchievements();
+        remaining -= dt;
+      }
     }
     res.simmed = true;
   } catch (e) {

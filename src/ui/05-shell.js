@@ -19,6 +19,15 @@ function applyNotation(n) {
     b.classList.toggle("active", b.dataset.notation === n);
   });
 }
+// 离线计算步数（1000–100000）：离线模拟的总步数预算，越高收益越精确、加载计算越久
+function applyOfflineSteps(n) {
+  n = Math.round(Number(n));
+  if (!Number.isFinite(n)) n = 8000;
+  n = Math.min(100000, Math.max(1000, n));
+  state.settings.offlineSteps = n;
+  const inp = document.getElementById("offline-steps-input");
+  if (inp) inp.value = n;
+}
 // 界面刷新频率（显示层）：16/33/100 ms —— 逻辑 tick 恒为 100ms，不影响数值
 let uiFrameInterval = 33;
 let uiLastFrame = 0;
