@@ -2,6 +2,12 @@
 
 ## v0.6.3.2 — The Research Update（测试中，数值待调）
 
+### 新增：对数记数法（eXXX）
+
+- **设置 → 数值显示方式**新增「对数（eXXX）」选项（与「科学」并列）：所有数值直接显示为 **10 的幂次**——`e123.450` 表示 10^123.45，小数位数跟随「小数位数」设置（3–6 位）
+- **稳定运行更久**：eXXX 的数值上限只受 log 权威（≈10^(9e15)）约束——远超科学计数法的 double 上限（1.8e308），超大数值（含 fmtNum/fmtLog 全链路）永不溢出；`state.settings.notation` 随存档持久化，默认「科学」不变
+- 实现：fmt/fmtLog 各加 e-分支（fmt 取 log10、fmtLog 直接显示 log 权威），fmtNum/fmtInt 等全链路自动跟随
+
 ### Issue 审查修复（批次 5：原延后项，P1/P2/P3 各一）
 
 - **N02 修正（P1）：累计频率的 double 安全判定改用实际增量的 log**——旧判定 `gd/L` 在卷缩 e>1 时漏判溢出（L=1e-280、e=1.2、gd≈1 时前者低于 1e290 而实际累加 gd/L^e 超过 double 上限），totalFGained 与 logTotalF 可双双写成 Infinity 污染存档；现按 `gainPerLLog` 的实际增量 log 判定（< 1e290 才走 double，且要求增量计算本身有限），e=1 的现有结果不变

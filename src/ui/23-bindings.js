@@ -31,6 +31,14 @@ function setupUI() {
     document.getElementById("offline-overlay").classList.add("hidden");
   });
 
+  document.querySelectorAll("#notation-row button").forEach(b => {
+    b.addEventListener("click", () => {
+      applyNotation(b.dataset.notation);
+      saveGame();
+      renderAll();
+    });
+  });
+
   const decInp = document.getElementById("decimals-input");
   decInp.addEventListener("change", () => {
     applyDecimals(decInp.value);

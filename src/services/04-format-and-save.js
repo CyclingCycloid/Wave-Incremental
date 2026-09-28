@@ -7,6 +7,11 @@ function fmt(num) {
   const d = Math.min(6, Math.max(3, (state.settings && state.settings.decimals) || 3));
   const sign = num < 0 ? "-" : "";
   const abs = Math.abs(num);
+  // 对数计数法（eXXX）：直接显示 log10 值——上限只受 log 权威（≈10^(9e15)）约束，
+  // 远超 double 上限，超大数值下永不溢出（稳定运行更久）
+  if ((state.settings && state.settings.notation) === "e") {
+    return sign + "e" + Math.log10(abs).toFixed(d);
+  }
   const tiny = Math.pow(10, -d); // 小于此值用科学计数法
   if (abs < 1000 && abs >= tiny) return sign + abs.toFixed(d);
   // 恒为科学计数（原「工程/对数」记数设置已删除：超 double 上限后显示全部走 fmtLog
@@ -20,6 +25,9 @@ function fmtLog(logV) {
   // 避免 12.6 显示成 1.259e1 这类小值指数记数（<1000 一律定点）
   if (!isFinite(logV) || logV >= LOG_CAP) return "∞"; // LOG_CAP 钳制值视为无穷
   if (logV <= NLOG + 1e6) return "0"; // 哨兵噪声区（NLOG~NLOG+1e6）：语义为零，防 1e-9999999xx 误报
+  // 对数计数法（eXXX）：直接显示 log10 值本身——上限只受 log 权威（≈1e15）约束，
+  // 超大数值（10^(1e15) 量级）下永不溢出（稳定运行更久）
+  if ((state.settings && state.settings.notation) === "e") return "e" + logV.toFixed(d3or6());
   // 小数位数跟随设置（与 fmt 一致）
   const d = Math.min(6, Math.max(3, (state.settings && state.settings.decimals) || 3));
   if (logV > -308 && logV < 308) return fmt(Math.pow(10, logV));
@@ -29,6 +37,10 @@ function fmtLog(logV) {
   const frac = logV - exp;
   const mant = Math.pow(10, frac);
   return mant.toFixed(d) + "e" + exp;
+}
+// 小数位数设置的统一读取（fmt/fmtLog 共用）
+function d3or6() {
+  return Math.min(6, Math.max(3, (state.settings && state.settings.decimals) || 3));
 }
 // 统一显示：double 在范围内走 fmt（现状），饱和/超 1e308 走 fmtLog（输出 1eN）
 function fmtNum(doubleVal, logVal) {
@@ -197,7 +209,6 @@ function migrateState(rawObj, rawSave) {
   if (state.testMode === undefined) state.testMode = false;
   // v0.6.3.2：数值显示方式设置已删除（超 double 上限后工程/对数记数不可用，显示恒为科学计数）；
   // S6 改按页面主题切换判定——清理旧档残留键；spu1 升级移除（免费效果改为 15 次湮灭里程碑直接奖励）
-  if (state.settings) delete state.settings.notation;
   delete state.notationSwitches;
   delete state.spu1;
   // 孤儿虚空状态清理：虚空中丢失 A52 的存档会永久软锁
@@ -562,6 +573,7 @@ function importSaveFromIo() {
     state.lastTick = Date.now();
     applyTheme(state.settings.theme);
     applyDecimals(state.settings.decimals);
+    applyNotation(state.settings.notation);
     applyUiFps(state.settings.uiFps); // D04：导入路径补 UI 帧率同步
     processPendingOffline(); // 导入发生在 init 之后：离线结算须就地执行
     saveGame();
@@ -619,6 +631,7 @@ function loadFromSlot(i) {
     currentSlot = i;
     applyTheme(state.settings.theme);
     applyDecimals(state.settings.decimals); // D04：槽位加载补小数位与 UI 帧率同步
+    applyNotation(state.settings.notation);
     applyUiFps(state.settings.uiFps);
     processPendingOffline(); // 槽位加载发生在 init 之后：离线结算须就地执行
     saveGame();

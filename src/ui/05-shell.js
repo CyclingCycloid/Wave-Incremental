@@ -11,6 +11,14 @@ function applyDecimals(n) {
   const inp = document.getElementById("decimals-input");
   if (inp) inp.value = n;
 }
+// 数值显示方式：scientific（科学计数）/ e（对数 eXXX，直接显示 log10 值）
+function applyNotation(n) {
+  n = (n === "e") ? "e" : "scientific";
+  state.settings.notation = n;
+  document.querySelectorAll("#notation-row button").forEach(b => {
+    b.classList.toggle("active", b.dataset.notation === n);
+  });
+}
 // 界面刷新频率（显示层）：16/33/100 ms —— 逻辑 tick 恒为 100ms，不影响数值
 let uiFrameInterval = 33;
 let uiLastFrame = 0;
