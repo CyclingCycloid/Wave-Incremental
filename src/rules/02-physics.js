@@ -227,7 +227,9 @@ function up2Cost() {
   const n = state.up2 + 1;
   // 通胀宇宙：10^(n+1) × max(n²,100)，从头生效（不叠加软上限与 costOf 平方）
   if (inDistort("inflation")) {
-    // 初始价 = 1000 的平方（1e6），此后每级乘 max(n²,100)（n 为当前等级，1 起）
+    // 初始价 = 1000 的平方（1e6），此后每级乘 max(n²,100)（n 为当前等级，1 起）。
+    // A04：等级 >300 时对数值必超 308（结果恒 Infinity），直接短路避免 O(等级) 循环
+    if (state.up2 > 300) return Infinity;
     let p = 1e6;
     for (let k = 1; k <= state.up2; k++) p *= Math.max(k * k, 100);
     return p;

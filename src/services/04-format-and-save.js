@@ -530,7 +530,8 @@ function loadGame() {
 
 function saveGame() {
   if (simActive) return; // 离线模拟中不触碰 DOM/存档
-  state.lastTick = Date.now();
+  // O03：lastTick 语义 = "状态已结算到的现实时间"，由逻辑 tick / 离线结算推进；
+  // 存档只保存现有时间戳，不把未结算的时间标记为已结算（防后台节流时丢离线间隔）
   try {
     localStorage.setItem(SAVE_KEY, encodeSave(state));
     setAutosaveStatus("已自动保存 " + new Date().toLocaleTimeString());
@@ -621,7 +622,6 @@ function getSlotInfo(i) {
   } catch { return null; }
 }
 function saveToSlot(i) {
-  state.lastTick = Date.now();
   try {
     localStorage.setItem(slotKey(i), encodeSave(state));
     currentSlot = i; // 当前游戏已存入槽 i，高亮跟随（否则刷新后回到槽 0）

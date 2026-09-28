@@ -703,7 +703,9 @@ function up2Cost() {
   const n = state.up2 + 1;
   // 通胀宇宙：10^(n+1) × max(n²,100)，从头生效（不叠加软上限与 costOf 平方）
   if (inDistort("inflation")) {
-    // 初始价 = 1000 的平方（1e6），此后每级乘 max(n²,100)（n 为当前等级，1 起）
+    // 初始价 = 1000 的平方（1e6），此后每级乘 max(n²,100)（n 为当前等级，1 起）。
+    // A04：等级 >300 时对数值必超 308（结果恒 Infinity），直接短路避免 O(等级) 循环
+    if (state.up2 > 300) return Infinity;
     let p = 1e6;
     for (let k = 1; k <= state.up2; k++) p *= Math.max(k * k, 100);
     return p;
@@ -1065,6 +1067,13 @@ function up2CostLog() {
   const n = state.up2 + 1;
   if (inDistort("inflation")) {
     // double 版 1e6 × ∏max(k²,100) 已含通胀，不叠 costOf
+    // A04：等级 >300 时改 lgamma 闭式（∑log(k²)=2(lgamma10(n)−lg 10!)，
+    // lgamma10(x)≡lg(x!) 口径与既有 k>300 段一致；lg 10! 用精确常数，
+    // Stirling 小宗量误差只留在 n 段（O(1/n)，n>300 时 ≤2.4e-4）），
+    // 消除随等级增长的循环（离线重放/每 tick 显示的热路径）
+    if (state.up2 > 300) {
+      return clampLog(26 + 2 * (lgamma10(state.up2) - Math.log10(3628800)));
+    }
     let lp = 6;
     for (let k = 1; k <= state.up2; k++) lp += Math.log10(Math.max(k * k, 100));
     return clampLog(lp);
@@ -1616,7 +1625,8 @@ function loadGame() {
 
 function saveGame() {
   if (simActive) return; // 离线模拟中不触碰 DOM/存档
-  state.lastTick = Date.now();
+  // O03：lastTick 语义 = "状态已结算到的现实时间"，由逻辑 tick / 离线结算推进；
+  // 存档只保存现有时间戳，不把未结算的时间标记为已结算（防后台节流时丢离线间隔）
   try {
     localStorage.setItem(SAVE_KEY, encodeSave(state));
     setAutosaveStatus("已自动保存 " + new Date().toLocaleTimeString());
@@ -1707,7 +1717,6 @@ function getSlotInfo(i) {
   } catch { return null; }
 }
 function saveToSlot(i) {
-  state.lastTick = Date.now();
   try {
     localStorage.setItem(slotKey(i), encodeSave(state));
     currentSlot = i; // 当前游戏已存入槽 i，高亮跟随（否则刷新后回到槽 0）
@@ -3753,7 +3762,13 @@ function sbuCostLog(u, n) {
     });
   }
   if (u.id === "sbu2") {
-    // 1e10 × 1000^(n-1)；超过 7 级后每级额外 ×n³
+    // 1e10 × 1000^(n-1)；超过 7 级后每级额外 ×n³。
+    // A04：等级 >300 时改 lgamma 闭式（∑log(k)=lgamma10(n)−lg 7!，
+    // lgamma10(x)≡lg(x!) 口径；lg 7! 用精确常数，Stirling 误差只留 n 段），
+    // 消除 O(等级) 循环
+    if (n > 300) {
+      return 10 + (n - 1) * 3 + 3 * (lgamma10(n) - Math.log10(5040));
+    }
     let log = 10 + (n - 1) * 3;
     for (let k = 8; k <= n; k++) log += 3 * Math.log10(k);
     return log;
@@ -7744,7 +7759,8 @@ function queueOfflineProgress() {
   pendingOffline = null;
   const raw = (Date.now() - state.lastTick) / 1000;
   if (state.settings.offlineEnabled === false || !isFinite(raw) || raw < OFFLINE_MIN_SEC) return;
-  pendingOffline = { raw, capped: Math.min(raw, OFFLINE_CAP_SEC) };
+  const endMs = Date.now();
+  pendingOffline = { raw, capped: Math.min(raw, OFFLINE_CAP_SEC), startMs: endMs - Math.min(raw, OFFLINE_CAP_SEC) * 1000 };
 }
 // log 差值 b−a（b 为零哨兵按无增量处理；a 为零哨兵时增量即 b）
 // D05：离线收益只写增益——损耗/归零返回 null（条目整个不写）。
@@ -7770,17 +7786,15 @@ function offlineLogDiff(a, b) {
 }
 // 粗步长模拟：每步推进虚拟时钟 → 生产累积 → 自动化（含自动湮灭）。
 // simActive 使全部 UI/保存函数早退，模拟中途不触碰 DOM 与 localStorage
-function runOfflineSimulation(cappedSec) {
+function runOfflineSimulation(cappedSec, startMs) {
   const res = {
     uLog0: getLogU10(), ph0: getLogPhonons(), m0: getLogBhMass(), vp0: getLogVP(),
     sp0: getLogSp(), phAbs0: state.phonons, ann0: state.annihilations, simmed: false,
     cm0: getLogCM(),
   };
-  // 模拟期间 gameNow() = Date.now() + offset，自动化写入的时间戳（lastAutoAnnAt 等）
-  // 会带上虚拟偏移；模拟结束后须把这些字段平移回现实时间线，否则 CD 计时
-  // （gameNow() - lastAutoAnnAt）为负、自动湮灭卡死直至现实时间追上（最长 8h）
-  const simStartReal = Date.now();
-  const tsBefore = snapshotSimTimestamps();
+  // O02：绝对虚拟时间轴——gameNow() 从 startMs（本次结算窗口的起点）推进到 ≈endMs，
+  // 模拟期间写入的时间戳天然落在现实时间线上（≤ 当前时刻），无需事后平移
+  simTimeOffset = Number.isFinite(startMs) ? startMs - Date.now() : 0;
   simActive = true;
   try {
     // 自适应步长（修正「收益远低于预期」）：旧版固定 ~800 步（8h → 每步 36s），
@@ -7828,10 +7842,8 @@ function runOfflineSimulation(cappedSec) {
     // 模拟异常即中止：保留已结算部分，时间线归位，绝不让异常拖垮加载
     console.error("离线模拟异常（已中止，保留当前进度）:", e);
   }
-  // 平移量 = 虚拟推进总量 − 模拟本身耗掉的现实时间（写入越晚超前越少，线性近似足够精确）
-  const shift = simTimeOffset - (Date.now() - simStartReal);
+  // O02：绝对时间轴下时间戳已属现实线，直接归零虚拟偏移（gameNow() = Date.now()）
   simTimeOffset = 0;
-  restoreSimTimestamps(tsBefore, simStartReal, shift);
   simActive = false;
   res.uLog1 = getLogU10(); res.ph1 = getLogPhonons();
   res.m1 = getLogBhMass(); res.vp1 = getLogVP();
@@ -7840,28 +7852,6 @@ function runOfflineSimulation(cappedSec) {
   res.ann1 = state.annihilations;
   res.cm1 = getLogCM();
   return res;
-}
-// 模拟期间可能被虚拟时钟写入的时间戳字段
-const SIM_TS_KEYS = [
-  "lastAutoAnnAt", "lastAutoUp3At", "annStartReal", "lastPurchaseAt",
-  "zeroGainSince", "capReachedAt", "bhPulseSince", "bhDistorlSince",
-  "ruaBoostUntil", "ruaBoostCD", "ruaDayStart",
-];
-function snapshotSimTimestamps() {
-  const snap = {};
-  for (const k of SIM_TS_KEYS) snap[k] = state[k];
-  return snap;
-}
-// 模拟结束后：对「模拟期间被写入且落在虚拟未来」的字段平移回现实时间线
-function restoreSimTimestamps(before, simStartReal, shift) {
-  if (!(shift > 0)) return;
-  for (const k of SIM_TS_KEYS) {
-    const v = state[k];
-    // 仅平移模拟期间变化的字段（值 !== 模拟前）且确为虚拟时间戳（> 模拟开始的真实时刻）
-    if (typeof v === "number" && isFinite(v) && v !== before[k] && v > simStartReal) {
-      state[k] = Math.max(v - shift, simStartReal);
-    }
-  }
 }
 // 设置页开关高亮随当前档同步（init、导入、槽位加载后各调一次）
 function syncOfflineToggleUI() {
@@ -7872,12 +7862,13 @@ function syncOfflineToggleUI() {
 function processPendingOffline() {
   syncOfflineToggleUI(); // 导入/槽位加载会换掉 settings，按钮高亮须随档同步
   if (!pendingOffline) return;
-  const { raw, capped } = pendingOffline;
+  const { raw, capped, startMs } = pendingOffline;
   pendingOffline = null;
-  const res = runOfflineSimulation(capped);
+  const res = runOfflineSimulation(capped, startMs);
   checkAchievements();
   updateDispAnchor();
   renderAll();
+  state.lastTick = Date.now(); // O03：离线已结算到现在，时间戳归位
   saveGame();
   showOfflineModal(raw, capped, res);
 }
@@ -7892,16 +7883,16 @@ function showOfflineModal(raw, capped, res) {
   else { const phCh = offlineAbsGain(res.ph0, res.ph1); if (phCh) lines.push("声子 +" + phCh); }
   if (bhUnlocked()) {
     const mCh = offlineAbsGain(res.m0, res.m1);
-    if (mCh) lines.push("黑洞质量 +" + mCh.text + " M☉");
+    if (mCh) lines.push("黑洞质量 +" + mCh + " M☉");
     const vpCh = offlineAbsGain(res.vp0, res.vp1);
-    if (vpCh) lines.push("虚粒子 +" + vpCh.text);
+    if (vpCh) lines.push("虚粒子 +" + vpCh);
   }
   const annD = res.ann1 - res.ann0;
   if (annD >= 1) lines.push("湮灭 +" + fmt(Math.floor(annD)) + " 次");
   const spCh = offlineAbsGain(res.sp0, res.sp1);
-  if (spCh) lines.push("奇点 +" + spCh.text);
+  if (spCh) lines.push("奇点 +" + spCh);
   const cmCh = offlineAbsGain(res.cm0, res.cm1);
-  if (cmCh) lines.push("卡拉比-丘流形 +" + cmCh.text);
+  if (cmCh) lines.push("卡拉比-丘流形 +" + cmCh);
   // 离线期间冻结：明示无进度原因（10 次湮灭前达到上限即暂停，等待手动湮灭）
   if (annihilationFrozen()) lines.push("湮灭条件已满足：离线期间计算已暂停（湮灭后恢复）");
   if (lines.length <= 1) return; // 无实质收益（如生产为 0 挂机）不弹
@@ -8439,7 +8430,6 @@ function setupUI() {
 
   // 导出存档为 TXT 文件下载（内容与文本框导出一致）
   document.getElementById("save-download").addEventListener("click", () => {
-    state.lastTick = Date.now();
     const code = encodeSave(state);
     document.getElementById("save-io").value = code;
     const blob = new Blob([code], { type: "text/plain;charset=utf-8" });
@@ -8476,7 +8466,6 @@ function setupUI() {
   });
   // 导出并复制：存档同步写入文本框呈现，再复制到剪贴板（备用方式：选中后 execCommand）
   document.getElementById("save-copy").addEventListener("click", async () => {
-    state.lastTick = Date.now();
     const code = encodeSave(state);
     const io = document.getElementById("save-io");
     io.value = code;

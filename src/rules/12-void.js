@@ -340,7 +340,13 @@ function sbuCostLog(u, n) {
     });
   }
   if (u.id === "sbu2") {
-    // 1e10 × 1000^(n-1)；超过 7 级后每级额外 ×n³
+    // 1e10 × 1000^(n-1)；超过 7 级后每级额外 ×n³。
+    // A04：等级 >300 时改 lgamma 闭式（∑log(k)=lgamma10(n)−lg 7!，
+    // lgamma10(x)≡lg(x!) 口径；lg 7! 用精确常数，Stirling 误差只留 n 段），
+    // 消除 O(等级) 循环
+    if (n > 300) {
+      return 10 + (n - 1) * 3 + 3 * (lgamma10(n) - Math.log10(5040));
+    }
     let log = 10 + (n - 1) * 3;
     for (let k = 8; k <= n; k++) log += 3 * Math.log10(k);
     return log;

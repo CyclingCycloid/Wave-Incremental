@@ -8,7 +8,8 @@ function queueOfflineProgress() {
   pendingOffline = null;
   const raw = (Date.now() - state.lastTick) / 1000;
   if (state.settings.offlineEnabled === false || !isFinite(raw) || raw < OFFLINE_MIN_SEC) return;
-  pendingOffline = { raw, capped: Math.min(raw, OFFLINE_CAP_SEC) };
+  const endMs = Date.now();
+  pendingOffline = { raw, capped: Math.min(raw, OFFLINE_CAP_SEC), startMs: endMs - Math.min(raw, OFFLINE_CAP_SEC) * 1000 };
 }
 // log 差值 b−a（b 为零哨兵按无增量处理；a 为零哨兵时增量即 b）
 // D05：离线收益只写增益——损耗/归零返回 null（条目整个不写）。
@@ -34,17 +35,15 @@ function offlineLogDiff(a, b) {
 }
 // 粗步长模拟：每步推进虚拟时钟 → 生产累积 → 自动化（含自动湮灭）。
 // simActive 使全部 UI/保存函数早退，模拟中途不触碰 DOM 与 localStorage
-function runOfflineSimulation(cappedSec) {
+function runOfflineSimulation(cappedSec, startMs) {
   const res = {
     uLog0: getLogU10(), ph0: getLogPhonons(), m0: getLogBhMass(), vp0: getLogVP(),
     sp0: getLogSp(), phAbs0: state.phonons, ann0: state.annihilations, simmed: false,
     cm0: getLogCM(),
   };
-  // 模拟期间 gameNow() = Date.now() + offset，自动化写入的时间戳（lastAutoAnnAt 等）
-  // 会带上虚拟偏移；模拟结束后须把这些字段平移回现实时间线，否则 CD 计时
-  // （gameNow() - lastAutoAnnAt）为负、自动湮灭卡死直至现实时间追上（最长 8h）
-  const simStartReal = Date.now();
-  const tsBefore = snapshotSimTimestamps();
+  // O02：绝对虚拟时间轴——gameNow() 从 startMs（本次结算窗口的起点）推进到 ≈endMs，
+  // 模拟期间写入的时间戳天然落在现实时间线上（≤ 当前时刻），无需事后平移
+  simTimeOffset = Number.isFinite(startMs) ? startMs - Date.now() : 0;
   simActive = true;
   try {
     // 自适应步长（修正「收益远低于预期」）：旧版固定 ~800 步（8h → 每步 36s），
@@ -92,10 +91,8 @@ function runOfflineSimulation(cappedSec) {
     // 模拟异常即中止：保留已结算部分，时间线归位，绝不让异常拖垮加载
     console.error("离线模拟异常（已中止，保留当前进度）:", e);
   }
-  // 平移量 = 虚拟推进总量 − 模拟本身耗掉的现实时间（写入越晚超前越少，线性近似足够精确）
-  const shift = simTimeOffset - (Date.now() - simStartReal);
+  // O02：绝对时间轴下时间戳已属现实线，直接归零虚拟偏移（gameNow() = Date.now()）
   simTimeOffset = 0;
-  restoreSimTimestamps(tsBefore, simStartReal, shift);
   simActive = false;
   res.uLog1 = getLogU10(); res.ph1 = getLogPhonons();
   res.m1 = getLogBhMass(); res.vp1 = getLogVP();
@@ -104,28 +101,6 @@ function runOfflineSimulation(cappedSec) {
   res.ann1 = state.annihilations;
   res.cm1 = getLogCM();
   return res;
-}
-// 模拟期间可能被虚拟时钟写入的时间戳字段
-const SIM_TS_KEYS = [
-  "lastAutoAnnAt", "lastAutoUp3At", "annStartReal", "lastPurchaseAt",
-  "zeroGainSince", "capReachedAt", "bhPulseSince", "bhDistorlSince",
-  "ruaBoostUntil", "ruaBoostCD", "ruaDayStart",
-];
-function snapshotSimTimestamps() {
-  const snap = {};
-  for (const k of SIM_TS_KEYS) snap[k] = state[k];
-  return snap;
-}
-// 模拟结束后：对「模拟期间被写入且落在虚拟未来」的字段平移回现实时间线
-function restoreSimTimestamps(before, simStartReal, shift) {
-  if (!(shift > 0)) return;
-  for (const k of SIM_TS_KEYS) {
-    const v = state[k];
-    // 仅平移模拟期间变化的字段（值 !== 模拟前）且确为虚拟时间戳（> 模拟开始的真实时刻）
-    if (typeof v === "number" && isFinite(v) && v !== before[k] && v > simStartReal) {
-      state[k] = Math.max(v - shift, simStartReal);
-    }
-  }
 }
 // 设置页开关高亮随当前档同步（init、导入、槽位加载后各调一次）
 function syncOfflineToggleUI() {
@@ -136,12 +111,13 @@ function syncOfflineToggleUI() {
 function processPendingOffline() {
   syncOfflineToggleUI(); // 导入/槽位加载会换掉 settings，按钮高亮须随档同步
   if (!pendingOffline) return;
-  const { raw, capped } = pendingOffline;
+  const { raw, capped, startMs } = pendingOffline;
   pendingOffline = null;
-  const res = runOfflineSimulation(capped);
+  const res = runOfflineSimulation(capped, startMs);
   checkAchievements();
   updateDispAnchor();
   renderAll();
+  state.lastTick = Date.now(); // O03：离线已结算到现在，时间戳归位
   saveGame();
   showOfflineModal(raw, capped, res);
 }
@@ -156,16 +132,16 @@ function showOfflineModal(raw, capped, res) {
   else { const phCh = offlineAbsGain(res.ph0, res.ph1); if (phCh) lines.push("声子 +" + phCh); }
   if (bhUnlocked()) {
     const mCh = offlineAbsGain(res.m0, res.m1);
-    if (mCh) lines.push("黑洞质量 +" + mCh.text + " M☉");
+    if (mCh) lines.push("黑洞质量 +" + mCh + " M☉");
     const vpCh = offlineAbsGain(res.vp0, res.vp1);
-    if (vpCh) lines.push("虚粒子 +" + vpCh.text);
+    if (vpCh) lines.push("虚粒子 +" + vpCh);
   }
   const annD = res.ann1 - res.ann0;
   if (annD >= 1) lines.push("湮灭 +" + fmt(Math.floor(annD)) + " 次");
   const spCh = offlineAbsGain(res.sp0, res.sp1);
-  if (spCh) lines.push("奇点 +" + spCh.text);
+  if (spCh) lines.push("奇点 +" + spCh);
   const cmCh = offlineAbsGain(res.cm0, res.cm1);
-  if (cmCh) lines.push("卡拉比-丘流形 +" + cmCh.text);
+  if (cmCh) lines.push("卡拉比-丘流形 +" + cmCh);
   // 离线期间冻结：明示无进度原因（10 次湮灭前达到上限即暂停，等待手动湮灭）
   if (annihilationFrozen()) lines.push("湮灭条件已满足：离线期间计算已暂停（湮灭后恢复）");
   if (lines.length <= 1) return; // 无实质收益（如生产为 0 挂机）不弹

@@ -63,7 +63,6 @@ function setupUI() {
 
   // 导出存档为 TXT 文件下载（内容与文本框导出一致）
   document.getElementById("save-download").addEventListener("click", () => {
-    state.lastTick = Date.now();
     const code = encodeSave(state);
     document.getElementById("save-io").value = code;
     const blob = new Blob([code], { type: "text/plain;charset=utf-8" });
@@ -100,7 +99,6 @@ function setupUI() {
   });
   // 导出并复制：存档同步写入文本框呈现，再复制到剪贴板（备用方式：选中后 execCommand）
   document.getElementById("save-copy").addEventListener("click", async () => {
-    state.lastTick = Date.now();
     const code = encodeSave(state);
     const io = document.getElementById("save-io");
     io.value = code;

@@ -295,6 +295,13 @@ function up2CostLog() {
   const n = state.up2 + 1;
   if (inDistort("inflation")) {
     // double 版 1e6 × ∏max(k²,100) 已含通胀，不叠 costOf
+    // A04：等级 >300 时改 lgamma 闭式（∑log(k²)=2(lgamma10(n)−lg 10!)，
+    // lgamma10(x)≡lg(x!) 口径与既有 k>300 段一致；lg 10! 用精确常数，
+    // Stirling 小宗量误差只留在 n 段（O(1/n)，n>300 时 ≤2.4e-4）），
+    // 消除随等级增长的循环（离线重放/每 tick 显示的热路径）
+    if (state.up2 > 300) {
+      return clampLog(26 + 2 * (lgamma10(state.up2) - Math.log10(3628800)));
+    }
     let lp = 6;
     for (let k = 1; k <= state.up2; k++) lp += Math.log10(Math.max(k * k, 100));
     return clampLog(lp);
