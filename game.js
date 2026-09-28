@@ -1118,7 +1118,8 @@ function fmtLog(logV) {
   // 超大数值（10^(1e15) 量级）下永不溢出（稳定运行更久）；
   // 值 <1000（logV<3）走 fmt 的定点小数显示（e0.334 这类小值表示可读性差）
   if ((state.settings && state.settings.notation) === "e") {
-    if (logV < 3) return fmt(Math.pow(10, logV));
+    // logV ≤ -308 时 10^logV 已下溢为 0，必须走 eXXX（否则波长极短时异常显示成 0）
+    if (logV < 3 && logV > -308) return fmt(Math.pow(10, logV));
     return "e" + logV.toFixed(d3or6());
   }
   // 小数位数跟随设置（与 fmt 一致）
