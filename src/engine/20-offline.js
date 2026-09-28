@@ -11,14 +11,21 @@ function queueOfflineProgress() {
   pendingOffline = { raw, capped: Math.min(raw, OFFLINE_CAP_SEC) };
 }
 // log 差值 b−a（b 为零哨兵按无增量处理；a 为零哨兵时增量即 b）
-// D05：离线收益按绝对增量表述——offlineLogDiff 是倍率 lg(new/old)，不能直接当增量显示。
-// old/new 为 log10；双方可表示时取真实绝对差，超大值取 log 域减法 lg(new−old)，无旧值取绝对值。
+// D05：离线收益按带方向的绝对增量表述——offlineLogDiff 是倍率 lg(new/old)，不能直接当增量显示。
+// old/new 为 log10；new−old 用带符号 log 减法求 lg(new−old)（方向与幅度），损耗以 − 显示；
+// 幅度 ≥300（超 double）以 eXXX 形式显示——永不出现 ∞，即使资源已到 log 权威上限（1e15）
 function offlineAbsGain(oldLog, newLog) {
   const hasOld = oldLog > NLOG + 1, hasNew = newLog > NLOG + 1;
-  if (!hasNew) return null;
-  if (!hasOld) return newLog < 300 ? fmt(Math.pow(10, newLog)) : fmtLog(newLog);
-  if (newLog < 300 && oldLog < 300) return fmt(Math.pow(10, newLog) - Math.pow(10, oldLog));
-  return fmtLog(logAddSigned(newLog, 1, oldLog, -1));
+  if (!hasNew) return null;                                    // 结束时为 0：显示归零
+  if (!hasOld) return { text: magText(newLog), dir: 1 };        // 从零到有
+  const r = logAddSigned(newLog, 1, oldLog, -1);               // lg(new−old)，带符号
+  if (r.log <= NLOG + 1) return { text: "0", dir: -1 };         // 完全抵消：显示归零
+  const mag = Math.abs(r.log);
+  return { text: mag < 300 ? fmt(Math.pow(10, mag)) : "e" + mag.toFixed(3), dir: r.sign };
+}
+// 幅度显示：|lg| < 300 → 常规 fmt；≥300 → eXXX 形式（永不 ∞）
+function magText(logV) {
+  return Math.abs(logV) < 300 ? fmt(Math.pow(10, logV)) : "e" + Math.abs(logV).toFixed(3);
 }
 function offlineLogDiff(a, b) {
   if (b <= NLOG + 1) return -Infinity;
@@ -114,32 +121,26 @@ function processPendingOffline() {
 // 离线收益弹窗（收益已先行入账，按钮仅关闭；无实质收益则不弹）
 function showOfflineModal(raw, capped, res) {
   const lines = ["你离开了 " + fmtTime(raw) + (raw > capped + 1 ? "（结算上限 " + fmtTime(capped) + "）" : "")];
-  const uAbs = offlineAbsGain(res.uLog0, res.uLog1);
-  if (uAbs !== null) lines.push("波速 +" + uAbs + " m/s");
-  // 声子优先显示绝对增量（大基数上的小增量 log 差趋 0 会漏报），超 double 回退 log 差
+  const uCh = offlineAbsGain(res.uLog0, res.uLog1);
+  if (uCh) lines.push("波速 " + (uCh.dir > 0 ? "+" : "−") + uCh.text + " m/s");
+  // 声子优先显示绝对增量（大基数上的小增量 log 差趋 0 会漏报），超 double 回退 log 带方向差
   const phAbsD = (isFinite(res.phAbs0) && isFinite(res.phAbs1)) ? res.phAbs1 - res.phAbs0 : NaN;
-  const phD = offlineLogDiff(res.ph0, res.ph1);
   if (isFinite(phAbsD) && phAbsD >= 1) lines.push("声子 +" + fmt(Math.floor(phAbsD)));
-  else { const phAbs = offlineAbsGain(res.ph0, res.ph1); if (phAbs !== null) lines.push("声子 +" + phAbs); }
+  else { const phCh = offlineAbsGain(res.ph0, res.ph1); if (phCh) lines.push("声子 " + (phCh.dir > 0 ? "+" : "−") + phCh.text); }
   if (bhUnlocked()) {
-    const mD = offlineLogDiff(res.m0, res.m1);
-    const mAbs = offlineAbsGain(res.m0, res.m1);
-    if (mAbs !== null) lines.push("黑洞质量 +" + mAbs + " M☉");
-    else if (isFinite(mD) && mD < -1e-4) lines.push("黑洞质量 ÷" + fmt(Math.pow(10, -mD)) + "（脉冲衰减）");
-    const vpD = offlineLogDiff(res.vp0, res.vp1);
-    const vpAbs = offlineAbsGain(res.vp0, res.vp1);
-    if (vpAbs !== null) lines.push("虚粒子 +" + vpAbs);
-    else if (isFinite(vpD) && vpD < -1e-4) lines.push("虚粒子 ÷" + fmt(Math.pow(10, -vpD)) + "（吸积衰减）");
+    const mCh = offlineAbsGain(res.m0, res.m1);
+    if (mCh) lines.push("黑洞质量 " + (mCh.dir > 0 ? "+" : "−") + mCh.text + " M☉" + (mCh.dir < 0 ? "（脉冲衰减）" : ""));
+    const vpCh = offlineAbsGain(res.vp0, res.vp1);
+    if (vpCh) lines.push("虚粒子 " + (vpCh.dir > 0 ? "+" : "−") + vpCh.text + (vpCh.dir < 0 ? "（吸积衰减）" : ""));
   }
   const annD = res.ann1 - res.ann0;
   if (annD >= 1) lines.push("湮灭 +" + fmt(Math.floor(annD)) + " 次");
-  const spD = offlineLogDiff(res.sp0, res.sp1);
-  const spAbs = offlineAbsGain(res.sp0, res.sp1);
-  if (spAbs !== null) lines.push("奇点 +" + spAbs);
-  // 卡拉比-丘流形（卷缩层离线产出；显示 floor 与页面口径一致）
-  const cmD = offlineLogDiff(res.cm0, res.cm1);
-  const cmAbs = offlineAbsGain(res.cm0, res.cm1);
-  if (cmAbs !== null) lines.push("卡拉比-丘流形 +" + cmAbs);
+  const spCh = offlineAbsGain(res.sp0, res.sp1);
+  if (spCh) lines.push("奇点 " + (spCh.dir > 0 ? "+" : "−") + spCh.text);
+  const cmCh = offlineAbsGain(res.cm0, res.cm1);
+  if (cmCh) lines.push("卡拉比-丘流形 " + (cmCh.dir > 0 ? "+" : "−") + cmCh.text);
+  // 离线期间冻结：明示无进度原因（10 次湮灭前达到上限即暂停，等待手动湮灭）
+  if (annihilationFrozen()) lines.push("湮灭条件已满足：离线期间计算已暂停（湮灭后恢复）");
   if (lines.length <= 1) return; // 无实质收益（如生产为 0 挂机）不弹
   document.getElementById("offline-text").textContent = lines.join("\n");
   document.getElementById("offline-overlay").classList.remove("hidden");
