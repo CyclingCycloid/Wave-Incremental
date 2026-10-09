@@ -4,6 +4,17 @@
 
 ## v0.6.3.2 — The Research Update（测试中，数值待调）
 
+### 模块更新：超对数/迭代幂次 v2（精度重建 + Log10 接口族）
+
+- **系数与内核重建**（用户 2026-10-10 更新版）：96 项系数（旧版 80/49 项）、展开中心改为高度 −0.5、PARI/GP 101 位十进制工作精度生成、内部 double-double 扩展运算；每个底数 41 个局部参考点最大绝对误差 ~1.11e-16（数值测试结果，非严格误差证明）。系数生成算法来源：Sheldon kneser.gp (2013)，tetrationforum attachment 1025
+- **新增 Log10 接口族**（推荐的大数正向接口，绕开 break_infinity 完整数值表示上限）：
+  - `slogX.fromLog10(t)`：slog(10^t)，t ∈ [−1e16, 1e16]——正方向支持到 N = 10^(10^16)（1ee16）
+  - `tetX.log10(h)`：结果值的 log10（Number），不受完整数值范围限制
+  - `tetX.shiftLog10(t, d)`：log10(sexp(slog(10^t) + d))——高度在内部以 double-double 保留后再取指数，微小增量不丢失（勿先输出完整高度再加增量）；d=0 精确返回 t
+- **整合重构**：新旧两底数源文件除系数表/LNB/BASE/工厂名外逐字节相同，整合模块改为共享参数化内核 `createSlogBase`（对外接口与旧版兼容：tet2/tet10 即 sexp 工厂，`createSlogTetration` 接线不变）
+- 移植校验：两份系数表与源文件**逐字节比对一致**（程序化 diff 抓出 3 处手抄错后修正）；README 参考值 `sexp2.shiftLog10(1e12, 1e-6) = 1000115579924.944`、`sexp10.shiftLog10(1e12, 1e-6) = 1000115843409.341` **逐位吻合**
+- 验证：`tests/slog-tetration.mjs` 更新至 44 项断言（整数锚点改 1e-12 容差——DD 运算链有 1ulp 级漂移；新增 Log10 接口族/README 参考值/往返/抛错边界）+ tail55 全量回归通过
+
 ### 新增模块：超对数/迭代幂次（slog2/slog10/tet2/tet10，备用）
 
 - **`src/modules/slog-tetration.js`**：底数 2/10 的 Kneser 实数超对数（slog）与迭代幂次（tetration）数值近似，忠实移植自用户 2026-10-09 生成的三个独立 UMD 模块（仅去 UMD 壳、系数表移入工厂作用域，数值内核逐字保留；系数来源 Sheldon，tetrationforum #546/#486）
