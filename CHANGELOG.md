@@ -4,6 +4,15 @@
 
 ## v0.6.3.2 — The Research Update（测试中，数值待调）
 
+### 新增模块：超对数/迭代幂次（slog2/slog10/tet2/tet10，备用）
+
+- **`src/modules/slog-tetration.js`**：底数 2/10 的 Kneser 实数超对数（slog）与迭代幂次（tetration）数值近似，忠实移植自用户 2026-10-09 生成的三个独立 UMD 模块（仅去 UMD 壳、系数表移入工厂作用域，数值内核逐字保留；系数来源 Sheldon，tetrationforum #546/#486）
+- **接口**：`slog2/slog10(value)` 返回 Number（超大输入传 `"1e1000"` 等字符串或 Decimal，勿传已溢出的 Number）；`tet2/tet10(height)` 返回 Decimal（`.number()` 取 Number；height > −2；结果超 break_infinity 指数范围抛 RangeError，如 tet2(6)/tet10(4)）。归一化 T(0)=1、T(1)=底数、T(−1)=0；f(底数^x)=f(x)+1
+- **接线**：`createSlogTetration(globalThis)` 在 00-state 解构出四个函数，游戏任意分段可直接调用；当前**无游戏逻辑调用**，供未来超高量级内容（log 权威 10^1e15 之上的量级表述/反演）备用
+- **构建管线泛化**：build.mjs 改为按 manifest.modules 清单循环前置模块（原两模块硬编码），输入指纹/输出拼接对既有两模块逐字节不变
+- 精度口径：非任意精度（IEEE-754 double 内核）；基 10 近似精度低于基 2（保守显示取 6 位小数）
+- 验证：新增 `tests/slog-tetration.mjs` 27 项断言（2 的幂链精确点 slog2(65536)=4、函数方程 slog10(100)=slog10(2)+1、超大输入 slog2("1e1000")≈4.85 与 tet 反演往返、tet10(3)=10^(1e10)、超范围/畸形输入抛错）+ 构建产物内 5 项接线冒烟 + tail55 全量回归通过
+
 ### Issue 审查修复（批次 6：A04/O02/O03，性能与离线时间线）
 
 - **A04 修正（性能）：三处随等级增长的 O(等级) 循环改闭式**——

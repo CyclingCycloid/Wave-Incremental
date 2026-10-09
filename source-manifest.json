@@ -130,14 +130,15 @@
   ],
   "modules": [
     "src/modules/log-math.js",
-    "src/modules/save-codec.js"
+    "src/modules/save-codec.js",
+    "src/modules/slog-tetration.js"
   ],
   "notes": [
     "firstLine/lastLine 是抽取时基线（50a1540）中的行号；00-state/01-numbers/04-format 三段随后做过模块抽取编辑，实际行数少于记录值。",
-    "构建产物 game.js = src/modules/log-math.js + src/modules/save-codec.js + 25 段按序拼接（无 IIFE/无作用域隔离，经典脚本）。",
-    "两模块的解构绑定位于 src/core/00-state.js（createLogMath/createSaveCodec），src 自含接线、不依赖构建注入。"
+    "构建产物 game.js = modules 清单中的纯函数模块（log-math、save-codec、slog-tetration）+ 25 段按序拼接（无 IIFE/无作用域隔离，经典脚本）。",
+    "三模块的解构绑定位于 src/core/00-state.js（createLogMath/createSaveCodec/createSlogTetration），src 自含接线、不依赖构建注入。"
   ],
-  "candidateSourceSha256": "2fb23a9d21a2685758dbf7115de0ff3f75c8094937377a288347a06fb6303a2d",
-  "candidateInputsSha256": "fbc5387d8c33bdb343237e98aca1466bc56f8663265b5eefd1a28fbec1ce14a9",
+  "candidateSourceSha256": "0bada73117af950685516d2ca35999e3c19d6a60571a7d3d8c8871bb8010f7d2",
+  "candidateInputsSha256": "2444095730050dd410ba8916556fe5264428d851f01402bbab6b09d99b170282",
   "build": "node tools/build.mjs（改 src 后运行；指纹不符时用 --update 显式重建指纹）"
 }

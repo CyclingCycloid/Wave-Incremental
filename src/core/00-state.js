@@ -210,6 +210,10 @@ const LOG_CAP = 1e15;
 const { clampLog, logAddLogs, logAddSigned, cmpGE, cmpLT } =
   createLogMath({ NLOG, LOG_CAP, LOG_FALLBACK });
 const { encodeSave, decodeSave } = createSaveCodec(globalThis);
+// 超对数/迭代幂次（底数 2/10，Kneser 数值近似，src/modules/slog-tetration.js）：
+// slog2/slog10(value)→Number（超大输入传 "1e1000" 等字符串）、tet2/tet10(height)→Decimal。
+// 当前无游戏逻辑调用，供未来超高量级内容备用
+const { slog2, slog10, tet2, tet10 } = createSlogTetration(globalThis);
 
 let state = defaultState();
 let currentSlot = 0;

@@ -37,9 +37,9 @@
 
 ## 开发工作流（模块化构建，v0.6.3.2 起）
 
-- 游戏逻辑源码在 `src/`（25 个按序分段：core/rules/engine/services/ui/app + `modules/` 两个纯函数模块 + `adapters/` 存储端口）。**改 `src/` 后运行 `node tools/build.mjs` 重新生成根目录 `game.js`**（index.html 只加载构建产物）。
+- 游戏逻辑源码在 `src/`（25 个按序分段：core/rules/engine/services/ui/app + `modules/` 三个纯函数模块 + `adapters/` 存储端口）。**改 `src/` 后运行 `node tools/build.mjs` 重新生成根目录 `game.js`**（index.html 只加载构建产物）。
 - `source-manifest.json` 记录分段行区间与 SHA256 指纹：分段/模块被改动后构建会拒绝，需 `node tools/build.mjs --update` 审查后显式重建指纹（防「审的版本」与「跑的版本」脱节）。
-- 回归：`node tests/log-math-invariants.mjs`（log 算术 vs break_infinity 参照随机差分 + WI1 编解码往返）；Node 存根回归沿用 tail55 拼接方式对构建产物运行。
+- 回归：`node tests/log-math-invariants.mjs`（log 算术 vs break_infinity 参照随机差分 + WI1 编解码往返）、`node tests/slog-tetration.mjs`（超对数/迭代幂次模块的精确点/往返/抛错边界）；Node 存根回归沿用 tail55 拼接方式对构建产物运行。
 - `Issue/` 为只读审查存档（bug 报告与修复方案），不参与构建。
 
 ## 版本
