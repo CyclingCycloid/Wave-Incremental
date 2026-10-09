@@ -1,3 +1,77 @@
+// ---------- 滚动新闻条 ----------
+// 文案在根目录 news.js（window.gameNews 字符串数组），改完刷新即生效、无需重新构建。
+// 数组为空/文件缺失时整条自动隐藏（可重复调用：文案热更新后重跑即可刷新）。
+// 一次至多滚动一条：单条从条右缘进入、完全离开左缘后换下一条（CSS 动画，行程经
+// --news-from/--news-to/--news-dur 三个变量传入关键帧，animationend 换条）。
+// 调用顺序为不重随机（洗牌袋）：整轮洗牌逐条出袋，一轮放完才重洗；
+// 重洗时若与上一条衔接相同则袋内换位（≥2 条时保证相邻不重复）。
+// 悬停暂停为纯 CSS（animation-play-state）；速度恒定 NEWS_SPEED px/s；
+// 系统开启「减弱动态效果」时退化为静态铺开（截断省略）。
+// 实现注记：轨道用常规 in-flow inline-block（起点/终点全靠 transform 变量），
+// 不用 absolute+WAAPI——后者在本项目嵌入式浏览器里文本层不绘制
+const NEWS_SPEED = 110; // px/s
+let newsItems = [];
+let newsBag = [];      // 洗牌袋：本轮尚未播出的条目下标
+let newsLastShown = -1; // 上一条下标（跨袋防衔接重复用）
+// 不重随机取下一条：袋空则 Fisher-Yates 重洗全量下标，袋尾（下一个出袋）与上一条
+// 相同则与袋首换位（条目唯一，袋首必不同；仅 1 条时无法避免重复）
+function nextNewsIdx() {
+  if (!newsBag.length) {
+    newsBag = newsItems.map((_, i) => i);
+    for (let i = newsBag.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const t = newsBag[i]; newsBag[i] = newsBag[j]; newsBag[j] = t;
+    }
+    if (newsBag.length > 1 && newsBag[newsBag.length - 1] === newsLastShown) {
+      const t = newsBag[newsBag.length - 1];
+      newsBag[newsBag.length - 1] = newsBag[0];
+      newsBag[0] = t;
+    }
+  }
+  newsLastShown = newsBag.pop();
+  return newsLastShown;
+}
+function playNewsItem() {
+  const bar = document.getElementById("news-ticker");
+  const track = document.getElementById("news-track");
+  if (!bar || bar.classList.contains("hidden") || !newsItems.length) return;
+  track.textContent = newsItems[nextNewsIdx()];
+  const barW = bar.clientWidth, itemW = track.offsetWidth;
+  if (barW <= 0 || itemW <= 0) return;
+  track.style.setProperty("--news-from", barW + "px");
+  track.style.setProperty("--news-to", -itemW + "px");
+  track.style.setProperty("--news-dur", ((barW + itemW) / NEWS_SPEED).toFixed(2) + "s");
+  // 重置动画：置 none 强制 reflow 后清空，按新变量重新起跑
+  track.style.animation = "none";
+  void track.offsetWidth;
+  track.style.animation = "";
+}
+function initNewsTicker() {
+  const bar = document.getElementById("news-ticker");
+  if (!bar) return;
+  newsItems = (Array.isArray(window.gameNews) ? window.gameNews : [])
+    .filter(s => typeof s === "string" && s.trim() !== "");
+  newsBag = []; newsLastShown = -1; // 热更新：文案集已变，袋子重开
+  bar.classList.remove("static-mode");
+  if (!newsItems.length) { bar.classList.add("hidden"); return; } // 空/缺失：整条隐藏
+  bar.classList.remove("hidden");
+  const track = document.getElementById("news-track");
+  if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    bar.classList.add("static-mode");
+    track.textContent = newsItems.join("\u3000");
+    track.onanimationend = null;
+    return;
+  }
+  track.onanimationend = () => playNewsItem();
+  playNewsItem();
+  if (!initNewsTicker._bound) {
+    initNewsTicker._bound = true;
+    window.addEventListener("resize", () => {
+      if (newsItems.length && track.onanimationend) playNewsItem(); // 当前条按新尺寸重新起跑
+    });
+  }
+}
+
 // ---------- Theme ----------
 function applyTheme(theme) {
   document.body.setAttribute("data-theme", theme);

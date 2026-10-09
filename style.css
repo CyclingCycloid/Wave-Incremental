@@ -904,3 +904,40 @@ body[data-theme="white"] .inf-line .research-res-val { color: #3050b0; }
 .void-svu-card.locked-soft .sau-desc,
 .void-svu-card.locked-soft .sau-cost,
 .void-svu-card.locked-soft .svu3-btns { opacity: 0.5; }
+
+/* ===== 滚动新闻条（文案见根目录 news.js；无内容时 JS 自动隐藏） ===== */
+/* 与主内容区（#app 760px）同宽居中、距页顶留 6px；一次至多滚动一条：单条从右缘进入、
+   左缘离开后由 animationend 换下一条（行程经 --news-from/--news-to/--news-dur 传入关键帧） */
+#news-ticker {
+  overflow: hidden;
+  white-space: nowrap;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.95em;
+  height: 2.1em;
+  line-height: 2.1em;
+  user-select: none;
+  max-width: 760px;
+  margin: 16px auto -12px; /* 下移贴近标题：负下边距抵消 #app 顶部内边距的一部分，条紧贴标题上方一点点 */
+}
+#news-track {
+  display: inline-block;
+  white-space: nowrap;
+  animation: news-item var(--news-dur, 8s) linear forwards;
+}
+#news-ticker:hover #news-track { animation-play-state: paused; }
+@keyframes news-item {
+  from { transform: translateX(var(--news-from, 0px)); }
+  to { transform: translateX(var(--news-to, -100%)); }
+}
+/* 系统开启「减弱动态效果」时不做平移动画：静态铺开并截断省略 */
+#news-ticker.static-mode #news-track {
+  animation: none;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 新闻条文字色：主题化鲜明显示（不用暗灰 --text-dim） */
+body[data-theme="black"] #news-ticker { color: #ffffff; }
+body[data-theme="white"] #news-ticker { color: #000000; }

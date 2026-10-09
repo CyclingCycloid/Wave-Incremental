@@ -13,6 +13,7 @@ function init() {
   applyOfflineSteps(state.settings.offlineSteps);
   applyUiFps(state.settings.uiFps);
   setupUI();
+  initNewsTicker(); // 顶部滚动新闻条（文案见根目录 news.js，无内容自动隐藏）
   applyTestModeUIGlobal(); // 刷新后同步测试模式 UI（按钮文案/工具显隐/顶栏版本）——缺失会导致刷新后看起来退出测试
   applyPhononVisibility();
   applyAnnihilationVisibility();

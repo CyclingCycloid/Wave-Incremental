@@ -7,6 +7,8 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body data-theme="black">
+  <!-- 滚动新闻条：文案在根目录 news.js（window.gameNews 字符串数组），无内容时整条隐藏 -->
+  <div id="news-ticker" class="hidden"><div id="news-track"></div></div>
   <div id="ach-popup-stack"></div>
   <div id="app">
     <header id="topbar">
@@ -726,6 +728,7 @@
     </footer>
   </div>
 
+  <script src="news.js"></script>
   <script src="break_infinity.js"></script>
   <script src="game.js"></script>
 </body>
