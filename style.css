@@ -946,5 +946,19 @@ body[data-theme="white"] #news-ticker { color: #000000; }
 .research-done-card { cursor: pointer; transition: border-color .15s; }
 .research-done-card:hover { border-color: var(--accent); }
 
-/* 卡拉比-丘流形装饰动画（维度折叠器页顶部；纯装饰，JS 驱动） */
-#comp-cy-canvas { display: block; width: 100%; max-width: 680px; height: 150px; margin: 4px auto 10px; background: radial-gradient(ellipse at center, rgba(90, 70, 160, 0.12), transparent 72%), var(--bg-panel); border: 1px solid var(--border); border-radius: 6px; }
+
+/* 维度折叠器标题右侧的小轨道动画（纯 CSS 合成器动画近零成本；卷缩层三代表色：
+   橙=卷缩、青=波动、紫=虚空；整体压扁呈椭圆轨道，粒子沿轨道公转） */
+.fold-orbit { position: relative; float: right; width: 38px; height: 38px; margin: -8px 0 0 10px; transform: scaleY(0.5); }
+.fold-orbit .ring { position: absolute; border: 1px solid rgba(128, 128, 128, 0.35); border-radius: 50%; }
+.fold-orbit .r1 { inset: 2px; }
+.fold-orbit .r2 { inset: 8px; }
+.fold-orbit i { position: absolute; top: 50%; left: 50%; width: 7px; height: 7px; margin: -3.5px; border-radius: 50%; transform: translateX(var(--r, 14px)); animation: foldOrbit linear infinite; }
+.fold-orbit .p1 { --r: 16px; background: #ff8c1a; animation-duration: 5s; }
+.fold-orbit .p2 { --r: 10px; background: #1aa7c0; animation-duration: 3.4s; animation-direction: reverse; }
+.fold-orbit .p3 { --r: 16px; background: #8b5cf6; animation-duration: 8.2s; animation-delay: -2.5s; }
+@keyframes foldOrbit {
+  from { transform: rotate(0deg) translateX(var(--r, 14px)); }
+  to { transform: rotate(360deg) translateX(var(--r, 14px)); }
+}
+@media (prefers-reduced-motion: reduce) { .fold-orbit i { animation: none; } }
