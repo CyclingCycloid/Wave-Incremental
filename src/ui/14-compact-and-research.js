@@ -586,7 +586,8 @@ function updateCompactButton() {
 
 
 // ---------- 卡拉比-丘流形装饰动画（维度折叠器页顶部；纯装饰，不涉任何数值）----------
-// Hanson 参数化的 CY(n=5) 二维投影：25 片 (k1,k2) 环面纤维绕轴旋转；
+// Hanson 参数化的 CY(n=5) 二维投影：25 片 (k1,k2) 环面纤维的**连续丝线**绕轴旋转——
+// 每条曲线两遍描边（粗淡打底 + 细亮勾边）叠出辉光，线重叠处自然增亮；
 // 主题青→紫着色，亮度随 CM 量级轻微增强（lgCM 0→50 映射 0.35→1）；
 // 仅在维度折叠器子页可见时绘制（页面隐藏时 rAF 空转，零绘制开销）
 const CY_N = 5;
@@ -598,21 +599,24 @@ function drawCalabiYau(ts) {
   const w = canvas.width, h = canvas.height;
   const dt = cyLast ? Math.min(0.05, (ts - cyLast) / 1000) : 0.016;
   cyLast = ts;
-  if (!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)) cyPhase += dt * 0.45;
+  if (!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)) cyPhase += dt * 0.28;
   ctx.clearRect(0, 0, w, h);
   const lgCM = getLogCM() > NLOG + 1 ? getLogCM() : 0;
   const glow = Math.min(1, 0.35 + Math.max(0, lgCM) / 50);
   const scale = Math.min(w, h) * 0.44;
   const cx = w / 2, cy = h / 2;
-  const rotY = cyPhase * 0.6, rotX = 0.5 + Math.sin(cyPhase * 0.3) * 0.18;
+  const rotY = cyPhase * 0.5, rotX = 0.5 + Math.sin(cyPhase * 0.3) * 0.18;
   const cY = Math.cos(rotY), sY = Math.sin(rotY), cX = Math.cos(rotX), sX = Math.sin(rotX);
-  const STEPS = 30, PHASES = 4;
+  const STEPS = 44, PHASES = 6;
+  ctx.lineJoin = "round";
   for (let k1 = 0; k1 < CY_N; k1++) {
     for (let k2 = 0; k2 < CY_N; k2++) {
       const mix = (k1 + k2 * 0.5) / (CY_N * 1.5);
-      const cr = 26 + (139 - 26) * mix, cg = 167 + (92 - 167) * mix, cb = 192 + (246 - 192) * mix;
+      const cr = (26 + (139 - 26) * mix) | 0, cg = (167 + (92 - 167) * mix) | 0, cb = (192 + (246 - 192) * mix) | 0;
       for (let pi = 0; pi < PHASES; pi++) {
         const bOff = cyPhase * 2 + pi * Math.PI * 2 / PHASES;
+        ctx.beginPath();
+        let zSum = 0;
         for (let st = 0; st <= STEPS; st++) {
           const a = (st / STEPS) * Math.PI / 2;
           const a1 = a * CY_N / 2 + 2 * Math.PI * k1 / CY_N;
@@ -627,12 +631,19 @@ function drawCalabiYau(ts) {
           const x1 = X * cY - Z * sY;
           const z1 = X * sY + Z * cY;
           const y2 = Y * cX - z1 * sX;
-          const depth = (Y * sX + z1 * cX + 1.3) / 2.6; // 0..1 深度雾
+          zSum += Y * sX + z1 * cX;
           const px = cx + x1 * scale;
           const py = cy - y2 * scale;
-          ctx.fillStyle = `rgba(${cr | 0},${cg | 0},${cb | 0},${(0.12 + depth * 0.55) * glow})`;
-          ctx.fillRect(px - 1, py - 1, 2, 2);
+          if (st === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
         }
+        const depth = (zSum / (STEPS + 1) + 1.3) / 2.6; // 0..1 整线平均深度雾
+        const alpha = (0.07 + depth * 0.30) * glow; // 线重叠密集，单线透明度取低
+        ctx.strokeStyle = `rgba(${cr},${cg},${cb},${alpha * 0.55})`; // 粗淡打底（辉光）
+        ctx.lineWidth = 2.6;
+        ctx.stroke();
+        ctx.strokeStyle = `rgba(${cr},${cg},${cb},${alpha})`; // 细亮勾边
+        ctx.lineWidth = 1;
+        ctx.stroke();
       }
     }
   }
