@@ -941,3 +941,7 @@ body[data-theme="white"] .inf-line .research-res-val { color: #3050b0; }
 /* 新闻条文字色：主题化鲜明显示（不用暗灰 --text-dim） */
 body[data-theme="black"] #news-ticker { color: #ffffff; }
 body[data-theme="white"] #news-ticker { color: #000000; }
+
+/* 已完成研究卡：可点击切换 描述↔效果文本 */
+.research-done-card { cursor: pointer; transition: border-color .15s; }
+.research-done-card:hover { border-color: var(--accent); }

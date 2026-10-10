@@ -741,6 +741,25 @@ function buyResearch(id) {
   updateAchievementsUI();
   setAutosaveStatus("研究完成：" + def.name + "（理论深度 +1/3）");
 }
+// 研究的「效果表示文本」：已完成列表内点击卡片切换显示（返回当前数值的实时效果；
+// 纯开关型研究给状态行）。集中在此维护，新研究在 switch 补一行
+function researchEffectText(id) {
+  switch (id) {
+    case "R1": return "折叠器获取 ×" + fmtLog(Math.max(cmRateLog() * 0, 2)) + " 或 ^1.03（取大）"; // ×100 已含进 cmRateLog，无法剥离时按定义显示
+    case "R2": return "虚空内容已解锁";
+    case "R3": return "引理加成自身获取（见引理页公式）";
+    case "R4": return "卷缩时 CM 保留（当前 CM " + fmtLog(getLogCM()) + "）";
+    case "R5": return "奇点按此次湮灭最高温度计算";
+    case "R6": return "缩短波长不再重置任何东西";
+    case "R7": return "折叠器速度 +" + fmtLog(cmSpeedBonusLog() - cmR12MultLog() * 0) + "（log10 加成，含里程碑3 VF 项）";
+    case "R8": return "灵感购买途径已解锁（等分购买区）";
+    case "R9": return "课题已解锁（课题区块可见）";
+    case "R10": return "指数相对误差 <8% 时预测分满分（预测分显示于三乘数行）";
+    case "R11": return "波长指数 e = " + wavelengthExp().toFixed(4) + "（1+lg(1+lg(1+CM))/6）";
+    case "R12": return "CM 获取 ×" + fmtLog(cmR12MultLog()) + "（1+max(lg(CM+1)², CM^0.05)）";
+    default: return "";
+  }
+}
 // 已完成研究列表（研究项目区内联展开/收起，位于实验列表上方，一行两个）
 function toggleResearchDone(force) {
   const grid = document.getElementById("research-done-grid");
@@ -763,9 +782,15 @@ function renderResearchDone() {
   }
   for (const def of done) {
     const card = document.createElement("div");
-    card.className = "research-proj-card";
+    card.className = "research-proj-card research-done-card";
     const nm = document.createElement("div"); nm.className = "rp-name"; nm.textContent = def.name;
     const ds = document.createElement("div"); ds.className = "rp-desc"; ds.textContent = def.desc;
+    // 点击切换：描述 ↔ 效果表示文本（当前数值的实时效果；再次点击切回）
+    let showingEffect = false;
+    card.addEventListener("click", () => {
+      showingEffect = !showingEffect;
+      ds.textContent = showingEffect ? researchEffectText(def.id) : def.desc;
+    });
     card.append(nm, ds);
     grid.appendChild(card);
   }
