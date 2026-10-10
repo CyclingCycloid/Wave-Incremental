@@ -234,11 +234,13 @@ function updateCompactUI() {
     `b₁ = max(0, E−V+1) = ${betti1()}　　b₂ = max(0, min(F, ⌊2E/3⌋)−E+V) = ${betti2()}`;
   document.getElementById("comp-formula-line").textContent =
     `基础 CM 获取：TP² × 3^√(3·b₁·b₂) = ${baseTxt} / 秒`;
-  // CM 三个效果（一个一行，简洁格式）
+  // CM 效果（一个一行，简洁格式）；节点 82 新增的第 4 效果只在购买后显示（具体效果在折叠器区块展示，
+  // 节点格内只有简述）
   document.getElementById("comp-dim-effect").textContent =
     `波速获取 ×${fmtLog(cmGainMultLog())}\n`
     + `波长公式内指数: ${wavelengthExp().toFixed(4)}\n`
-    + `奇点获取 ×${fmtLog(cmSpMultLog())}`;
+    + `奇点获取 ×${fmtLog(cmSpMultLog())}`
+    + (theoryOwned("82") ? `\nCM获取 ×${fmtLog(node82CmMultLog())}` : "");
   // 拓扑节点（价格按总节点数计；点击一次买满可负担的最大数量）
   const tpInfo = tpMaxBuyInfo();
   const tpBuy = document.getElementById("comp-tp-buy");

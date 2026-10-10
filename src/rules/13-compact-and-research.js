@@ -339,17 +339,15 @@ const THEORY_NODES = [
     desc: "波长二次软上限削弱4%",
     effect: () => "当前削弱指数 0.99" },
   { id: "81", name: "光学-粒子说 III", parents: ["71"], cost: 0, series: "particle", priceTBD: true,
-    desc: "改进CM第二效果公式",
-    effect: () => "e = " + wavelengthExp().toFixed(4) + "（1+lg(1+lg(1+CM))/6）" },
+    desc: "改进CM第二效果" },
+  { id: "82", name: "光学-波动说 III", parents: ["72"], cost: 65, series: "wave",
+    desc: "新增一个CM效果" },
   { id: "62", name: "光学-波动说 I", parents: ["51"], cost: 35, series: "wave",
     desc: "基于当前超弦增加获得的超弦",
     effect: () => "当前 ×" + fmtLog(node62MultLog()) },
   { id: "72", name: "光学-波动说 II", parents: ["62"], cost: 25, series: "wave",
     desc: "基于奇点加强奇点效果",
     effect: () => "当前指数乘数 ×" + fmt(node72SpBoostExpMult()) },
-  { id: "82", name: "光学-波动说 III", parents: ["72"], cost: 65, series: "wave",
-    desc: "增加CM获取",
-    effect: () => "当前 ×" + fmtLog(node82CmMultLog()) + "（1+max(lg(CM+1)², CM^0.05)）" },
 ];
 function theoryOwned(id) { return !!state.theoryNodes[id]; }
 // 波长公式内指数 e 的基础公式（节点71/72 改造前的原版，供「公式差值」显示）

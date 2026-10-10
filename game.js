@@ -4715,17 +4715,15 @@ const THEORY_NODES = [
     desc: "波长二次软上限削弱4%",
     effect: () => "当前削弱指数 0.99" },
   { id: "81", name: "光学-粒子说 III", parents: ["71"], cost: 0, series: "particle", priceTBD: true,
-    desc: "改进CM第二效果公式",
-    effect: () => "e = " + wavelengthExp().toFixed(4) + "（1+lg(1+lg(1+CM))/6）" },
+    desc: "改进CM第二效果" },
+  { id: "82", name: "光学-波动说 III", parents: ["72"], cost: 65, series: "wave",
+    desc: "新增一个CM效果" },
   { id: "62", name: "光学-波动说 I", parents: ["51"], cost: 35, series: "wave",
     desc: "基于当前超弦增加获得的超弦",
     effect: () => "当前 ×" + fmtLog(node62MultLog()) },
   { id: "72", name: "光学-波动说 II", parents: ["62"], cost: 25, series: "wave",
     desc: "基于奇点加强奇点效果",
     effect: () => "当前指数乘数 ×" + fmt(node72SpBoostExpMult()) },
-  { id: "82", name: "光学-波动说 III", parents: ["72"], cost: 65, series: "wave",
-    desc: "增加CM获取",
-    effect: () => "当前 ×" + fmtLog(node82CmMultLog()) + "（1+max(lg(CM+1)², CM^0.05)）" },
 ];
 function theoryOwned(id) { return !!state.theoryNodes[id]; }
 // 波长公式内指数 e 的基础公式（节点71/72 改造前的原版，供「公式差值」显示）
@@ -5766,11 +5764,13 @@ function updateCompactUI() {
     `b₁ = max(0, E−V+1) = ${betti1()}　　b₂ = max(0, min(F, ⌊2E/3⌋)−E+V) = ${betti2()}`;
   document.getElementById("comp-formula-line").textContent =
     `基础 CM 获取：TP² × 3^√(3·b₁·b₂) = ${baseTxt} / 秒`;
-  // CM 三个效果（一个一行，简洁格式）
+  // CM 效果（一个一行，简洁格式）；节点 82 新增的第 4 效果只在购买后显示（具体效果在折叠器区块展示，
+  // 节点格内只有简述）
   document.getElementById("comp-dim-effect").textContent =
     `波速获取 ×${fmtLog(cmGainMultLog())}\n`
     + `波长公式内指数: ${wavelengthExp().toFixed(4)}\n`
-    + `奇点获取 ×${fmtLog(cmSpMultLog())}`;
+    + `奇点获取 ×${fmtLog(cmSpMultLog())}`
+    + (theoryOwned("82") ? `\nCM获取 ×${fmtLog(node82CmMultLog())}` : "");
   // 拓扑节点（价格按总节点数计；点击一次买满可负担的最大数量）
   const tpInfo = tpMaxBuyInfo();
   const tpBuy = document.getElementById("comp-tp-buy");
