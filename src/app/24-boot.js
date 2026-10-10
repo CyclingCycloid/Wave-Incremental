@@ -66,6 +66,8 @@ function init() {
   requestAnimationFrame(uiLoop);
   // 黑洞旋转动画循环（仅解锁后绘制，未解锁时低频空转）
   requestAnimationFrame(bhAnimLoop);
+  // 卡拉比-丘流形装饰动画（仅维度折叠器子页可见时绘制，其余空转）
+  requestAnimationFrame(cyAnimLoop);
   setInterval(() => { if (dirty) { saveGame(); dirty = false; } }, AUTOSAVE_INTERVAL);
   window.addEventListener("beforeunload", () => saveGame());
 

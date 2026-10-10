@@ -6120,6 +6120,53 @@ function updateCompactButton() {
 
 
 
+
+// ---------- 卡拉比-丘流形装饰动画（维度折叠器页顶部；纯装饰，不涉任何数值）----------
+// CY(n=5) 的教科书图像：a=π/4 截面上 25 片 (k1,k2) 闭合曲线（Lissajous 花形）——
+// z1=(cos a)^{2/n}·e^{i(2πk1/n+m)}、z2=(sin a)^{2/n}·e^{i(2πk2/n−m)}，投影 (Re z1, Re z2)。
+// 形状固定可辨识，相位 m 缓慢流动（花形呼吸）；透明底融入页面。
+// 轻量：每帧 25 条闭合曲线（约 2000 次 cos/sin，无 pow 无矩阵、25 次 stroke）
+const CY_N = 5;
+const CY_AMP = Math.pow(Math.SQRT1_2, 2 / CY_N); // (cos π/4)^{2/n} = 常数幅值
+let cyM = 0, cyLast = 0;
+function drawCalabiYau(ts) {
+  const canvas = document.getElementById("comp-cy-canvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width, h = canvas.height;
+  const dt = cyLast ? Math.min(0.05, (ts - cyLast) / 1000) : 0.016;
+  cyLast = ts;
+  if (!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)) cyM += dt * 0.35;
+  ctx.clearRect(0, 0, w, h);
+  const lgCM = getLogCM() > NLOG + 1 ? getLogCM() : 0;
+  const glow = Math.min(1, 0.4 + Math.max(0, lgCM) / 60);
+  const scale = Math.min(w, h) * 0.46;
+  const cx = w / 2, cy = h / 2;
+  ctx.lineWidth = 1;
+  for (let k1 = 0; k1 < CY_N; k1++) {
+    for (let k2 = 0; k2 < CY_N; k2++) {
+      const mix = (k1 + k2) / (2 * (CY_N - 1)); // 0..1 青→紫
+      const cr = (26 + 113 * mix) | 0, cg = (167 - 75 * mix) | 0, cb = (192 + 54 * mix) | 0;
+      const p1 = 2 * Math.PI * k1 / CY_N, p2 = 2 * Math.PI * k2 / CY_N;
+      ctx.beginPath();
+      const STEPS = 80;
+      for (let st = 0; st <= STEPS; st++) {
+        const m = cyM + st / STEPS * Math.PI * 2;
+        const px = cx + CY_AMP * Math.cos(p1 + m) * scale;
+        const py = cy + CY_AMP * Math.cos(p2 - m) * scale * 0.86; // 轻微纵向压缩适配画幅
+        if (st === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.strokeStyle = `rgba(${cr},${cg},${cb},${0.3 * glow})`;
+      ctx.stroke();
+    }
+  }
+}
+let cyAnimRAF = 0;
+function cyAnimLoop(ts) {
+  const sub = document.getElementById("sub-comp-dim");
+  if (sub && !sub.classList.contains("hidden")) drawCalabiYau(ts);
+  cyAnimRAF = requestAnimationFrame(cyAnimLoop);
+}
 // ---------- 黑洞 UI（build-once, in-place update）+ 旋转动画 ----------
 let bhBuilt = false, bhRefs = {}, bhStateBtns = [], bhAnimRAF = 0, bhAngle = 0, bhParticles = [], bhVpuSection = null, bhSvpuTopRow = null;
 
@@ -9220,6 +9267,8 @@ function init() {
   requestAnimationFrame(uiLoop);
   // 黑洞旋转动画循环（仅解锁后绘制，未解锁时低频空转）
   requestAnimationFrame(bhAnimLoop);
+  // 卡拉比-丘流形装饰动画（仅维度折叠器子页可见时绘制，其余空转）
+  requestAnimationFrame(cyAnimLoop);
   setInterval(() => { if (dirty) { saveGame(); dirty = false; } }, AUTOSAVE_INTERVAL);
   window.addEventListener("beforeunload", () => saveGame());
 
