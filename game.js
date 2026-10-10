@@ -6122,13 +6122,13 @@ function updateCompactButton() {
 
 
 // ---------- 卡拉比-丘流形装饰动画（维度折叠器页顶部；纯装饰，不涉任何数值）----------
-// CY(n=5) 的教科书图像：a=π/4 截面上 25 片 (k1,k2) 闭合曲线（Lissajous 花形）——
+// CY(n=5) 的教科书图像：25 片 (k1,k2) 闭合曲线（Lissajous 花形）——
 // z1=(cos a)^{2/n}·e^{i(2πk1/n+m)}、z2=(sin a)^{2/n}·e^{i(2πk2/n−m)}，投影 (Re z1, Re z2)。
-// 形状固定可辨识，相位 m 缓慢流动（花形呼吸）；透明底融入页面。
-// 轻量：每帧 25 条闭合曲线（约 2000 次 cos/sin，无 pow 无矩阵、25 次 stroke）
+// 动效：振幅 a 呼吸（花形开合——曲线参数 m 扫满整圈，其起点相位不影响闭合曲线，
+// 必须动形状参数才可见，经典 CY 动图正是如此）+ 整体缓慢旋转。透明底融入页面。
+// 轻量：每帧 2 次 pow + 约 2000 次 cos/sin、25 次 stroke（实测每帧 ~0.1ms）
 const CY_N = 5;
-const CY_AMP = Math.pow(Math.SQRT1_2, 2 / CY_N); // (cos π/4)^{2/n} = 常数幅值
-let cyM = 0, cyLast = 0;
+let cyT = 0, cyLast = 0;
 function drawCalabiYau(ts) {
   const canvas = document.getElementById("comp-cy-canvas");
   if (!canvas) return;
@@ -6136,12 +6136,18 @@ function drawCalabiYau(ts) {
   const w = canvas.width, h = canvas.height;
   const dt = cyLast ? Math.min(0.05, (ts - cyLast) / 1000) : 0.016;
   cyLast = ts;
-  if (!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)) cyM += dt * 0.35;
+  if (!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)) cyT += dt;
   ctx.clearRect(0, 0, w, h);
   const lgCM = getLogCM() > NLOG + 1 ? getLogCM() : 0;
   const glow = Math.min(1, 0.4 + Math.max(0, lgCM) / 60);
   const scale = Math.min(w, h) * 0.46;
-  const cx = w / 2, cy = h / 2;
+  // 振幅呼吸：a 在 (0.1, π/2−0.1) 间正弦往返（周期约 10.5s），花形开合
+  const a = Math.PI / 4 + (Math.PI / 4 - 0.1) * Math.sin(cyT * 0.6);
+  const m1 = Math.pow(Math.cos(a), 2 / CY_N);
+  const m2 = Math.pow(Math.sin(a), 2 / CY_N);
+  ctx.save();
+  ctx.translate(w / 2, h / 2);
+  ctx.rotate(cyT * 0.12); // 整体缓慢旋转
   ctx.lineWidth = 1;
   for (let k1 = 0; k1 < CY_N; k1++) {
     for (let k2 = 0; k2 < CY_N; k2++) {
@@ -6151,15 +6157,16 @@ function drawCalabiYau(ts) {
       ctx.beginPath();
       const STEPS = 80;
       for (let st = 0; st <= STEPS; st++) {
-        const m = cyM + st / STEPS * Math.PI * 2;
-        const px = cx + CY_AMP * Math.cos(p1 + m) * scale;
-        const py = cy + CY_AMP * Math.cos(p2 - m) * scale * 0.86; // 轻微纵向压缩适配画幅
+        const m = st / STEPS * Math.PI * 2;
+        const px = m1 * Math.cos(p1 + m) * scale;
+        const py = m2 * Math.cos(p2 - m) * scale * 0.86; // 轻微纵向压缩适配画幅
         if (st === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
       }
       ctx.strokeStyle = `rgba(${cr},${cg},${cb},${0.3 * glow})`;
       ctx.stroke();
     }
   }
+  ctx.restore();
 }
 let cyAnimRAF = 0;
 function cyAnimLoop(ts) {
