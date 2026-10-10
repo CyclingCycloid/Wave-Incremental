@@ -428,7 +428,7 @@ function defaultState() {
     svu1Filling: false,    // SVU1：填充开关（开启时每真实秒投入现有资源 1%）
     svu2Level: 0,          // SVU2 能标偏移等级（虚空外增长，不清零不重置）
     svu3Rho: 0,            // SVU3 虚数相变：虚数密度 ρ（任何重置不清；相变时归 0）
-    svu3N: 0,              // SVU3：相变数 N（任何重置不清；无序化清 N 与 ρ，虚空内不可无序化）
+    svu3N: 0,              // SVU3：相变数 N（任何重置不清；无序化清 ρ 且 N 减一，虚空内不可无序化）
 
     // 卷缩层（v0.6.0.0 测试：第三重置层；SS=超弦 / Ins=灵感 / CM=卡拉比-丘流形）
     compactions: 0,        // 卷缩次数
@@ -3332,7 +3332,7 @@ function buildVoidOnce() {
         "等级模式：ρ（虚数密度）只在全扭曲虚空（8 种削弱全开）内按真实时间增长，不受时间倍率影响"
         + "——每秒获取 w/(1+ρ)^(1+N/3)，w 为超出波速软上限部分的波速获取对数值。\n"
         + "ρ 达到 500+100N 可「相变」：相变数 +1、ρ 清零，获取更难但推迟更强。"
-        + "相变与「无序化」（清零 ρ 与相变数）都只能在虚空外操作。\n"
+        + "相变与「无序化」（清空 ρ，相变数减一）都只能在虚空外操作。\n"
         + "效果：波速软上限起始点推迟 10^(3(1+N)^1.5·ρ)，并使能标偏移获取 ×N·(1+ρ)^((1+N/5)/2)。详见帮助页「虚空 II」。"));
       tip.addEventListener("mouseleave", hideSvu3TipBox);
       card.appendChild(tip);
@@ -4063,7 +4063,7 @@ function svu3Phase() {
   updateVoidUI();
   setAutosaveStatus("虚数相变完成：相变数 " + state.svu3N + "（ρ 已重置，软上限推迟更强）");
 }
-// 无序化：清零 ρ 与相变数；虚空中不可用，需退出虚空后操作
+// 无序化：清空 ρ、相变数减一；虚空中不可用，需退出虚空后操作（实现见下方 svu3Disorder）
 // 等级模式悬浮框：渲染到 document.body 的固定定位独立黑框（脱离卡片合成树，恒全不透明）
 function showSvu3TipBox(anchor, text) {
   let box = document.getElementById("svu3-tip-box");
@@ -4087,16 +4087,16 @@ function hideSvu3TipBox() {
   const box = document.getElementById("svu3-tip-box");
   if (box) box.style.display = "none";
 }
-// 无序化：清零 ρ 与相变数；虚空中不可用，需退出虚空后操作
+// 无序化：清空 ρ、相变数减一（不低于 0）；虚空中不可用，需退出虚空后操作
 function svu3Disorder() {
   if (state.voidActive) { setAutosaveStatus("虚空中无法无序化，请先退出虚空"); return; }
   if (!voidMilestone3() || !(state.svu3N > 0 || state.svu3Rho > 0)) return;
-  if (!confirm("确定无序化吗？（虚数密度 ρ 与相变数全部清零）")) return;
+  if (!confirm("确定无序化吗？（清空虚数密度 ρ，相变数减一）")) return;
   state.svu3Rho = 0;
-  state.svu3N = 0;
+  state.svu3N = Math.max(0, state.svu3N - 1);
   saveGame();
   updateVoidUI();
-  setAutosaveStatus("已无序化：ρ 与相变数已清零");
+  setAutosaveStatus("已无序化：ρ 已清空，相变数减一");
 }
 // 脉冲状态：虚粒子获取速率（每秒）= floor(mult × (M^0.1 − 1))；M=1 时自然为 0。返回 log10
 function bhVPGainLog() {

@@ -273,7 +273,7 @@ function svu3Phase() {
   updateVoidUI();
   setAutosaveStatus("虚数相变完成：相变数 " + state.svu3N + "（ρ 已重置，软上限推迟更强）");
 }
-// 无序化：清零 ρ 与相变数；虚空中不可用，需退出虚空后操作
+// 无序化：清空 ρ、相变数减一；虚空中不可用，需退出虚空后操作（实现见下方 svu3Disorder）
 // 等级模式悬浮框：渲染到 document.body 的固定定位独立黑框（脱离卡片合成树，恒全不透明）
 function showSvu3TipBox(anchor, text) {
   let box = document.getElementById("svu3-tip-box");
@@ -297,16 +297,16 @@ function hideSvu3TipBox() {
   const box = document.getElementById("svu3-tip-box");
   if (box) box.style.display = "none";
 }
-// 无序化：清零 ρ 与相变数；虚空中不可用，需退出虚空后操作
+// 无序化：清空 ρ、相变数减一（不低于 0）；虚空中不可用，需退出虚空后操作
 function svu3Disorder() {
   if (state.voidActive) { setAutosaveStatus("虚空中无法无序化，请先退出虚空"); return; }
   if (!voidMilestone3() || !(state.svu3N > 0 || state.svu3Rho > 0)) return;
-  if (!confirm("确定无序化吗？（虚数密度 ρ 与相变数全部清零）")) return;
+  if (!confirm("确定无序化吗？（清空虚数密度 ρ，相变数减一）")) return;
   state.svu3Rho = 0;
-  state.svu3N = 0;
+  state.svu3N = Math.max(0, state.svu3N - 1);
   saveGame();
   updateVoidUI();
-  setAutosaveStatus("已无序化：ρ 与相变数已清零");
+  setAutosaveStatus("已无序化：ρ 已清空，相变数减一");
 }
 // 脉冲状态：虚粒子获取速率（每秒）= floor(mult × (M^0.1 − 1))；M=1 时自然为 0。返回 log10
 function bhVPGainLog() {
