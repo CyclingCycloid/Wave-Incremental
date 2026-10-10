@@ -36,10 +36,10 @@ function cmSpMultLog() {
   return clampLog(Math.max(Math.log10(1 + c * c), 0.1 * getLogCM()));
 }
 // 效果②：波长效果指数 e。
-// R11「卡拉比-丘度量精修」（名称占位）：公式改为 1 + lg(1+lg(1+CM))/6（原 /3、/10 → /6，更好）；
+// 节点81「光学-粒子说 III」：公式改为 1 + lg(1+lg(1+CM))/6（原 /3、/10 → /6，更好）；
 // CM=0 时两式均为 e=1，与原公式逐位一致（零回归）
 function wavelengthExp() {
-  if (researchBought("R11")) return 1 + Math.log10(1 + cmLg1()) / 6;
+  if (theoryOwned("81")) return 1 + Math.log10(1 + cmLg1()) / 6;
   return wavelengthExpBase();
 }
 // Hz/s 的 log10（log10(gain/L^e)，膨胀宇宙的波长倍率计入指数底数）——

@@ -806,10 +806,10 @@ function cmSpMultLog() {
   return clampLog(Math.max(Math.log10(1 + c * c), 0.1 * getLogCM()));
 }
 // 效果②：波长效果指数 e。
-// R11「卡拉比-丘度量精修」（名称占位）：公式改为 1 + lg(1+lg(1+CM))/6（原 /3、/10 → /6，更好）；
+// 节点81「光学-粒子说 III」：公式改为 1 + lg(1+lg(1+CM))/6（原 /3、/10 → /6，更好）；
 // CM=0 时两式均为 e=1，与原公式逐位一致（零回归）
 function wavelengthExp() {
-  if (researchBought("R11")) return 1 + Math.log10(1 + cmLg1()) / 6;
+  if (theoryOwned("81")) return 1 + Math.log10(1 + cmLg1()) / 6;
   return wavelengthExpBase();
 }
 // Hz/s 的 log10（log10(gain/L^e)，膨胀宇宙的波长倍率计入指数底数）——
@@ -4538,10 +4538,10 @@ function cmSpAccelMultLog() {
   const lgs = state.sp > 0 ? lg1FromLog(getLogSp()) : 0; // lg(Sp+1)（sp=0 时为 0）
   return clampLog(0.8 * Math.log10(1 + lgs));
 }
-// R12「流形自增殖」：新增CM效果④——CM获取 ×(1+max(lg(CM+1)², CM^0.05))（CM=0 时为 ×1，
+// 节点82「光学-波动说 III」：新增CM效果④——CM获取 ×(1+max(lg(CM+1)², CM^0.05))（CM=0 时为 ×1，
 // 返回 log10 加在折叠器速率上）。CM^0.05 走 log 域（0.05·lgCM），CM=0 时两项均为 0
-function cmR12MultLog() {
-  if (!researchBought("R12")) return 0;
+function node82CmMultLog() {
+  if (!theoryOwned("82")) return 0;
   const c = cmLg1();
   if (c <= 0) return 0;
   const m = Math.max(c * c, Math.pow(10, 0.05 * getLogCM()));
@@ -4549,15 +4549,15 @@ function cmR12MultLog() {
 }
 // 折叠器 tick：CM 按真实时间累积（挂 applyProduction，离线模拟共用）。
 // 初始不受游戏速度影响；节点 01 后乘上严重削弱的时间倍率（真实 dt × 乘数）；
-// 节点 31 后再乘上基于奇点的加速乘数；R6 与里程碑3 第四 VF 效果再加速度乘数（cmSpeedBonusLog）；
-// R12 再乘上 CM 获取乘数（cmR12MultLog）
+// 节点 31 后再乘上基于奇点的加速乘数；R6 与里程碑3 第四 VF 效果再加度乘数（cmSpeedBonusLog）；
+// 节点 82 再乘上 CM 获取乘数（node82CmMultLog）
 function cmTick(realDt) {
   if (state.compactions < 1 || !state.testMode) return;
   if (tpTotal() <= 0) return;
   const rateLog = cmRateLog();
   if (rateLog <= NLOG + 1) return;
   const dtLog = Math.log10(Math.max(realDt, 1e-300)) + cmTimeMultLog();
-  setCMLog(logAddLogs(getLogCM(), rateLog + dtLog + cmSpAccelMultLog() + cmSpeedBonusLog() + cmR12MultLog()));
+  setCMLog(logAddLogs(getLogCM(), rateLog + dtLog + cmSpAccelMultLog() + cmSpeedBonusLog() + node82CmMultLog()));
 }
 // 整数约束下的最佳分配（A64 奖励「自动最佳分配」的实现）。
 // 连续最优 E*=(21T−9)/48（此时 F=2E/3 边界恰好活跃）附近 ±2 的每个 E，其最优 V 只可能在
@@ -4714,16 +4714,18 @@ const THEORY_NODES = [
   { id: "71", name: "光学-粒子说 II", parents: ["61"], cost: 62, series: "particle",
     desc: "波长二次软上限削弱4%",
     effect: () => "当前削弱指数 0.99" },
-  { id: "81", name: "光学-粒子说 III", parents: ["71"], cost: 0, series: "particle", placeholder: true,
-    desc: "？？？" },
+  { id: "81", name: "光学-粒子说 III", parents: ["71"], cost: 0, series: "particle", priceTBD: true,
+    desc: "改进CM第二效果公式",
+    effect: () => "e = " + wavelengthExp().toFixed(4) + "（1+lg(1+lg(1+CM))/6）" },
   { id: "62", name: "光学-波动说 I", parents: ["51"], cost: 35, series: "wave",
     desc: "基于当前超弦增加获得的超弦",
     effect: () => "当前 ×" + fmtLog(node62MultLog()) },
   { id: "72", name: "光学-波动说 II", parents: ["62"], cost: 25, series: "wave",
     desc: "基于奇点加强奇点效果",
     effect: () => "当前指数乘数 ×" + fmt(node72SpBoostExpMult()) },
-  { id: "82", name: "光学-波动说 III", parents: ["72"], cost: 0, series: "wave", placeholder: true,
-    desc: "？？？" },
+  { id: "82", name: "光学-波动说 III", parents: ["72"], cost: 65, series: "wave",
+    desc: "增加CM获取",
+    effect: () => "当前 ×" + fmtLog(node82CmMultLog()) + "（1+max(lg(CM+1)², CM^0.05)）" },
 ];
 function theoryOwned(id) { return !!state.theoryNodes[id]; }
 // 波长公式内指数 e 的基础公式（节点71/72 改造前的原版，供「公式差值」显示）
@@ -5066,9 +5068,6 @@ const RESEARCH_DEFS = [
   { id: "R8", name: "启发式假说萃取", reqTotalIns: 140, costInf: 2e9, desc: "增加一个新的灵感购买途径" },
   { id: "R9", name: "渐进推演范式 I", reqFLog: 3150000, reqVFLog: 30, costInf: 1e10, desc: "解锁一个课题" },
   { id: "R10", name: "数据分析算法改进", reqPred: 99.5, costInf: 3e10, desc: "与预测的奇点指数相对误差<8% 时预测分满分" },
-  // R11 价格待定（priceTBD：无法购买，buyResearch 拦截）；名称为占位，定稿后改这里
-  { id: "R11", name: "卡拉比-丘度量精修", priceTBD: true, desc: "改进CM第二效果公式：e = 1+lg(1+lg(1+CM))/6" },
-  { id: "R12", name: "流形自增殖", costIns: 65, desc: "新增CM效果：CM获取 ×(1+max(lg(CM+1)², CM^0.05))" },
 ];
 function researchDef(id) { return RESEARCH_DEFS.find(x => x.id === id); }
 function researchBought(id) { return state.researchBought.includes(id); }
@@ -5094,20 +5093,14 @@ function researchReqText(def) {
   if (def.reqPred !== undefined) parts.push("需求 实验可完成时预测分 >" + def.reqPred);
   return parts.join(" ｜ ");
 }
-function researchCostMet(def) {
-  if (def.priceTBD) return false; // 价格待定：暂无法购买
-  if (def.costIns !== undefined) return getLogIns() >= Math.log10(def.costIns) - 1e-9;
-  return getLogInf() >= Math.log10(def.costInf) - 1e-9;
-}
+function researchCostMet(def) { return getLogInf() >= Math.log10(def.costInf) - 1e-9; }
 function buyResearch(id) {
   const def = researchDef(id);
   if (!def || researchBought(id)) return;
   if (!state.ach.normal.includes("A71")) return; // 研究项目由 A71「乌云」解锁
-  if (def.priceTBD) { setAutosaveStatus("价格待定：" + def.name); return; }
   if (!researchReqMet(def)) { setAutosaveStatus("需求未满足：" + researchReqText(def)); return; }
-  if (!researchCostMet(def)) { setAutosaveStatus(def.costIns !== undefined ? "灵感不足" : "推论不足"); return; }
-  if (def.costIns !== undefined) subInsLog(Math.log10(def.costIns));
-  else subInfLog(Math.log10(def.costInf));
+  if (!researchCostMet(def)) { setAutosaveStatus("推论不足"); return; }
+  subInfLog(Math.log10(def.costInf));
   state.researchBought.push(id);
   state.theoryDepth += 1 / 3; // 每购买一个研究，理论深度 +1/3
   if (id === "R1") grantHidden("S30");
@@ -5131,8 +5124,6 @@ function researchEffectText(id) {
     case "R8": return "灵感购买途径已解锁（等分购买区）";
     case "R9": return "课题已解锁（课题区块可见）";
     case "R10": return "指数相对误差 <8% 时预测分满分（预测分显示于三乘数行）";
-    case "R11": return "波长指数 e = " + wavelengthExp().toFixed(4) + "（1+lg(1+lg(1+CM))/6）";
-    case "R12": return "CM 获取 ×" + fmtLog(cmR12MultLog()) + "（1+max(lg(CM+1)², CM^0.05)）";
     default: return "";
   }
 }
@@ -6011,13 +6002,8 @@ function updateResearchUI() {
       shown++;
       const reqOk = researchReqMet(def), costOk = researchCostMet(def);
       el.btn.disabled = !(reqOk && costOk);
-      // 价格币种：costIns（灵感）/ costInf（推论）/ priceTBD（待定，无 req 字段时需求文案为空）
-      const reqText = researchReqText(def);
-      const priceText = def.priceTBD ? "待定"
-        : fmtNum(def.costIns !== undefined ? def.costIns : def.costInf,
-                 Math.log10(def.costIns !== undefined ? def.costIns : def.costInf))
-          + (def.costIns !== undefined ? " 灵感" : " 推论");
-      el.cost.textContent = (reqText ? reqText + " ｜ " : "") + "价格 " + priceText + (reqOk ? "" : "（需求未满足）");
+      el.cost.textContent = researchReqText(def) + " ｜ 价格 "
+        + fmtNum(def.costInf, Math.log10(def.costInf)) + " 推论" + (reqOk ? "" : "（需求未满足）");
     }
     // 占位卡补满一行（待办不足 3 个时）
     researchEls.placeholders.forEach((ph, i) => { if (ph) ph.classList.toggle("hidden", i < shown); });

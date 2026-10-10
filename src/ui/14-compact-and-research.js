@@ -470,13 +470,8 @@ function updateResearchUI() {
       shown++;
       const reqOk = researchReqMet(def), costOk = researchCostMet(def);
       el.btn.disabled = !(reqOk && costOk);
-      // 价格币种：costIns（灵感）/ costInf（推论）/ priceTBD（待定，无 req 字段时需求文案为空）
-      const reqText = researchReqText(def);
-      const priceText = def.priceTBD ? "待定"
-        : fmtNum(def.costIns !== undefined ? def.costIns : def.costInf,
-                 Math.log10(def.costIns !== undefined ? def.costIns : def.costInf))
-          + (def.costIns !== undefined ? " 灵感" : " 推论");
-      el.cost.textContent = (reqText ? reqText + " ｜ " : "") + "价格 " + priceText + (reqOk ? "" : "（需求未满足）");
+      el.cost.textContent = researchReqText(def) + " ｜ 价格 "
+        + fmtNum(def.costInf, Math.log10(def.costInf)) + " 推论" + (reqOk ? "" : "（需求未满足）");
     }
     // 占位卡补满一行（待办不足 3 个时）
     researchEls.placeholders.forEach((ph, i) => { if (ph) ph.classList.toggle("hidden", i < shown); });
