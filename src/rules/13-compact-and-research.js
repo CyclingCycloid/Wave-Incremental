@@ -757,6 +757,9 @@ function toggleResearchDone(force) {
   grid.classList.toggle("hidden", !show);
   if (show) renderResearchDone();
 }
+// 已完成研究卡的「显示效果」状态（id → true）：renderResearchDone 每轮 UI 刷新都整块重建，
+// 状态必须存在渲染外，否则点击切换出的效果文本活不过一帧（33ms 刷新即被刷回描述）
+const researchDoneShowEffect = Object.create(null);
 function renderResearchDone() {
   const grid = document.getElementById("research-done-grid");
   if (!grid) return;
@@ -773,12 +776,13 @@ function renderResearchDone() {
     const card = document.createElement("div");
     card.className = "research-proj-card research-done-card";
     const nm = document.createElement("div"); nm.className = "rp-name"; nm.textContent = def.name;
-    const ds = document.createElement("div"); ds.className = "rp-desc"; ds.textContent = def.desc;
-    // 点击切换：描述 ↔ 效果表示文本（当前数值的实时效果；再次点击切回）
-    let showingEffect = false;
+    const ds = document.createElement("div"); ds.className = "rp-desc";
+    // 点击查看效果（再点切回描述）；状态记在 researchDoneShowEffect，跨 UI 刷新持久
+    const showEffect = () => !!researchDoneShowEffect[def.id];
+    ds.textContent = showEffect() ? researchEffectText(def.id) : def.desc;
     card.addEventListener("click", () => {
-      showingEffect = !showingEffect;
-      ds.textContent = showingEffect ? researchEffectText(def.id) : def.desc;
+      researchDoneShowEffect[def.id] = !researchDoneShowEffect[def.id];
+      ds.textContent = showEffect() ? researchEffectText(def.id) : def.desc;
     });
     card.append(nm, ds);
     grid.appendChild(card);
