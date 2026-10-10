@@ -4714,7 +4714,7 @@ const THEORY_NODES = [
   { id: "71", name: "光学-粒子说 II", parents: ["61"], cost: 62, series: "particle",
     desc: "波长二次软上限削弱4%",
     effect: () => "当前削弱指数 0.99" },
-  { id: "81", name: "光学-粒子说 III", parents: ["71"], cost: 0, series: "particle", priceTBD: true,
+  { id: "81", name: "光学-粒子说 III", parents: ["71"], cost: 23, series: "particle",
     desc: "改进CM第二效果" },
   { id: "82", name: "光学-波动说 III", parents: ["72"], cost: 65, series: "wave",
     desc: "新增一个CM效果" },
