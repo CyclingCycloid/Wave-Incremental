@@ -36,10 +36,10 @@ function cmSpMultLog() {
   return clampLog(Math.max(Math.log10(1 + c * c), 0.1 * getLogCM()));
 }
 // 效果②：波长效果指数 e。
-// 节点71「光学-粒子说 II」：公式变为 1 + lg(1+lg(1+CM))/7（更好）；
-// 节点72「光学-波动说 II」：基础公式结果 +0.1。两系列互斥，不会叠加
-// 效果②：波长效果指数 e（基础公式；原 72 的公式改造已移除——72 现改为增强黑洞效果）
+// R11「卡拉比-丘度量精修」（名称占位）：公式改为 1 + lg(1+lg(1+CM))/6（原 /3、/10 → /6，更好）；
+// CM=0 时两式均为 e=1，与原公式逐位一致（零回归）
 function wavelengthExp() {
+  if (researchBought("R11")) return 1 + Math.log10(1 + cmLg1()) / 6;
   return wavelengthExpBase();
 }
 // Hz/s 的 log10（log10(gain/L^e)，膨胀宇宙的波长倍率计入指数底数）——

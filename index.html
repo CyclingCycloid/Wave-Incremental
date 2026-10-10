@@ -690,7 +690,7 @@
             <p>SS 购买拓扑节点 TP（第 n 个 floor(1.5^n)），TP 可转换为点 V/边 E/面 F（可退回）：</p>
             <p class="help-formula">b₁ = max(0, E−V+1)　　b₂ = max(0, min(F, ⌊2E/3⌋)−E+V)</p>
             <p class="help-formula">CM/s = TP² × 3^√(3·b₁·b₂)（真实时间，不受游戏速度影响）</p>
-            <p>CM 效果：波速获取 ×(1+CM)^4；F = U/L^e（e = 1 + lg(1+lg(1+CM)/3)/10）；奇点获取 ×max(1+lg(CM+1)², CM^0.1)。CM 在卷缩时清零（R4 后保留）。</p>
+            <p>CM 效果：波速获取 ×(1+CM)^4；F = U/L^e（e = 1 + lg(1+lg(1+CM)/3)/10，R11 后 = 1 + lg(1+lg(1+CM))/6）；奇点获取 ×max(1+lg(CM+1)², CM^0.1)；R12 后 CM 获取额外 ×(1+max(lg(CM+1)², CM^0.05))。CM 在卷缩时清零（R4 后保留）。</p>
           </div>
         </details>
 
