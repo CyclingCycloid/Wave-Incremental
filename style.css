@@ -945,3 +945,6 @@ body[data-theme="white"] #news-ticker { color: #000000; }
 /* 已完成研究卡：可点击切换 描述↔效果文本 */
 .research-done-card { cursor: pointer; transition: border-color .15s; }
 .research-done-card:hover { border-color: var(--accent); }
+
+/* 卡拉比-丘流形装饰动画（维度折叠器页顶部；纯装饰，JS 驱动） */
+#comp-cy-canvas { display: block; width: 100%; max-width: 680px; height: 150px; margin: 4px auto 10px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 6px; }
