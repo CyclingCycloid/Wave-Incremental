@@ -224,8 +224,8 @@ function updateCompactUI() {
   // 维度折叠器：CM 值（显示 floor，后台小数）与产量
   document.getElementById("comp-cm-value").textContent = fmtIntRes(state.cm, getLogCM());
   const rateLog = cmRateLog();
-  // 每秒获取写最终值：基础产量 × 折叠器时间乘数（节点 01 削弱加成）× 节点31 奇点加速（全部计入）
-  const finalRateLog = rateLog <= NLOG + 1 ? NLOG : clampLog(rateLog + cmTimeMultLog() + cmSpAccelMultLog() + cmSpeedBonusLog());
+  // 每秒获取写最终值：基础产量 × 折叠器时间乘数（节点 01 削弱加成）× 节点31 奇点加速 × 节点82 CM 获取乘数（全部计入）
+  const finalRateLog = rateLog <= NLOG + 1 ? NLOG : clampLog(rateLog + cmTimeMultLog() + cmSpAccelMultLog() + cmSpeedBonusLog() + node82CmMultLog());
   const rateTxt = finalRateLog <= NLOG + 1 ? "0" : fmtNum(Math.pow(10, Math.min(finalRateLog, 308)), finalRateLog);
   document.getElementById("comp-cm-rate").textContent = `每秒 +${rateTxt}`;
   const baseTxt = rateLog <= NLOG + 1 ? "0" : fmtNum(Math.pow(10, Math.min(rateLog, 308)), rateLog);
