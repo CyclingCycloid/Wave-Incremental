@@ -679,16 +679,20 @@ const RESEARCH_DEFS = [
   { id: "R7", name: "Ricci流预解算", reqED: 3.5e3, costInf: 2.5e8, desc: "基于推论增加维度折叠器速度" },
   { id: "R8", name: "启发式假说萃取", reqTotalIns: 140, costInf: 2e9, desc: "增加一个新的灵感购买途径" },
   { id: "R9", name: "渐进推演范式 I", reqFLog: 3150000, reqVFLog: 30, costInf: 1e10, desc: "解锁一个课题" },
+  { id: "R10", name: "数据分析算法改进", reqPred: 99.5, costInf: 3e10, desc: "与预测的奇点指数相对误差<8% 时预测分满分" },
 ];
 function researchDef(id) { return RESEARCH_DEFS.find(x => x.id === id); }
 function researchBought(id) { return state.researchBought.includes(id); }
 // 需求（可多项）与价格（推论）的可负担判定（含 1e-9 浮点容差，口径与显示一致）。
-// 需求类型：reqED（实验数据）/ reqTotalIns（总灵感）/ reqFLog（历史最高频率）
+// 需求类型：reqED（实验数据）/ reqTotalIns（总灵感）/ reqFLog（历史最高频率）/
+//           reqPred（动态：实验可完成且当前预测分达标）
 function researchReqMet(def) {
   if (def.reqED !== undefined && getLogED() < Math.log10(def.reqED) - 1e-9) return false;
   if (def.reqTotalIns !== undefined && getLogTotalIns() < Math.log10(def.reqTotalIns) - 1e-9) return false;
   if (def.reqFLog !== undefined && FLog() < def.reqFLog - 1e-9) return false;
   if (def.reqVFLog !== undefined && state.logVoidVFBest10 < def.reqVFLog - 1e-9) return false;
+  if (def.reqPred !== undefined && !(state.researchRun && researchExitReady()
+      && researchMultipliers().pred >= def.reqPred - 1e-9)) return false;
   return true;
 }
 // 需求显示文本（按类型拼接）
@@ -698,6 +702,7 @@ function researchReqText(def) {
   if (def.reqTotalIns !== undefined) parts.push("需求 " + fmtNum(def.reqTotalIns, Math.log10(def.reqTotalIns)) + " 总灵感");
   if (def.reqFLog !== undefined) parts.push("需求 达到 " + fmtLog(def.reqFLog) + " Hz");
   if (def.reqVFLog !== undefined) parts.push("需求 达到 1e" + def.reqVFLog + " VF（历史最高）");
+  if (def.reqPred !== undefined) parts.push("需求 实验可完成时预测分 >" + def.reqPred);
   return parts.join(" ｜ ");
 }
 function researchCostMet(def) { return getLogInf() >= Math.log10(def.costInf) - 1e-9; }
@@ -797,6 +802,8 @@ function researchMultipliers() {
     const lgR1 = state.sp > 0 ? lg1FromLog(getLogSp()) : 0;   // RealSp = 当前持有 Sp
     const lgP1 = lg1FromLog(run.predictSpLog);
     pred = lgP1 <= 0 ? (lgR1 <= 0 ? 100 : 0) : 100 * (1 - Math.min(1, Math.abs(lgR1 - lgP1) / lgP1));
+    // R10「数据分析算法改进」：有预测且与预测的奇点指数相对误差 <8% 时预测分直接满分
+    if (researchBought("R10") && lgP1 > 0 && Math.abs(lgR1 - lgP1) / lgP1 < 0.08) pred = 100;
     const effR1 = Math.min(lgR1, lgP1); // 总奇点超过预测时，附加分按预测值计算
     // 附加分 = 奇点相关部分（硬上限 10）× √理论深度（R9「渐进推演范式 I」奖励，理论深度部分不受 10 上限限制）
     bonus = Math.min(10, Math.pow(Math.max(effR1, 0), 0.25)) * (researchBought("R9") ? Math.sqrt(theoryDepthEff()) : 1);
