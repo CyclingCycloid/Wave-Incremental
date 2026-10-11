@@ -772,26 +772,28 @@ function setUp3LastF(fLog) {
 // ---------- 派生物理量 ----------
 // L 的双表示：logL10 权威（永不下溢），L 为 double 缓存（极端小时可能下溢为 0）
 function getLogL10() { return (state.logL10 !== undefined && isFinite(state.logL10)) ? state.logL10 : Math.log10(state.L || 1e-300); }
-// F = U / L（定向宇宙：波速取绝对值；膨胀宇宙：波长乘以膨胀倍率）
+// F = U / L（定向宇宙：波速取绝对值；膨胀宇宙：波长乘以膨胀倍率）。
+// 里程碑 4「相变重整」：虚空内膨胀速度 /10（波长每秒 ×1e2；宽限 1 秒不变）
 function distortLMod() {
   if (!inDistort("expand")) return 1;
   const t = (gameNow() - state.distortEnterAtMs) / 1000;
   if (t <= 1) return 1;
-  return Math.pow(1e20, t - 1); // 进入 1 秒后，每秒波长 ×1e20
+  return Math.pow(10, (voidMilestone4() ? 2 : 20) * (t - 1));
 }
 // 波长倍率的 log10（代数式，避免 double 溢出）
 function distortLModLog() {
   if (!inDistort("expand")) return 0;
   const t = (gameNow() - state.distortEnterAtMs) / 1000;
   if (t <= 1) return 0;
-  return 20 * (t - 1);
+  return (voidMilestone4() ? 2 : 20) * (t - 1);
 }
-// 膨胀宇宙：波速获取指数随时间下降，每秒 -0.1，到 0 为止（gain^exp → log *= exp）
+// 膨胀宇宙：波速获取指数随时间下降，每秒 -0.1，到 0 为止（gain^exp → log *= exp）。
+// 里程碑 4「相变重整」：衰减放缓为每秒 -0.01（膨胀速度 /10 的另一半；宽限 1 秒不变）
 function distortGainExp() {
   if (!inDistort("expand")) return 1;
   const t = (gameNow() - state.distortEnterAtMs) / 1000;
   if (t <= 1) return 1;
-  return Math.max(0, 1 - 0.1 * (t - 1));
+  return Math.max(0, 1 - (voidMilestone4() ? 0.01 : 0.1) * (t - 1));
 }
 // ---------- 卷缩层对物理公式的影响（v0.6.0.0 测试）----------
 // CM（卡拉比-丘流形）的两个效果：
@@ -3337,7 +3339,7 @@ function buildVoidOnce() {
       tip.addEventListener("mouseenter", () => showSvu3TipBox(tip,
         "等级模式：ρ（虚数密度）只在全扭曲虚空（8 种削弱全开）内按真实时间增长，不受时间倍率影响"
         + "——每秒获取 w/(1+ρ)^(1+N/3)，w 为超出波速软上限部分的波速获取对数值"
-        + (voidMilestone4() ? "（里程碑 4 改进后：max(w, w^1.2)/(1+ρ)^(1+min(N,5(N/5)^0.7)/3)）" : "") + "。\n"
+        + (voidMilestone4() ? "（里程碑 4 改进后：max(w, w^1.15)/(1+ρ)^(1+min(N,5(N/5)^0.7)/3)）" : "") + "。\n"
         + "ρ 达到 500+100N 可「相变」：相变数 +1、ρ 清零，获取更难但推迟更强。"
         + "相变与「无序化」（清空 ρ，相变数减一）都只能在虚空外操作。\n"
         + "效果：波速软上限起始点推迟 10^(3(1+N)^1.5·ρ)，并使能标偏移获取 ×N·(1+ρ)^((1+N/5)/2)。详见帮助页「虚空 II」。"));
@@ -3771,7 +3773,7 @@ const VOID_MILESTONES = [
     reward: "虚空内定向效果不再生效，增加一个新的虚空升级，增强虚空泡沫效果，以及增加一个新的虚空泡沫效果" },
   { n: 4, title: "相变重整", need: 5,
     desc: "达到五次虚数相变以及理论深度 8.5",
-    reward: "削弱虚空的波速软上限，改进虚数密度获取公式，同时相变数加成奇点效果" },
+    reward: "削弱虚空的波速软上限，改进虚数密度获取公式，虚空内膨胀速度/10，同时相变数加成奇点效果" },
 ];
 // 虚空泡沫第三效果的幂次（未解锁里程碑 2 或无 VF 时为 1，即无影响）。
 // 里程碑3「度规塌缩」：前三个 VF 效果按真实数量的 ^1.1 计算（log 域 = lgVF ×1.1）
@@ -4070,7 +4072,7 @@ function svu3EffectText() {
 // 瞬时速率 = w/(1+ρ)^(1+N/3)。用**解析精确积分**（单 tick 内 w 视为恒定）而非逐 tick
 // 显式累加——显式法在长 realDt（挂起标签补发/离线大步长）下会严重过冲（一次冲上数万 ρ、
 // 瞬间越过相变阈值），且同样时长因 tick 切分不同结果差异巨大。
-// 里程碑 4「相变重整」改进公式：分子 w→max(w, w^1.2)，阻尼指数→f(N)=1+min(N,5(N/5)^0.7)/3
+// 里程碑 4「相变重整」改进公式：分子 w→max(w, w^1.15)，阻尼指数→f(N)=1+min(N,5(N/5)^0.7)/3
 //（N≤5 时 f 与原式一致、只有分子增强；N>5 时分母阻尼增长放缓，双管齐下加速 ρ 获取）
 function svu3RhoTick(realDt) {
   if (!voidMilestone3() || !state.voidActive) return;
@@ -4079,7 +4081,7 @@ function svu3RhoTick(realDt) {
   const wRaw = gainRateLog(true).log - svu3CapStart();
   if (!(wRaw > 0)) return;
   const m4 = voidMilestone4();
-  const w = m4 ? Math.max(wRaw, Math.pow(wRaw, 1.2)) : wRaw;
+  const w = m4 ? Math.max(wRaw, Math.pow(wRaw, 1.15)) : wRaw;
   const k = m4
     ? 1 + Math.min(state.svu3N, 5 * Math.pow(state.svu3N / 5, 0.7)) / 3
     : 1 + state.svu3N / 3; // 阻尼指数（N=0 时恰为 1，走平方根闭式解）

@@ -1,26 +1,28 @@
 // ---------- 派生物理量 ----------
 // L 的双表示：logL10 权威（永不下溢），L 为 double 缓存（极端小时可能下溢为 0）
 function getLogL10() { return (state.logL10 !== undefined && isFinite(state.logL10)) ? state.logL10 : Math.log10(state.L || 1e-300); }
-// F = U / L（定向宇宙：波速取绝对值；膨胀宇宙：波长乘以膨胀倍率）
+// F = U / L（定向宇宙：波速取绝对值；膨胀宇宙：波长乘以膨胀倍率）。
+// 里程碑 4「相变重整」：虚空内膨胀速度 /10（波长每秒 ×1e2；宽限 1 秒不变）
 function distortLMod() {
   if (!inDistort("expand")) return 1;
   const t = (gameNow() - state.distortEnterAtMs) / 1000;
   if (t <= 1) return 1;
-  return Math.pow(1e20, t - 1); // 进入 1 秒后，每秒波长 ×1e20
+  return Math.pow(10, (voidMilestone4() ? 2 : 20) * (t - 1));
 }
 // 波长倍率的 log10（代数式，避免 double 溢出）
 function distortLModLog() {
   if (!inDistort("expand")) return 0;
   const t = (gameNow() - state.distortEnterAtMs) / 1000;
   if (t <= 1) return 0;
-  return 20 * (t - 1);
+  return (voidMilestone4() ? 2 : 20) * (t - 1);
 }
-// 膨胀宇宙：波速获取指数随时间下降，每秒 -0.1，到 0 为止（gain^exp → log *= exp）
+// 膨胀宇宙：波速获取指数随时间下降，每秒 -0.1，到 0 为止（gain^exp → log *= exp）。
+// 里程碑 4「相变重整」：衰减放缓为每秒 -0.01（膨胀速度 /10 的另一半；宽限 1 秒不变）
 function distortGainExp() {
   if (!inDistort("expand")) return 1;
   const t = (gameNow() - state.distortEnterAtMs) / 1000;
   if (t <= 1) return 1;
-  return Math.max(0, 1 - 0.1 * (t - 1));
+  return Math.max(0, 1 - (voidMilestone4() ? 0.01 : 0.1) * (t - 1));
 }
 // ---------- 卷缩层对物理公式的影响（v0.6.0.0 测试）----------
 // CM（卡拉比-丘流形）的两个效果：

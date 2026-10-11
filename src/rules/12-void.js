@@ -249,7 +249,7 @@ function svu3EffectText() {
 // 瞬时速率 = w/(1+ρ)^(1+N/3)。用**解析精确积分**（单 tick 内 w 视为恒定）而非逐 tick
 // 显式累加——显式法在长 realDt（挂起标签补发/离线大步长）下会严重过冲（一次冲上数万 ρ、
 // 瞬间越过相变阈值），且同样时长因 tick 切分不同结果差异巨大。
-// 里程碑 4「相变重整」改进公式：分子 w→max(w, w^1.2)，阻尼指数→f(N)=1+min(N,5(N/5)^0.7)/3
+// 里程碑 4「相变重整」改进公式：分子 w→max(w, w^1.15)，阻尼指数→f(N)=1+min(N,5(N/5)^0.7)/3
 //（N≤5 时 f 与原式一致、只有分子增强；N>5 时分母阻尼增长放缓，双管齐下加速 ρ 获取）
 function svu3RhoTick(realDt) {
   if (!voidMilestone3() || !state.voidActive) return;
@@ -258,7 +258,7 @@ function svu3RhoTick(realDt) {
   const wRaw = gainRateLog(true).log - svu3CapStart();
   if (!(wRaw > 0)) return;
   const m4 = voidMilestone4();
-  const w = m4 ? Math.max(wRaw, Math.pow(wRaw, 1.2)) : wRaw;
+  const w = m4 ? Math.max(wRaw, Math.pow(wRaw, 1.15)) : wRaw;
   const k = m4
     ? 1 + Math.min(state.svu3N, 5 * Math.pow(state.svu3N / 5, 0.7)) / 3
     : 1 + state.svu3N / 3; // 阻尼指数（N=0 时恰为 1，走平方根闭式解）
