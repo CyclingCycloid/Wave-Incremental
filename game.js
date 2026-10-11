@@ -5166,11 +5166,18 @@ function researchEffectText(id) {
   switch (id) {
     case "R1": return "折叠器获取 ×" + fmtLog(Math.max(cmRateLog() * 0, 2)) + " 或 ^1.03（取大）"; // ×100 已含进 cmRateLog，无法剥离时按定义显示
     case "R2": return "虚空内容已解锁";
-    case "R3": return "引理加成自身获取（见引理页公式）";
+    case "R3": {
+      const lg1 = lg1FromLog(getLogInf());
+      return "推论获取 ×(lg(推论+1))³（当前 ×" + fmt(lg1 > 0 ? Math.pow(lg1, 3) : 1) + "）";
+    }
     case "R4": return "卷缩时 CM 保留（当前 CM " + fmtLog(getLogCM()) + "）";
     case "R5": return "奇点按此次湮灭最高温度计算";
     case "R6": return "缩短波长不再重置任何东西";
-    case "R7": return "折叠器速度 +" + fmtLog(cmSpeedBonusLog() - cmR12MultLog() * 0) + "（log10 加成，含里程碑3 VF 项）";
+    case "R7": {
+      const lgInf = getLogInf();
+      const add = lgInf > NLOG + 1 ? Math.min(Math.sqrt(lg1FromLog(lgInf)), 0.25 * lgInf) : 0;
+      return "折叠器速度 +" + fmtLog(add) + "（log10 加成，基于持有推论）";
+    }
     case "R8": return "灵感购买途径已解锁（等分购买区）";
     case "R9": return "课题已解锁（课题区块可见）";
     case "R10": return "指数相对误差 <8% 时预测分满分（预测分显示于三乘数行）";
