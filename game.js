@@ -6122,6 +6122,135 @@ function updateCompactButton() {
 
 
 
+
+// ---------- 二十四胞体装饰动画（维度折叠器页；Issue/help/dimension-24cell 选定方案接入）----------
+// 四维正二十四胞体（24 顶点 96 边）线框：双平面 4D 旋转 → 4D→3D 透视 → 3D 旋转 → 屏幕透视，
+// 边按深度排序分层着色（前景橙/后景灰，白主题换深色系）。几何只生成一次；
+// 30fps 上限、dt 封顶 0.1s、速度 0.65、time 初值 2.3（与选定预览一致）；
+// 画布离屏/子页隐藏/标签页隐藏自动停；prefers-reduced-motion 静态一帧。纯装饰，不涉任何数值。
+const DIM24_MODEL = (() => {
+  const vertices = [], edges = [];
+  for (let a = 0; a < 4; a++) for (let b = a + 1; b < 4; b++)
+    for (const sa of [-1, 1]) for (const sb of [-1, 1]) {
+      const p = [0, 0, 0, 0];
+      p[a] = sa / Math.SQRT2; p[b] = sb / Math.SQRT2;
+      vertices.push(p);
+    }
+  for (let i = 0; i < vertices.length; i++) for (let j = i + 1; j < vertices.length; j++) {
+    let d = 0;
+    for (let ax = 0; ax < 4; ax++) d += (vertices[i][ax] - vertices[j][ax]) ** 2;
+    if (Math.abs(d - 1) < 1e-8) edges.push([i, j]);
+  }
+  return { vertices, edges };
+})();
+const dim24 = { time: 2.3, speed: 0.65, size: 1, w: 0, h: 0, ratio: 0, colors: null, playing: true, visible: true, frameId: 0, prev: 0 };
+// 主题色解析：隐藏探针读 CSS 变量计算值（data-theme 切换后由 recolor 重取）
+function dim24Colors() {
+  const probe = document.getElementById("dim24-probe");
+  const cs = getComputedStyle(probe);
+  dim24.colors = {
+    line: cs.getPropertyValue("--d24-line").trim(),
+    bright: cs.getPropertyValue("--d24-bright").trim(),
+    rear: cs.getPropertyValue("--d24-rear").trim(),
+  };
+}
+function dim24Resize() {
+  const canvas = document.getElementById("comp-dim24-canvas");
+  const box = canvas.getBoundingClientRect();
+  if (!box.width || !box.height) return false;
+  const ratio = Math.min(window.devicePixelRatio || 1, 1.5);
+  if (dim24.w !== box.width || dim24.h !== box.height || dim24.ratio !== ratio) {
+    dim24.w = box.width; dim24.h = box.height; dim24.ratio = ratio;
+    canvas.width = Math.round(box.width * ratio);
+    canvas.height = Math.round(box.height * ratio);
+    canvas.getContext("2d").setTransform(ratio, 0, 0, ratio, 0, 0);
+  }
+  return true;
+}
+function dim24Draw() {
+  const canvas = document.getElementById("comp-dim24-canvas");
+  if (!dim24Resize()) return;
+  const ctx = canvas.getContext("2d");
+  // 双平面 4D 旋转（角度随 time）+ 固定 3D 视角（与选定预览一致）
+  const t = dim24.time;
+  const planes = [[0, 3, Math.sin(t * 0.29), Math.cos(t * 0.29)], [1, 2, Math.sin(t * 0.13 + 0.12), Math.cos(t * 0.13 + 0.12)]];
+  const sx = Math.sin(-0.28), cx = Math.cos(-0.28), sy = Math.sin(0.38), cy = Math.cos(0.38);
+  const scale = Math.min(dim24.w * 0.31, dim24.h * 0.33) * dim24.size;
+  const pts = DIM24_MODEL.vertices.map(v => {
+    const p = [...v];
+    for (const [a, b, sine, cosine] of planes) {
+      const u = p[a], w = p[b];
+      p[a] = u * cosine - w * sine; p[b] = u * sine + w * cosine;
+    }
+    for (let d = 4; d > 3; d--) { // 4D → 3D 透视
+      const r = 2.8 / (2.8 - p[d - 1]);
+      for (let ax = 0; ax < d - 1; ax++) p[ax] *= r;
+    }
+    const y = p[1] * cx - p[2] * sx, z = p[1] * sx + p[2] * cx;
+    const x2 = p[0] * cy + z * sy, z2 = -p[0] * sy + z * cy;
+    const persp = 4 / (4 - z2);
+    return [dim24.w / 2 + x2 * scale * persp, dim24.h / 2 + y * scale * persp, z2];
+  });
+  ctx.clearRect(0, 0, dim24.w, dim24.h);
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  const edges = DIM24_MODEL.edges
+    .map(e => ({ a: pts[e[0]], b: pts[e[1]], depth: (pts[e[0]][2] + pts[e[1]][2]) / 2 }))
+    .sort((x, y) => x.depth - y.depth);
+  for (const e of edges) {
+    const fg = e.depth > 0;
+    ctx.strokeStyle = fg ? dim24.colors.line : dim24.colors.rear;
+    ctx.globalAlpha = fg ? 0.56 + 0.35 * Math.min(1, e.depth) : 0.17 + 0.17 * Math.max(0, 1 + e.depth);
+    ctx.lineWidth = fg ? 1.15 : 0.85;
+    ctx.beginPath(); ctx.moveTo(e.a[0], e.a[1]); ctx.lineTo(e.b[0], e.b[1]); ctx.stroke();
+  }
+  for (const p of pts) {
+    ctx.fillStyle = p[2] > 0 ? dim24.colors.bright : dim24.colors.rear;
+    ctx.globalAlpha = p[2] > 0 ? 0.90 : 0.28;
+    ctx.beginPath(); ctx.arc(p[0], p[1], 1.5, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+function dim24Schedule() {
+  const canvas = document.getElementById("comp-dim24-canvas");
+  if (!dim24.frameId && canvas && canvas.isConnected && dim24.visible && !document.hidden && dim24.playing)
+    dim24.frameId = requestAnimationFrame(dim24Frame);
+}
+function dim24Frame(timestamp) {
+  dim24.frameId = 0;
+  if (!dim24.visible || document.hidden || !dim24.playing) { dim24.prev = 0; return; }
+  const elapsed = dim24.prev ? timestamp - dim24.prev : 34;
+  if (elapsed >= 1000 / 30) { // 30fps 上限
+    dim24.time += Math.min(elapsed / 1000, 0.10) * dim24.speed;
+    dim24.prev = timestamp;
+    dim24Draw();
+  }
+  dim24Schedule();
+}
+// boot 调用：建探针与观察器（画布离屏/主题切换/尺寸变化），画首帧并起播
+function dim24Boot() {
+  const canvas = document.getElementById("comp-dim24-canvas");
+  if (!canvas) return;
+  const probe = document.createElement("span");
+  probe.id = "dim24-probe";
+  probe.style.display = "none";
+  canvas.parentElement.appendChild(probe); // 挂子页内以继承 #sub-comp-dim 上的颜色变量
+  dim24Colors();
+  dim24.playing = !(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  new ResizeObserver(() => dim24Draw()).observe(canvas);
+  new IntersectionObserver(entries => {
+    dim24.visible = entries[0] ? entries[0].isIntersecting : true;
+    if (!dim24.visible && dim24.frameId) { cancelAnimationFrame(dim24.frameId); dim24.frameId = 0; }
+    dim24.prev = 0; dim24Schedule();
+  }).observe(canvas);
+  const recolor = () => { dim24Colors(); dim24Draw(); };
+  new MutationObserver(recolor).observe(document.body, { attributes: true, attributeFilter: ["data-theme"] });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && dim24.frameId) { cancelAnimationFrame(dim24.frameId); dim24.frameId = 0; }
+    dim24.prev = 0; dim24Schedule();
+  });
+  dim24Draw();
+  dim24Schedule();
+}
 // ---------- 黑洞 UI（build-once, in-place update）+ 旋转动画 ----------
 let bhBuilt = false, bhRefs = {}, bhStateBtns = [], bhAnimRAF = 0, bhAngle = 0, bhParticles = [], bhVpuSection = null, bhSvpuTopRow = null;
 
@@ -9222,6 +9351,7 @@ function init() {
   requestAnimationFrame(uiLoop);
   // 黑洞旋转动画循环（仅解锁后绘制，未解锁时低频空转）
   requestAnimationFrame(bhAnimLoop);
+  dim24Boot(); // 二十四胞体装饰动画（离屏/隐藏自动停，见 14-compact 尾部）
   setInterval(() => { if (dirty) { saveGame(); dirty = false; } }, AUTOSAVE_INTERVAL);
   window.addEventListener("beforeunload", () => saveGame());
 

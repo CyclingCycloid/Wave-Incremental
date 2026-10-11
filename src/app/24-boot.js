@@ -66,6 +66,7 @@ function init() {
   requestAnimationFrame(uiLoop);
   // 黑洞旋转动画循环（仅解锁后绘制，未解锁时低频空转）
   requestAnimationFrame(bhAnimLoop);
+  dim24Boot(); // 二十四胞体装饰动画（离屏/隐藏自动停，见 14-compact 尾部）
   setInterval(() => { if (dirty) { saveGame(); dirty = false; } }, AUTOSAVE_INTERVAL);
   window.addEventListener("beforeunload", () => saveGame());
 
