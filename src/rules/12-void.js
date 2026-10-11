@@ -256,7 +256,7 @@ function svu3EffectText() {
 // 长 realDt 过冲——显式累加会一次冲上数万 ρ 且随 tick 切分不同结果差异巨大）。
 // 分子指数 e 两档：M4 前 1.1、M4 后 1.3（SVU2 过冲修正导致历史虚空升级等级异常的平衡补偿）；
 // 阻尼指数：M4 前 1+N/3，M4 后 f(N)=1+min(N,5(N/5)^0.7)/3（N≤5 与原式一致，N>5 放缓）；
-// M4 后分子再乘 √max(N,5)——下限 √5（与解锁门槛 N≥5 对齐，无序化降 N 也不低于此）
+// M4 后分子再乘 max(N,5)——下限 5（与解锁门槛 N≥5 对齐，无序化降 N 也不低于此）
 function svu3RhoTick(realDt) {
   if (!voidMilestone3() || !state.voidActive) return;
   if (state.voidRules.length < DISTORT_UNIVERSES.length) return;
@@ -264,7 +264,7 @@ function svu3RhoTick(realDt) {
   const wRaw = gainRateLog(true).log - svu3CapStart();
   if (!(wRaw > 0)) return;
   const m4 = voidMilestone4();
-  const w = Math.max(wRaw, Math.pow(wRaw, m4 ? 1.3 : 1.1)) * (m4 ? Math.sqrt(Math.max(state.svu3N, 5)) : 1);
+  const w = Math.max(wRaw, Math.pow(wRaw, m4 ? 1.3 : 1.1)) * (m4 ? Math.max(state.svu3N, 5) : 1);
   const k = m4
     ? 1 + Math.min(state.svu3N, 5 * Math.pow(state.svu3N / 5, 0.7)) / 3
     : 1 + state.svu3N / 3; // 阻尼指数（N=0 时恰为 1，走平方根闭式解）
