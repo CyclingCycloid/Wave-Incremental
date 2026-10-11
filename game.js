@@ -5185,14 +5185,20 @@ function toggleResearchDone(force) {
   grid.classList.toggle("hidden", !show);
   if (show) renderResearchDone();
 }
-// 已完成研究卡的「显示效果」状态（id → true）：renderResearchDone 每轮 UI 刷新都整块重建，
-// 状态必须存在渲染外，否则点击切换出的效果文本活不过一帧（33ms 刷新即被刷回描述）
+// 已完成研究卡的「显示效果」状态（id → true）与列表签名：updateResearchUI 每轮（33ms）都会
+// 调用本函数——**签名不变时完全不重建**（innerHTML 重置会让 hover 样式每帧闪、且鼠标点击的
+// mousedown/mouseup 打到已替换的旧节点上丢失，表现为「光标放上面一直闪、点不动」）
 const researchDoneShowEffect = Object.create(null);
+let researchDoneSig = "";
 function renderResearchDone() {
   const grid = document.getElementById("research-done-grid");
   if (!grid) return;
-  grid.innerHTML = "";
   const done = RESEARCH_DEFS.filter(d => researchBought(d.id));
+  // 签名 = 已购列表 + 各卡显示状态；点击切换状态时签名变化触发一次重建（内容一致的无感重建）
+  const sig = done.map(d => d.id + (researchDoneShowEffect[d.id] ? "+" : "-")).join(",");
+  if (sig === researchDoneSig && grid.children.length === done.length) return;
+  researchDoneSig = sig;
+  grid.innerHTML = "";
   if (!done.length) {
     const empty = document.createElement("div");
     empty.className = "rp-desc";
