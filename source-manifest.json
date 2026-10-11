@@ -138,7 +138,7 @@
     "构建产物 game.js = modules 清单中的纯函数模块（log-math、save-codec、slog-tetration）+ 25 段按序拼接（无 IIFE/无作用域隔离，经典脚本）。",
     "三模块的解构绑定位于 src/core/00-state.js（createLogMath/createSaveCodec/createSlogTetration），src 自含接线、不依赖构建注入。"
   ],
-  "candidateSourceSha256": "b272da9d8b4fbf20e17bb218565ea21b81255e8d7667f9f8fa4ec6916ed5299c",
-  "candidateInputsSha256": "21bbcb1d07ffdfb13a4cadcd0fa853fb3b4ea304dded96a988e707be3f80c31f",
+  "candidateSourceSha256": "e49af5e49fd4deadcef29e8d99416699ab4acf9516fabe8c77ec391400723345",
+  "candidateInputsSha256": "26dcd0557272e603d19c4f5f384fb27fd60a548c3c0aa91617b3bea510fa7670",
   "build": "node tools/build.mjs（改 src 后运行；指纹不符时用 --update 显式重建指纹）"
 }

@@ -3422,12 +3422,15 @@ function updateVoidUI() {
     // R2「虚空探测器」解锁更多里程碑：购买前 M3/M4 整格隐藏
     if (def.n >= 3) el.cell.classList.toggle("hidden", !researchBought("R2"));
     el.cell.classList.toggle("done", done);
-    // M4：里程碑 3 达成前显示？？？占位（与 SVU3 卡片同款防剧透），达成后揭示具体内容
+    // M4：里程碑 3 达成前显示？？？占位（与 SVU3 卡片同款防剧透），达成后揭示具体内容；
+    // 奖励尾注当前相变数加成乘数（随 N 实时变化，未解锁时为 1）
     if (def.n === 4) {
       const showDetail = m3;
       el.titleEl.textContent = showDetail ? `里程碑 4 · ${def.title}` : "里程碑 4 · ???";
       el.descEl.textContent = showDetail ? def.desc : "？？？";
-      el.rewardEl.textContent = showDetail ? "奖励：" + def.reward : "奖励：？？？";
+      el.rewardEl.textContent = showDetail
+        ? `奖励：${def.reward}(当前*${fmt(voidMs4ExpMult())})`
+        : "奖励：？？？";
     }
     el.statusEl.textContent = done ? "✓ 已完成" : "进行中";
     el.progEl.textContent = def.n <= 2
