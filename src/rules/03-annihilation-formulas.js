@@ -135,14 +135,14 @@ function gainRate() {
   // 膨胀宇宙：波速获取指数随时间下降（每秒 -0.1，到 0 为止）
   if (inDistort("expand")) g = Math.pow(Math.max(0, g), distortGainExp());
   // 研究·双缝干涉实验（v0.6.3.2）：波速获取整体幂次 ×(0.6·0.8^(等级-1))；
-  // 7 级后每级追加 波速获取 ÷1e((N−7)·50)（与 log 路径同口径；深级 double 下溢为 0 可接受，log 权威）
+  // 7 级后每级追加 波速获取 ÷1e((N−7)²·100)（与 log 路径同口径；深级 double 下溢为 0 可接受，log 权威）
   {
     const slit = researchSlitLevel();
     if (slit >= 1) {
       const sp2 = slitMult(slit);
       const s = g < 0 ? -1 : 1;
       g = s * Math.pow(Math.abs(g), sp2);
-      if (slit > 7) g /= Math.pow(10, (slit - 7) * 50);
+      if (slit > 7) g /= Math.pow(10, (slit - 7) * (slit - 7) * 100);
     }
   }
   // 虚空共振（SVU1）：虚空内波速获取速率整体幂次（符号保持——定向宇宙中可为负）；
@@ -211,12 +211,12 @@ function gainRateLog(uncapped) {
     log *= ge;
   }
   // 研究·双缝干涉实验（v0.6.3.2）：整体幂次 ×slitMult(n)（1–4 级 0.6·0.8^(n−1)、5 级 ×0.5、6 级起 ×0.2）；
-  // 7 级之后每级再追加 波速获取 ÷1e((N−7)·50)（log 域 = −(N−7)·50，只削波速获取不动波长公式）
+  // 7 级之后每级再追加 波速获取 ÷1e((N−7)²·100)（log 域 = −(N−7)²·100，只削波速获取不动波长公式）
   {
     const slit = researchSlitLevel();
     if (slit >= 1) {
       log *= slitMult(slit);
-      if (slit > 7) log -= (slit - 7) * 50;
+      if (slit > 7) log -= (slit - 7) * (slit - 7) * 100;
     }
   }
   // 虚空共振（SVU1）：虚空内波速获取速率整体幂次（幂在 log 域 = 乘指数）；
