@@ -1293,14 +1293,14 @@ function gainRateLog(uncapped) {
   return { log: clampLog(log), sign };
 }
 // 虚空内波速获取的超级软上限（阈值 20000，可被 SVU3「虚数相变」推迟，见 svu3CapDelay）。
-// 里程碑 4「相变重整」：超出部分指数改为 max(0.5, 0.65)——g−c>1 时 0.65 更大（削弱），
+// 里程碑 4「相变重整」：超出部分指数改为 max(0.5, 0.6)——g−c>1 时 0.6 更大（削弱），
 // g−c≤1 时退回原 0.5（保持原逻辑，两档在 g=c 处连续）
 function voidGainSoftcap(log) {
   if (!state.voidActive) return log;
   const cap = 20000 + svu3CapDelay();
   if (log > cap) {
     const over = log - cap;
-    log = cap + (voidMilestone4() ? Math.max(Math.sqrt(over), Math.pow(over, 0.65)) : Math.sqrt(over));
+    log = cap + (voidMilestone4() ? Math.max(Math.sqrt(over), Math.pow(over, 0.6)) : Math.sqrt(over));
   }
   return log;
 }
@@ -3336,7 +3336,8 @@ function buildVoidOnce() {
       tip.textContent = "ⓘ 等级模式";
       tip.addEventListener("mouseenter", () => showSvu3TipBox(tip,
         "等级模式：ρ（虚数密度）只在全扭曲虚空（8 种削弱全开）内按真实时间增长，不受时间倍率影响"
-        + "——每秒获取 w/(1+ρ)^(1+N/3)，w 为超出波速软上限部分的波速获取对数值。\n"
+        + "——每秒获取 w/(1+ρ)^(1+N/3)，w 为超出波速软上限部分的波速获取对数值"
+        + (voidMilestone4() ? "（里程碑 4 改进后：max(w, w^1.15)/(1+ρ)^(1+min(N,5(N/5)^0.7)/3)）" : "") + "。\n"
         + "ρ 达到 500+100N 可「相变」：相变数 +1、ρ 清零，获取更难但推迟更强。"
         + "相变与「无序化」（清空 ρ，相变数减一）都只能在虚空外操作。\n"
         + "效果：波速软上限起始点推迟 10^(3(1+N)^1.5·ρ)，并使能标偏移获取 ×N·(1+ρ)^((1+N/5)/2)。详见帮助页「虚空 II」。"));
@@ -3429,7 +3430,7 @@ function updateVoidUI() {
       el.titleEl.textContent = showDetail ? `里程碑 4 · ${def.title}` : "里程碑 4 · ???";
       el.descEl.textContent = showDetail ? def.desc : "？？？";
       el.rewardEl.textContent = showDetail
-        ? `奖励：${def.reward}` + (voidMilestone4() ? `(当前*${fmt(voidMs4ExpMult())})` : "")
+        ? `奖励：${def.reward}` + (voidMilestone4() ? `(效果${fmt(voidMs4ExpMult())})` : "")
         : "奖励：？？？";
     }
     el.statusEl.textContent = done ? "✓ 已完成" : "进行中";
@@ -3770,7 +3771,7 @@ const VOID_MILESTONES = [
     reward: "虚空内定向效果不再生效，增加一个新的虚空升级，增强虚空泡沫效果，以及增加一个新的虚空泡沫效果" },
   { n: 4, title: "相变重整", need: 5,
     desc: "达到五次虚数相变以及理论深度 8.5",
-    reward: "削弱虚空的波速软上限，同时相变数加成奇点效果" },
+    reward: "削弱虚空的波速软上限，改进虚数密度获取公式，同时相变数加成奇点效果" },
 ];
 // 虚空泡沫第三效果的幂次（未解锁里程碑 2 或无 VF 时为 1，即无影响）。
 // 里程碑3「度规塌缩」：前三个 VF 效果按真实数量的 ^1.1 计算（log 域 = lgVF ×1.1）
@@ -4068,14 +4069,20 @@ function svu3EffectText() {
 // 条件=里程碑3 且虚空中且 8 种削弱全开；w = 超出软上限部分的波速获取 log10；
 // 瞬时速率 = w/(1+ρ)^(1+N/3)。用**解析精确积分**（单 tick 内 w 视为恒定）而非逐 tick
 // 显式累加——显式法在长 realDt（挂起标签补发/离线大步长）下会严重过冲（一次冲上数万 ρ、
-// 瞬间越过相变阈值），且同样时长因 tick 切分不同结果差异巨大
+// 瞬间越过相变阈值），且同样时长因 tick 切分不同结果差异巨大。
+// 里程碑 4「相变重整」改进公式：分子 w→max(w, w^1.15)，阻尼指数→f(N)=1+min(N,5(N/5)^0.7)/3
+//（N≤5 时 f 与原式一致、只有分子增强；N>5 时分母阻尼增长放缓，双管齐下加速 ρ 获取）
 function svu3RhoTick(realDt) {
   if (!voidMilestone3() || !state.voidActive) return;
   if (state.voidRules.length < DISTORT_UNIVERSES.length) return;
   if (!(realDt > 0)) return;
-  const w = gainRateLog(true).log - svu3CapStart();
-  if (!(w > 0)) return;
-  const k = 1 + state.svu3N / 3; // 阻尼指数（N=0 时恰为 1，走平方根闭式解）
+  const wRaw = gainRateLog(true).log - svu3CapStart();
+  if (!(wRaw > 0)) return;
+  const m4 = voidMilestone4();
+  const w = m4 ? Math.max(wRaw, Math.pow(wRaw, 1.15)) : wRaw;
+  const k = m4
+    ? 1 + Math.min(state.svu3N, 5 * Math.pow(state.svu3N / 5, 0.7)) / 3
+    : 1 + state.svu3N / 3; // 阻尼指数（N=0 时恰为 1，走平方根闭式解）
   const r0 = 1 + state.svu3Rho;
   const r1 = k === 1
     ? Math.sqrt(r0 * r0 + 2 * w * realDt)

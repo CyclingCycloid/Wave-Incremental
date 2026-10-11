@@ -60,7 +60,8 @@ function buildVoidOnce() {
       tip.textContent = "ⓘ 等级模式";
       tip.addEventListener("mouseenter", () => showSvu3TipBox(tip,
         "等级模式：ρ（虚数密度）只在全扭曲虚空（8 种削弱全开）内按真实时间增长，不受时间倍率影响"
-        + "——每秒获取 w/(1+ρ)^(1+N/3)，w 为超出波速软上限部分的波速获取对数值。\n"
+        + "——每秒获取 w/(1+ρ)^(1+N/3)，w 为超出波速软上限部分的波速获取对数值"
+        + (voidMilestone4() ? "（里程碑 4 改进后：max(w, w^1.15)/(1+ρ)^(1+min(N,5(N/5)^0.7)/3)）" : "") + "。\n"
         + "ρ 达到 500+100N 可「相变」：相变数 +1、ρ 清零，获取更难但推迟更强。"
         + "相变与「无序化」（清空 ρ，相变数减一）都只能在虚空外操作。\n"
         + "效果：波速软上限起始点推迟 10^(3(1+N)^1.5·ρ)，并使能标偏移获取 ×N·(1+ρ)^((1+N/5)/2)。详见帮助页「虚空 II」。"));
@@ -153,7 +154,7 @@ function updateVoidUI() {
       el.titleEl.textContent = showDetail ? `里程碑 4 · ${def.title}` : "里程碑 4 · ???";
       el.descEl.textContent = showDetail ? def.desc : "？？？";
       el.rewardEl.textContent = showDetail
-        ? `奖励：${def.reward}` + (voidMilestone4() ? `(当前*${fmt(voidMs4ExpMult())})` : "")
+        ? `奖励：${def.reward}` + (voidMilestone4() ? `(效果${fmt(voidMs4ExpMult())})` : "")
         : "奖励：？？？";
     }
     el.statusEl.textContent = done ? "✓ 已完成" : "进行中";
