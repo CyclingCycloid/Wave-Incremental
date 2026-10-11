@@ -3429,7 +3429,7 @@ function updateVoidUI() {
       el.titleEl.textContent = showDetail ? `里程碑 4 · ${def.title}` : "里程碑 4 · ???";
       el.descEl.textContent = showDetail ? def.desc : "？？？";
       el.rewardEl.textContent = showDetail
-        ? `奖励：${def.reward}(当前*${fmt(voidMs4ExpMult())})`
+        ? `奖励：${def.reward}` + (voidMilestone4() ? `(当前*${fmt(voidMs4ExpMult())})` : "")
         : "奖励：？？？";
     }
     el.statusEl.textContent = done ? "✓ 已完成" : "进行中";
