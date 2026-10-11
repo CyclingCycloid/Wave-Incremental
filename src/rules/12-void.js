@@ -285,9 +285,12 @@ function svu3Phase() {
   if (!svu3PhaseReady()) return;
   state.svu3N++;
   state.svu3Rho = 0;
+  // 相变代价：VF 与 VF 上限一并清空（虚空外的上限追赶差值随之为 0；下次退出虚空的结算重新写入上限）
+  setVoidVFLog(NLOG);
+  state.logVoidVFCap10 = NLOG;
   saveGame();
   updateVoidUI();
-  setAutosaveStatus("虚数相变完成：相变数 " + state.svu3N + "（ρ 已重置，软上限推迟更强）");
+  setAutosaveStatus("虚数相变完成：相变数 " + state.svu3N + "（ρ/VF/VF 上限已清空，软上限推迟更强）");
 }
 // 无序化：清空 ρ、相变数减一；虚空中不可用，需退出虚空后操作（实现见下方 svu3Disorder）
 // 等级模式悬浮框：渲染到 document.body 的固定定位独立黑框（脱离卡片合成树，恒全不透明）

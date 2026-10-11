@@ -3340,7 +3340,7 @@ function buildVoidOnce() {
         "等级模式：ρ（虚数密度）只在全扭曲虚空（8 种削弱全开）内按真实时间增长，不受时间倍率影响"
         + "——每秒获取 max(w, w^1.1)/(1+ρ)^(1+N/3)，w 为超出波速软上限部分的波速获取对数值"
         + (voidMilestone4() ? "（里程碑 4 改进后：分子指数 1.3 并 ×max(N,5)、阻尼 1+min(N,5(N/5)^0.7)/3）" : "") + "。\n"
-        + "ρ 达到相变阈值可「相变」（N≤7：500+100N；N≥8 起每级 +25(N+1)）：相变数 +1、ρ 清零，获取更难但推迟更强。"
+        + "ρ 达到相变阈值可「相变」（N≤7：500+100N；N≥8 起每级 +25(N+1)）：相变数 +1、ρ/VF/VF 上限清零，获取更难但推迟更强。"
         + "相变与「无序化」（清空 ρ，相变数减一）都只能在虚空外操作。\n"
         + "效果：波速软上限起始点推迟 10^(3(1+N)^1.5·ρ)，并使能标偏移获取 ×N·(1+ρ)^((1+N/5)/2)。详见帮助页「虚空 II」。"));
       tip.addEventListener("mouseleave", hideSvu3TipBox);
@@ -4108,9 +4108,12 @@ function svu3Phase() {
   if (!svu3PhaseReady()) return;
   state.svu3N++;
   state.svu3Rho = 0;
+  // 相变代价：VF 与 VF 上限一并清空（虚空外的上限追赶差值随之为 0；下次退出虚空的结算重新写入上限）
+  setVoidVFLog(NLOG);
+  state.logVoidVFCap10 = NLOG;
   saveGame();
   updateVoidUI();
-  setAutosaveStatus("虚数相变完成：相变数 " + state.svu3N + "（ρ 已重置，软上限推迟更强）");
+  setAutosaveStatus("虚数相变完成：相变数 " + state.svu3N + "（ρ/VF/VF 上限已清空，软上限推迟更强）");
 }
 // 无序化：清空 ρ、相变数减一；虚空中不可用，需退出虚空后操作（实现见下方 svu3Disorder）
 // 等级模式悬浮框：渲染到 document.body 的固定定位独立黑框（脱离卡片合成树，恒全不透明）
