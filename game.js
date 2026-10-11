@@ -1204,13 +1204,15 @@ function gainRate() {
   if (inDistort("inflation")) g = Math.sqrt(Math.max(0, g));
   // 膨胀宇宙：波速获取指数随时间下降（每秒 -0.1，到 0 为止）
   if (inDistort("expand")) g = Math.pow(Math.max(0, g), distortGainExp());
-  // 研究·双缝干涉实验（v0.6.3.2）：波速获取整体幂次 ×(0.6·0.8^(等级-1))
+  // 研究·双缝干涉实验（v0.6.3.2）：波速获取整体幂次 ×(0.6·0.8^(等级-1))；
+  // 7 级后每级追加 波速获取 ÷1e((N−7)·50)（与 log 路径同口径；深级 double 下溢为 0 可接受，log 权威）
   {
     const slit = researchSlitLevel();
     if (slit >= 1) {
       const sp2 = slitMult(slit);
       const s = g < 0 ? -1 : 1;
       g = s * Math.pow(Math.abs(g), sp2);
+      if (slit > 7) g /= Math.pow(10, (slit - 7) * 50);
     }
   }
   // 虚空共振（SVU1）：虚空内波速获取速率整体幂次（符号保持——定向宇宙中可为负）；
@@ -1278,10 +1280,14 @@ function gainRateLog(uncapped) {
     if (ge <= 0) return { log: NLOG, sign: 1 };
     log *= ge;
   }
-  // 研究·双缝干涉实验（v0.6.3.2）：整体幂次 ×slitMult(n)（=0.6·0.8^(n−1)，5 级起每级再 ×0.5）
+  // 研究·双缝干涉实验（v0.6.3.2）：整体幂次 ×slitMult(n)（1–4 级 0.6·0.8^(n−1)、5 级 ×0.5、6 级起 ×0.2）；
+  // 7 级之后每级再追加 波速获取 ÷1e((N−7)·50)（log 域 = −(N−7)·50，只削波速获取不动波长公式）
   {
     const slit = researchSlitLevel();
-    if (slit >= 1) log *= slitMult(slit);
+    if (slit >= 1) {
+      log *= slitMult(slit);
+      if (slit > 7) log -= (slit - 7) * 50;
+    }
   }
   // 虚空共振（SVU1）：虚空内波速获取速率整体幂次（幂在 log 域 = 乘指数）；
   // 虚空泡沫第三效果（里程碑 2）：全局整体幂次
@@ -5104,11 +5110,13 @@ function subInfLog(costLog) {
 const RESEARCH_EXPS = [
   { id: "slit", name: "双缝干涉实验", unlock: () => theoryOwned("51"),
     science: "展示光子或电子等微观粒子同时具有波动性与粒子性的经典量子力学实验，当粒子穿过双缝时会在屏上形成明暗相间的干涉条纹。",
-    // 削弱倍数 <0.1 时（6 级起）用科学计数 X.XXXe-X，防 toFixed(4) 在深级丢失精度
+    // 削弱倍数 <0.1 时（6 级起）用科学计数 X.XXXe-X，防 toFixed(4) 在深级丢失精度；
+    // 7 级后每级追加「波速获取 ÷1e((N−7)·50)」（只削波速获取，不动波长公式）
     debuff: (n) => {
       if (n < 1) return "无削弱";
       const m = slitMult(n);
-      return `波长和波速获取公式的指数变为原来的 ${m < 0.1 ? m.toExponential(3) : m.toFixed(4)} 倍`;
+      return `波长和波速获取公式的指数变为原来的 ${m < 0.1 ? m.toExponential(3) : m.toFixed(4)} 倍`
+        + (n > 7 ? `，波速获取 ÷1e${(n - 7) * 50}` : "");
     } },
 ];
 // 双缝干涉实验的每级削弱倍数：等级 1–4 为 0.6·0.8^(n-1)（0.6/0.48/0.384/0.3072）；
