@@ -400,7 +400,10 @@ function node72SpBoostExpMult() {
 // 未解锁（或解锁后 N 被无序化降到 ≤5 使 x=0）时乘数为 1
 function voidMs4ExpMult() {
   if (!voidMilestone4()) return 1;
-  const x = Math.max(0, state.svu3N - 5);
+  // 基于历史最高相变数（svu3NBest，相变时 latch 只增不减；与当前值取 max 兼容无字段老档）——
+  // 无序化降当前 N 不削减此项（其余 N 用途——ρ 获取/阻尼/SVU2 倍率/软上限推迟/阈值——仍用当前 N）
+  const nBest = Math.max(state.svu3N, state.svu3NBest || 0);
+  const x = Math.max(0, nBest - 5);
   if (x <= 0) return 1;
   return 1 + Math.min(x, Math.sqrt(10 * x)) / 10;
 }

@@ -284,6 +284,7 @@ function svu3Phase() {
   if (state.voidActive) { setAutosaveStatus("虚空中无法相变，请先退出虚空"); return; }
   if (!svu3PhaseReady()) return;
   state.svu3N++;
+  state.svu3NBest = Math.max(state.svu3NBest || 0, state.svu3N); // 历史最高 latch（M4 奇点加成基于此，无序化不减）
   state.svu3Rho = 0;
   // 相变代价：VF 与 VF 上限一并清空（虚空外的上限追赶差值随之为 0；下次退出虚空的结算重新写入上限）
   setVoidVFLog(NLOG);

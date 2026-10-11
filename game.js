@@ -429,6 +429,7 @@ function defaultState() {
     svu2Level: 0,          // SVU2 能标偏移等级（虚空外增长，不清零不重置）
     svu3Rho: 0,            // SVU3 虚数相变：虚数密度 ρ（任何重置不清；相变时归 0）
     svu3N: 0,              // SVU3：相变数 N（任何重置不清；无序化清 ρ 且 N 减一，虚空内不可无序化）
+    svu3NBest: 0,          // SVU3：历史最高相变数（相变时 latch 只增不减——M4 奇点加成基于此；老档以当前 N 兜底）
     voidMs4: 0,            // 虚空里程碑 4「相变重整」闩锁（N≥5 且深度≥8.5 达成后置 1，无序化不撤销）
 
     // 卷缩层（v0.6.0.0 测试：第三重置层；SS=超弦 / Ins=灵感 / CM=卡拉比-丘流形）
@@ -4107,6 +4108,7 @@ function svu3Phase() {
   if (state.voidActive) { setAutosaveStatus("虚空中无法相变，请先退出虚空"); return; }
   if (!svu3PhaseReady()) return;
   state.svu3N++;
+  state.svu3NBest = Math.max(state.svu3NBest || 0, state.svu3N); // 历史最高 latch（M4 奇点加成基于此，无序化不减）
   state.svu3Rho = 0;
   // 相变代价：VF 与 VF 上限一并清空（虚空外的上限追赶差值随之为 0；下次退出虚空的结算重新写入上限）
   setVoidVFLog(NLOG);
@@ -4828,7 +4830,10 @@ function node72SpBoostExpMult() {
 // 未解锁（或解锁后 N 被无序化降到 ≤5 使 x=0）时乘数为 1
 function voidMs4ExpMult() {
   if (!voidMilestone4()) return 1;
-  const x = Math.max(0, state.svu3N - 5);
+  // 基于历史最高相变数（svu3NBest，相变时 latch 只增不减；与当前值取 max 兼容无字段老档）——
+  // 无序化降当前 N 不削减此项（其余 N 用途——ρ 获取/阻尼/SVU2 倍率/软上限推迟/阈值——仍用当前 N）
+  const nBest = Math.max(state.svu3N, state.svu3NBest || 0);
+  const x = Math.max(0, nBest - 5);
   if (x <= 0) return 1;
   return 1 + Math.min(x, Math.sqrt(10 * x)) / 10;
 }
