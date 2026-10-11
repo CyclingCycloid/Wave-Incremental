@@ -3973,13 +3973,19 @@ function svu1Level() {
   const vf = lg1FromLog(state.svu1VfLog) / 6 + 1;
   return sp * vp * vf - 1;
 }
-// SVU2 能标偏移的等级增速（仅虚空外，每真实秒）：SVU1_level/(1+SVU2_level)^1.5。
-// SVU3「虚数相变」解锁后（里程碑3）额外提供倍率 N·(1+ρ_eff)^((1+N/5)/2)——按约定不在 UI 显示
-//（ρ_eff 为有效 ρ：超相变阈值部分开方）
+// SVU3 对 SVU2（能标偏移）增速的倍率：N·(1+ρ_eff)^((1+N/5)/2)（里程碑3 解锁后；
+// N=0 时为 0——首次相变前停涨，原版语义）。ρ_eff 为有效 ρ（超相变阈值部分开方）
+function svu3Svu2Mult() {
+  if (!voidMilestone3()) return 1;
+  return state.svu3N * Math.pow(1 + svu3RhoEff(), (1 + state.svu3N / 5) / 2);
+}
+// SVU2 显示口径：**接下来 1 秒的实际增量**（解析闭式解，与 tickProgression 结算同式）——
+// 瞬时速率 S/(1+L)^1.5 在强自我衰减下严重高估（S=7496、L=0 时瞬时 +7496/s，
+// 1 秒实际只 +50），且结算已含 SVU3 倍率（此前显示与结算脱节的根源之一）
 function svu2GainRate() {
-  let rate = svu1Level() / Math.pow(1 + state.svu2Level, 1.5);
-  if (voidMilestone3()) rate *= state.svu3N * Math.pow(1 + svu3RhoEff(), (1 + state.svu3N / 5) / 2);
-  return rate;
+  const S = svu1Level() * svu3Svu2Mult();
+  if (!(S > 0)) return 0;
+  return Math.pow(Math.pow(1 + state.svu2Level, 2.5) + 2.5 * S, 0.4) - (1 + state.svu2Level);
 }
 // SVU1 效果：虚空内波速获取速率的幂次 ^= 1 + min(level/6, √(2·level)/6)（虚空外恒 1）
 // SVU1 效果幂次：等级换算的指数（仅依赖等级）；应用与否由调用方按 voidActive 判定
@@ -8663,11 +8669,11 @@ function tickProgression(realDt) {
   if (state.ach.normal.includes("A52")) {
     svu1FillTick(realDt);
     if (!state.voidActive) {
-      // SVU2 能标偏移：自我衰减增长 dL/dt = S/(1+L)^1.5（S=svu1Level 步内恒定）——
+      // SVU2 能标偏移：自我衰减增长 dL/dt = S/(1+L)^1.5（S=svu1Level×SVU3 倍率，步内恒定）——
       // 解析精确积分（与 SVU3 ρ 同源问题）：显式累加在大 realDt（后台标签补发/离线 60s 步长）
       // 下步内不感知分母压制，清零后一旦填充恢复 SVU1 等级会单步过冲到匪夷所思的量级
-      //（S=1e10、dt=60：显式 +6e11，精确解仅 ~7e4）。闭式解：(1+L)^2.5 = (1+L0)^2.5 + 2.5·S·dt
-      const S = svu1Level();
+      //（S=1e4、dt=60：显式 +6e5，精确解仅 ~2.6e2）。闭式解：(1+L)^2.5 = (1+L0)^2.5 + 2.5·S·dt
+      const S = svu1Level() * svu3Svu2Mult();
       if (S > 0) {
         const a = Math.pow(1 + state.svu2Level, 2.5);
         if (isFinite(a)) { // 等级 >~1e122 时 a 溢出——增量相对可忽略，保持原值

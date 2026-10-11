@@ -165,11 +165,11 @@ function tickProgression(realDt) {
   if (state.ach.normal.includes("A52")) {
     svu1FillTick(realDt);
     if (!state.voidActive) {
-      // SVU2 能标偏移：自我衰减增长 dL/dt = S/(1+L)^1.5（S=svu1Level 步内恒定）——
+      // SVU2 能标偏移：自我衰减增长 dL/dt = S/(1+L)^1.5（S=svu1Level×SVU3 倍率，步内恒定）——
       // 解析精确积分（与 SVU3 ρ 同源问题）：显式累加在大 realDt（后台标签补发/离线 60s 步长）
       // 下步内不感知分母压制，清零后一旦填充恢复 SVU1 等级会单步过冲到匪夷所思的量级
-      //（S=1e10、dt=60：显式 +6e11，精确解仅 ~7e4）。闭式解：(1+L)^2.5 = (1+L0)^2.5 + 2.5·S·dt
-      const S = svu1Level();
+      //（S=1e4、dt=60：显式 +6e5，精确解仅 ~2.6e2）。闭式解：(1+L)^2.5 = (1+L0)^2.5 + 2.5·S·dt
+      const S = svu1Level() * svu3Svu2Mult();
       if (S > 0) {
         const a = Math.pow(1 + state.svu2Level, 2.5);
         if (isFinite(a)) { // 等级 >~1e122 时 a 溢出——增量相对可忽略，保持原值
