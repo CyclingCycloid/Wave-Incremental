@@ -3340,7 +3340,7 @@ function buildVoidOnce() {
         "等级模式：ρ（虚数密度）只在全扭曲虚空（8 种削弱全开）内按真实时间增长，不受时间倍率影响"
         + "——每秒获取 max(w, w^1.1)/(1+ρ)^(1+N/3)，w 为超出波速软上限部分的波速获取对数值"
         + (voidMilestone4() ? "（里程碑 4 改进后：分子指数 1.3 并 ×max(N,5)、阻尼 1+min(N,5(N/5)^0.7)/3）" : "") + "。\n"
-        + "ρ 达到 500+100N 可「相变」：相变数 +1、ρ 清零，获取更难但推迟更强。"
+        + "ρ 达到相变阈值可「相变」（N≤7：500+100N；N≥8 起每级 +25(N+1)）：相变数 +1、ρ 清零，获取更难但推迟更强。"
         + "相变与「无序化」（清空 ρ，相变数减一）都只能在虚空外操作。\n"
         + "效果：波速软上限起始点推迟 10^(3(1+N)^1.5·ρ)，并使能标偏移获取 ×N·(1+ρ)^((1+N/5)/2)。详见帮助页「虚空 II」。"));
       tip.addEventListener("mouseleave", hideSvu3TipBox);
@@ -4058,7 +4058,11 @@ function svu3CapDelay() {
   return 3 * Math.pow(1 + state.svu3N, 1.5) * svu3RhoEff();
 }
 function svu3CapStart() { return 20000 + svu3CapDelay(); }       // 软上限起始点（log10）
-function svu3PhaseThreshold() { return 500 + 100 * state.svu3N; } // 相变阈值：ρ ≥ 500+100N
+// 相变阈值：N≤7 为 500+100N；N≥8 起增速提高为每级 +25(N+1)（闭式 500+12.5N(N+1)，在 N=7 处与旧式连续：
+// 1200=1200）——例 1400/1625/1875/2150 对应 N=8/9/10/11
+function svu3PhaseThreshold() {
+  return state.svu3N <= 7 ? 500 + 100 * state.svu3N : 500 + 12.5 * state.svu3N * (state.svu3N + 1);
+}
 // ρ 的有效值：超过相变阈值的部分开方（囤 ρ 不相变时效果不再线性增长；相变判定仍用原始 ρ）
 function svu3RhoEff() {
   const th = svu3PhaseThreshold();
