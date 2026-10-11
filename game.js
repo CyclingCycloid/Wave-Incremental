@@ -429,6 +429,7 @@ function defaultState() {
     svu2Level: 0,          // SVU2 能标偏移等级（虚空外增长，不清零不重置）
     svu3Rho: 0,            // SVU3 虚数相变：虚数密度 ρ（任何重置不清；相变时归 0）
     svu3N: 0,              // SVU3：相变数 N（任何重置不清；无序化清 ρ 且 N 减一，虚空内不可无序化）
+    voidMs4: 0,            // 虚空里程碑 4「相变重整」闩锁（N≥5 且深度≥8.5 达成后置 1，无序化不撤销）
 
     // 卷缩层（v0.6.0.0 测试：第三重置层；SS=超弦 / Ins=灵感 / CM=卡拉比-丘流形）
     compactions: 0,        // 卷缩次数
@@ -1291,11 +1292,16 @@ function gainRateLog(uncapped) {
   if (!uncapped) log = voidGainSoftcap(log);
   return { log: clampLog(log), sign };
 }
-// 虚空内波速获取的超级软上限（阈值 20000，可被 SVU3「虚数相变」推迟，见 svu3CapDelay）
+// 虚空内波速获取的超级软上限（阈值 20000，可被 SVU3「虚数相变」推迟，见 svu3CapDelay）。
+// 里程碑 4「相变重整」：超出部分指数改为 max(0.5, 0.55)——g−c>1 时 0.55 更大（削弱），
+// g−c≤1 时退回原 0.5（保持原逻辑，两档在 g=c 处连续）
 function voidGainSoftcap(log) {
   if (!state.voidActive) return log;
   const cap = 20000 + svu3CapDelay();
-  if (log > cap) log = cap + Math.pow(log - cap, 0.5);
+  if (log > cap) {
+    const over = log - cap;
+    log = cap + (voidMilestone4() ? Math.max(Math.sqrt(over), Math.pow(over, 0.55)) : Math.sqrt(over));
+  }
   return log;
 }
 // 获取速率的显示口径 log：gain 为 0（gainRateLog 返回 NLOG 哨兵）时保持 NLOG（语义零）。
@@ -3370,7 +3376,7 @@ function buildVoidOnce() {
     const reward = document.createElement("div"); reward.className = "sau-desc"; reward.textContent = "奖励：" + def.reward;
     cell.append(head, desc, prog, reward);
     msGrid.appendChild(cell);
-    voidMsEls.push({ cell, statusEl: status, progEl: prog });
+    voidMsEls.push({ cell, titleEl: title, descEl: desc, statusEl: status, progEl: prog, rewardEl: reward });
   }
   voidBuilt = true;
 }
@@ -3405,24 +3411,34 @@ function updateVoidUI() {
       + (m2 ? `\n波速获取 ^${fmt(vfGainExp())}` : "")
       + (voidMilestone3() ? `\n维度折叠器速度 ×${fmtLog(clampLog(0.1 * state.logVoidVF10))}` : "")
     : "虚空泡沫（VF）：尚无" + capNote + growNote;
-  // 虚空里程碑显示（每个里程碑一个独立格子）；M1/M2 按削弱种数、M3 按历史最高 VF、M4 占位
+  // 虚空里程碑显示（每个里程碑一个独立格子）；M1/M2 按削弱种数、M3 按历史最高 VF、
+  // M4 按相变数 N 与理论深度（里程碑 3 达成前显示？？？占位，防剧透）
   const m3 = voidMilestone3();
   for (let i = 0; i < VOID_MILESTONES.length; i++) {
     const def = VOID_MILESTONES[i];
     const el = voidMsEls[i];
     if (!el) continue;
-    const done = def.n === 1 ? voidMilestone1() : def.n === 2 ? voidMilestone2() : def.n === 3 ? m3 : false;
+    const done = def.n === 1 ? voidMilestone1() : def.n === 2 ? voidMilestone2() : def.n === 3 ? m3 : voidMilestone4();
     // R2「虚空探测器」解锁更多里程碑：购买前 M3/M4 整格隐藏
     if (def.n >= 3) el.cell.classList.toggle("hidden", !researchBought("R2"));
     el.cell.classList.toggle("done", done);
-    el.statusEl.textContent = def.n === 4 ? "？？？" : (done ? "✓ 已完成" : "进行中");
+    // M4：里程碑 3 达成前显示？？？占位（与 SVU3 卡片同款防剧透），达成后揭示具体内容
+    if (def.n === 4) {
+      const showDetail = m3;
+      el.titleEl.textContent = showDetail ? `里程碑 4 · ${def.title}` : "里程碑 4 · ???";
+      el.descEl.textContent = showDetail ? def.desc : "？？？";
+      el.rewardEl.textContent = showDetail ? "奖励：" + def.reward : "奖励：？？？";
+    }
+    el.statusEl.textContent = done ? "✓ 已完成" : "进行中";
     el.progEl.textContent = def.n <= 2
       ? `进度：历史最高 ${state.voidBestRules} / ${def.need} 种`
       : def.n === 3
         ? (researchBought("R2")
           ? `进度：历史最高 VF ${fmtLog(state.logVoidVFBest10)} / 1e22`
           : "进度：需先购买研究「虚空探测器」")
-        : "进度：？？？";
+        : (m3
+          ? `进度：相变数 ${state.svu3N} / 5 · 理论深度 ${fmt(theoryDepthEff())} / 8.5`
+          : "进度：需先完成里程碑 3「度规塌缩」");
   }
   // SVU 卡片状态（SVU1/2 由里程碑 1 解锁；SVU3 由里程碑 3 解锁——锁定时只调暗内容，
   // 不给卡片整体加 opacity，保证「等级模式」tooltip 底框始终全不透明可读）
@@ -3727,6 +3743,17 @@ function voidMilestone2() { return state.voidBestRules >= 7; }
 // 效果：定向削弱在虚空中失效（乘数与生效数保留）、解锁 SVU3「虚数相变」、
 // 前三个 VF 效果按 VF^1.1 计算、维度折叠器速度 ×max(1, VF^0.1)
 function voidMilestone3() { return researchBought("R2") && state.logVoidVFBest10 >= 22; }
+// 虚空里程碑 4「相变重整」（v0.6.3.2）：里程碑 3 达成后可见具体内容（此前显示？？？占位）；
+// 条件=相变数 N≥5 且有效理论深度 ≥8.5，达成即闩锁（state.voidMs4——无序化减 N 不撤销解锁）。
+// 效果：削弱虚空波速软上限（见 voidGainSoftcap）、相变数加成四个奇点效果指数（见 voidMs4ExpMult）
+function voidMilestone4() {
+  if (state.voidMs4) return true;
+  if (voidMilestone3() && state.svu3N >= 5 && theoryDepthEff() >= 8.5 - 1e-9) {
+    state.voidMs4 = 1; // 闩锁：解锁后即使无序化降 N 也不撤销
+    return true;
+  }
+  return false;
+}
 // 虚空里程碑列表（虚空页每个里程碑一个独立格子）
 const VOID_MILESTONES = [
   { n: 1, title: "聚合浪潮", need: 4,
@@ -3738,9 +3765,9 @@ const VOID_MILESTONES = [
   { n: 3, title: "度规塌缩", need: 22,
     desc: "购买研究「虚空探测器」后，持有的虚空泡沫达到 1e22",
     reward: "虚空内定向效果不再生效，增加一个新的虚空升级，增强虚空泡沫效果，以及增加一个新的虚空泡沫效果" },
-  { n: 4, title: "???", need: 0, // TODO(内容待定)：占位里程碑，实装时补条件与奖励
-    desc: "？？？",
-    reward: "？？？" },
+  { n: 4, title: "相变重整", need: 5,
+    desc: "达到五次虚数相变以及理论深度 8.5",
+    reward: "削弱虚空的波速软上限，同时相变数加成奇点效果" },
 ];
 // 虚空泡沫第三效果的幂次（未解锁里程碑 2 或无 VF 时为 1，即无影响）。
 // 里程碑3「度规塌缩」：前三个 VF 效果按真实数量的 ^1.1 计算（log 域 = lgVF ×1.1）
@@ -4772,10 +4799,18 @@ function node72SpBoostExpMult() {
   const l = state.totalSp > 0 ? lg1FromLog(getLogTotalSp()) : 0; // lg(总Sp+1)（哨兵：totalSp=0 时为 0，勿用 lg1FromLog(0)=lg2）
   return 1 + Math.log10(1 + l / 2) / 3;
 }
-function waveGainExp() { return 2 * daExpMult() * theory11Exp() * node72SpBoostExpMult(); }   // 波速获取 ×(1+Sp)^exp
-function planckExp() { return 1.5 * daExpMult() * theory11Exp() * node72SpBoostExpMult(); }   // 普朗克常数 ×(1+Sp)^exp
-function tempCapExp() { return 10 * daExpMult() * theory11Exp() * node72SpBoostExpMult(); }   // 普朗克温度上限 ×(1+Sp)^exp
-function accretionExp() { return 3 * theory11Exp() * node72SpBoostExpMult(); }                // 黑洞吸积效率（AU43）^exp
+// 虚空里程碑 4「相变重整」：四个奇点效果的指数额外乘 1+min(x,√(10x))/10，x=max(0, N−5)。
+// 未解锁（或解锁后 N 被无序化降到 ≤5 使 x=0）时乘数为 1
+function voidMs4ExpMult() {
+  if (!voidMilestone4()) return 1;
+  const x = Math.max(0, state.svu3N - 5);
+  if (x <= 0) return 1;
+  return 1 + Math.min(x, Math.sqrt(10 * x)) / 10;
+}
+function waveGainExp() { return 2 * daExpMult() * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult(); }   // 波速获取 ×(1+Sp)^exp
+function planckExp() { return 1.5 * daExpMult() * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult(); }   // 普朗克常数 ×(1+Sp)^exp
+function tempCapExp() { return 10 * daExpMult() * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult(); }   // 普朗克温度上限 ×(1+Sp)^exp
+function accretionExp() { return 3 * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult(); }                // 黑洞吸积效率（AU43）^exp
 function theoryAvailable(def) {
   if (theoryOwned(def.id) || def.placeholder) return false;
   if (+def.id[0] > theoryDepthEff() + 1e-9) return false; // 理论深度：更深层的节点暂不可购（显示？？？；1e-9 容差防浮点残差）

@@ -99,6 +99,17 @@ function voidMilestone2() { return state.voidBestRules >= 7; }
 // 效果：定向削弱在虚空中失效（乘数与生效数保留）、解锁 SVU3「虚数相变」、
 // 前三个 VF 效果按 VF^1.1 计算、维度折叠器速度 ×max(1, VF^0.1)
 function voidMilestone3() { return researchBought("R2") && state.logVoidVFBest10 >= 22; }
+// 虚空里程碑 4「相变重整」（v0.6.3.2）：里程碑 3 达成后可见具体内容（此前显示？？？占位）；
+// 条件=相变数 N≥5 且有效理论深度 ≥8.5，达成即闩锁（state.voidMs4——无序化减 N 不撤销解锁）。
+// 效果：削弱虚空波速软上限（见 voidGainSoftcap）、相变数加成四个奇点效果指数（见 voidMs4ExpMult）
+function voidMilestone4() {
+  if (state.voidMs4) return true;
+  if (voidMilestone3() && state.svu3N >= 5 && theoryDepthEff() >= 8.5 - 1e-9) {
+    state.voidMs4 = 1; // 闩锁：解锁后即使无序化降 N 也不撤销
+    return true;
+  }
+  return false;
+}
 // 虚空里程碑列表（虚空页每个里程碑一个独立格子）
 const VOID_MILESTONES = [
   { n: 1, title: "聚合浪潮", need: 4,
@@ -110,9 +121,9 @@ const VOID_MILESTONES = [
   { n: 3, title: "度规塌缩", need: 22,
     desc: "购买研究「虚空探测器」后，持有的虚空泡沫达到 1e22",
     reward: "虚空内定向效果不再生效，增加一个新的虚空升级，增强虚空泡沫效果，以及增加一个新的虚空泡沫效果" },
-  { n: 4, title: "???", need: 0, // TODO(内容待定)：占位里程碑，实装时补条件与奖励
-    desc: "？？？",
-    reward: "？？？" },
+  { n: 4, title: "相变重整", need: 5,
+    desc: "达到五次虚数相变以及理论深度 8.5",
+    reward: "削弱虚空的波速软上限，同时相变数加成奇点效果" },
 ];
 // 虚空泡沫第三效果的幂次（未解锁里程碑 2 或无 VF 时为 1，即无影响）。
 // 里程碑3「度规塌缩」：前三个 VF 效果按真实数量的 ^1.1 计算（log 域 = lgVF ×1.1）

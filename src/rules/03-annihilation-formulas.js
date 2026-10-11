@@ -225,11 +225,16 @@ function gainRateLog(uncapped) {
   if (!uncapped) log = voidGainSoftcap(log);
   return { log: clampLog(log), sign };
 }
-// 虚空内波速获取的超级软上限（阈值 20000，可被 SVU3「虚数相变」推迟，见 svu3CapDelay）
+// 虚空内波速获取的超级软上限（阈值 20000，可被 SVU3「虚数相变」推迟，见 svu3CapDelay）。
+// 里程碑 4「相变重整」：超出部分指数改为 max(0.5, 0.55)——g−c>1 时 0.55 更大（削弱），
+// g−c≤1 时退回原 0.5（保持原逻辑，两档在 g=c 处连续）
 function voidGainSoftcap(log) {
   if (!state.voidActive) return log;
   const cap = 20000 + svu3CapDelay();
-  if (log > cap) log = cap + Math.pow(log - cap, 0.5);
+  if (log > cap) {
+    const over = log - cap;
+    log = cap + (voidMilestone4() ? Math.max(Math.sqrt(over), Math.pow(over, 0.55)) : Math.sqrt(over));
+  }
   return log;
 }
 // 获取速率的显示口径 log：gain 为 0（gainRateLog 返回 NLOG 哨兵）时保持 NLOG（语义零）。

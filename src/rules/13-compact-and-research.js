@@ -396,10 +396,18 @@ function node72SpBoostExpMult() {
   const l = state.totalSp > 0 ? lg1FromLog(getLogTotalSp()) : 0; // lg(总Sp+1)（哨兵：totalSp=0 时为 0，勿用 lg1FromLog(0)=lg2）
   return 1 + Math.log10(1 + l / 2) / 3;
 }
-function waveGainExp() { return 2 * daExpMult() * theory11Exp() * node72SpBoostExpMult(); }   // 波速获取 ×(1+Sp)^exp
-function planckExp() { return 1.5 * daExpMult() * theory11Exp() * node72SpBoostExpMult(); }   // 普朗克常数 ×(1+Sp)^exp
-function tempCapExp() { return 10 * daExpMult() * theory11Exp() * node72SpBoostExpMult(); }   // 普朗克温度上限 ×(1+Sp)^exp
-function accretionExp() { return 3 * theory11Exp() * node72SpBoostExpMult(); }                // 黑洞吸积效率（AU43）^exp
+// 虚空里程碑 4「相变重整」：四个奇点效果的指数额外乘 1+min(x,√(10x))/10，x=max(0, N−5)。
+// 未解锁（或解锁后 N 被无序化降到 ≤5 使 x=0）时乘数为 1
+function voidMs4ExpMult() {
+  if (!voidMilestone4()) return 1;
+  const x = Math.max(0, state.svu3N - 5);
+  if (x <= 0) return 1;
+  return 1 + Math.min(x, Math.sqrt(10 * x)) / 10;
+}
+function waveGainExp() { return 2 * daExpMult() * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult(); }   // 波速获取 ×(1+Sp)^exp
+function planckExp() { return 1.5 * daExpMult() * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult(); }   // 普朗克常数 ×(1+Sp)^exp
+function tempCapExp() { return 10 * daExpMult() * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult(); }   // 普朗克温度上限 ×(1+Sp)^exp
+function accretionExp() { return 3 * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult(); }                // 黑洞吸积效率（AU43）^exp
 function theoryAvailable(def) {
   if (theoryOwned(def.id) || def.placeholder) return false;
   if (+def.id[0] > theoryDepthEff() + 1e-9) return false; // 理论深度：更深层的节点暂不可购（显示？？？；1e-9 容差防浮点残差）

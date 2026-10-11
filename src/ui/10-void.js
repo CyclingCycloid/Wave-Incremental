@@ -100,7 +100,7 @@ function buildVoidOnce() {
     const reward = document.createElement("div"); reward.className = "sau-desc"; reward.textContent = "奖励：" + def.reward;
     cell.append(head, desc, prog, reward);
     msGrid.appendChild(cell);
-    voidMsEls.push({ cell, statusEl: status, progEl: prog });
+    voidMsEls.push({ cell, titleEl: title, descEl: desc, statusEl: status, progEl: prog, rewardEl: reward });
   }
   voidBuilt = true;
 }
@@ -135,24 +135,34 @@ function updateVoidUI() {
       + (m2 ? `\n波速获取 ^${fmt(vfGainExp())}` : "")
       + (voidMilestone3() ? `\n维度折叠器速度 ×${fmtLog(clampLog(0.1 * state.logVoidVF10))}` : "")
     : "虚空泡沫（VF）：尚无" + capNote + growNote;
-  // 虚空里程碑显示（每个里程碑一个独立格子）；M1/M2 按削弱种数、M3 按历史最高 VF、M4 占位
+  // 虚空里程碑显示（每个里程碑一个独立格子）；M1/M2 按削弱种数、M3 按历史最高 VF、
+  // M4 按相变数 N 与理论深度（里程碑 3 达成前显示？？？占位，防剧透）
   const m3 = voidMilestone3();
   for (let i = 0; i < VOID_MILESTONES.length; i++) {
     const def = VOID_MILESTONES[i];
     const el = voidMsEls[i];
     if (!el) continue;
-    const done = def.n === 1 ? voidMilestone1() : def.n === 2 ? voidMilestone2() : def.n === 3 ? m3 : false;
+    const done = def.n === 1 ? voidMilestone1() : def.n === 2 ? voidMilestone2() : def.n === 3 ? m3 : voidMilestone4();
     // R2「虚空探测器」解锁更多里程碑：购买前 M3/M4 整格隐藏
     if (def.n >= 3) el.cell.classList.toggle("hidden", !researchBought("R2"));
     el.cell.classList.toggle("done", done);
-    el.statusEl.textContent = def.n === 4 ? "？？？" : (done ? "✓ 已完成" : "进行中");
+    // M4：里程碑 3 达成前显示？？？占位（与 SVU3 卡片同款防剧透），达成后揭示具体内容
+    if (def.n === 4) {
+      const showDetail = m3;
+      el.titleEl.textContent = showDetail ? `里程碑 4 · ${def.title}` : "里程碑 4 · ???";
+      el.descEl.textContent = showDetail ? def.desc : "？？？";
+      el.rewardEl.textContent = showDetail ? "奖励：" + def.reward : "奖励：？？？";
+    }
+    el.statusEl.textContent = done ? "✓ 已完成" : "进行中";
     el.progEl.textContent = def.n <= 2
       ? `进度：历史最高 ${state.voidBestRules} / ${def.need} 种`
       : def.n === 3
         ? (researchBought("R2")
           ? `进度：历史最高 VF ${fmtLog(state.logVoidVFBest10)} / 1e22`
           : "进度：需先购买研究「虚空探测器」")
-        : "进度：？？？";
+        : (m3
+          ? `进度：相变数 ${state.svu3N} / 5 · 理论深度 ${fmt(theoryDepthEff())} / 8.5`
+          : "进度：需先完成里程碑 3「度规塌缩」");
   }
   // SVU 卡片状态（SVU1/2 由里程碑 1 解锁；SVU3 由里程碑 3 解锁——锁定时只调暗内容，
   // 不给卡片整体加 opacity，保证「等级模式」tooltip 底框始终全不透明可读）
