@@ -2,6 +2,10 @@
 
 这个目录是可运行、可回退的候选实现。仓库根目录的 `game.js`、`index.html`、`style.css` 和 `break_infinity.js` 不由本目录的工具修改。
 
+## 维度折叠器动画
+
+已选定的二十四胞体动画位于 [dimension-24cell/index.html](dimension-24cell/index.html)，双击即可查看独立预览。可编辑片段与接入说明见 [dimension-24cell/README.md](dimension-24cell/README.md)。
+
 ## 当前交付范围
 
 - 基线固定为 Git 提交 `6523dfc7257ca29003eb6e429ea1b858ffc7ec70`，不读取其他 agent 正在修改的工作区主代码。
