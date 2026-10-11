@@ -674,7 +674,12 @@ function subInfLog(costLog) {
 const RESEARCH_EXPS = [
   { id: "slit", name: "双缝干涉实验", unlock: () => theoryOwned("51"),
     science: "展示光子或电子等微观粒子同时具有波动性与粒子性的经典量子力学实验，当粒子穿过双缝时会在屏上形成明暗相间的干涉条纹。",
-    debuff: (n) => n >= 1 ? `波长和波速获取公式的指数变为原来的 ${slitMult(n).toFixed(4)} 倍` : "无削弱" },
+    // 削弱倍数 <0.1 时（6 级起）用科学计数 X.XXXe-X，防 toFixed(4) 在深级丢失精度
+    debuff: (n) => {
+      if (n < 1) return "无削弱";
+      const m = slitMult(n);
+      return `波长和波速获取公式的指数变为原来的 ${m < 0.1 ? m.toExponential(3) : m.toFixed(4)} 倍`;
+    } },
 ];
 // 双缝干涉实验的每级削弱倍数：等级 1–4 为 0.6·0.8^(n-1)（0.6/0.48/0.384/0.3072）；
 // 5 级 ×0.5（0.1536）；6 级起每级 ×0.2（0.0768/0.01536/0.0030722……三处实现共用）
