@@ -3350,7 +3350,7 @@ function buildVoidOnce() {
         + "ρ 达到相变阈值可「相变」（N≤7：500+100N；N≥8 起每级 +25(N+1)）：相变数 +1、ρ/VF/VF 上限清零，获取更难但推迟更强。"
         + "相变与「无序化」（清空 ρ，相变数减一）都只能在虚空外操作。\n"
         + "效果：波速软上限起始点推迟 10^(3(1+N)^1.5·ρ)，并使能标偏移获取 ×N·(1+ρ)^((1+N/5)/2)。"
-        + "ρ 超过相变阈值后，两项效果中的 ρ 按超阈部分开方计算（囤 ρ 收益递减）。"));
+        + "ρ 超过相变阈值后，两项效果中的 ρ 按超阈部分开方计算。"));
       tip.addEventListener("mouseleave", hideSvu3TipBox);
       card.appendChild(tip);
       const row = document.createElement("div");
