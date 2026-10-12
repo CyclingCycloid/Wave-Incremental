@@ -252,7 +252,8 @@ function svu3EffectText() {
   const rhoTxt = state.svu3Rho > 0 ? fmtNum(state.svu3Rho, Math.log10(state.svu3Rho)) : "0";
   return `ρ=${rhoTxt}　相变数：${state.svu3N}`
     + `\n效果：当前软上限起始点：${fmtNum(Math.pow(10, Math.min(capStart, 308)), capStart)}`
-    + `\n相变阈值：ρ ≥ ${fmt(svu3PhaseThreshold())}${state.voidActive ? "（虚空中无法相变/无序化）" : ""}`;
+    + `\n相变阈值：ρ ≥ ${fmt(svu3PhaseThreshold())}${state.voidActive ? "（虚空中无法相变/无序化）" : ""}`
+    + `\nρ 超过阈值后其效果按超阈部分开方计算（囤 ρ 不相变收益递减；ρ 增长本身仍按原始值）`;
 }
 // ρ 增长（applyProduction 调用，真实时间 realDt 原始值，不受时间倍率影响）：
 // 条件=里程碑3 且虚空中且 8 种削弱全开；w = 超出软上限部分的波速获取 log10；
