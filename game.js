@@ -4167,14 +4167,8 @@ function bhVPGainLog() {
   const x = 0.1 * mLog;
   // 大质量时 10^x−1 ≈ 10^x（log ≈ x）；小质量直接算，避免精度损失
   const inner = x > 15 ? x : Math.log10(Math.max(Math.pow(10, x) - 1, 1e-300));
-  const raw = clampLog(inner + sbu3Eff() * Math.log10(2) + vfVPMultLog()); // VF 加成
-  // v0.6.2：VP 获取超过 1e100 的部分按 min(0.5, 1/lg(VP)^0.135) 幂缩放（各加成后生效；
-  // raw=100 处 excess=0 → 输出恒为 100，拐点连续；raw≈169.7 后指数由 0.5 起缓降）
-  if (raw > 100) {
-    const exp = Math.min(0.5, 1 / Math.pow(raw, 0.135));
-    return clampLog(100 + (raw - 100) * exp);
-  }
-  return raw;
+  // v0.6.3.2：移除「超过 1e100 部分按 min(0.5, 1/lg(VP)^0.135) 幂缩放」的软上限（按设计调整整体移除）
+  return clampLog(inner + sbu3Eff() * Math.log10(2) + vfVPMultLog()); // VF 加成
 }
 // 黑洞升级定义
 const SBU_DEFS = [
