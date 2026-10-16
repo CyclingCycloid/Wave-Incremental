@@ -280,7 +280,7 @@ function updateCompactUI() {
   if (state.dimTheme === "time") {
     const sfLg1 = getLogSF() > NLOG + 1 ? lg1FromLog(getLogSF()) : 0;
     effectTxt = `黑洞吸积速度 ×${fmtLog(clampLog(2 * sfLg1))}\n`
-      + `黑洞效果指数 +${(Math.log10(1 + sfLg1) / 4).toFixed(4)}`;
+      + `虚数密度获取速度 ×${fmt(Math.sqrt(1 + sfLg1))}`;
   } else if (state.dimTheme === "info") {
     const neLg1 = getLogNE() > NLOG + 1 ? lg1FromLog(getLogNE()) : 0;
     effectTxt = `推论获取 ×${fmtLog(clampLog(3 * Math.log10(1 + neLg1)))}\n`
