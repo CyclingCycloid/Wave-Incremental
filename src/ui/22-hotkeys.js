@@ -144,6 +144,7 @@ function applyTestModeUIGlobal() {
   const clearVoidBtn = document.getElementById("clear-void-btn");
   const clearVfBestBtn = document.getElementById("clear-vf-best-btn");
   const clearResearchBtn = document.getElementById("clear-research-btn");
+  const clearResearchRecBtn = document.getElementById("clear-research-rec-btn");
   const clearInfBtn = document.getElementById("clear-inf-btn");
   const clearResearchBoughtBtn = document.getElementById("clear-research-bought-btn");
   const resetInsBtn = document.getElementById("reset-ins-btn");
@@ -162,6 +163,7 @@ function applyTestModeUIGlobal() {
   if (clearVoidBtn) clearVoidBtn.classList.toggle("hidden", !state.testMode);
   if (clearVfBestBtn) clearVfBestBtn.classList.toggle("hidden", !state.testMode);
   if (clearResearchBtn) clearResearchBtn.classList.toggle("hidden", !state.testMode);
+  if (clearResearchRecBtn) clearResearchRecBtn.classList.toggle("hidden", !state.testMode);
   if (clearInfBtn) clearInfBtn.classList.toggle("hidden", !state.testMode);
   if (clearResearchBoughtBtn) clearResearchBoughtBtn.classList.toggle("hidden", !state.testMode);
   if (resetInsBtn) resetInsBtn.classList.toggle("hidden", !state.testMode);

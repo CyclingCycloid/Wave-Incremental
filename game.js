@@ -8983,6 +8983,7 @@ function applyTestModeUIGlobal() {
   const clearVoidBtn = document.getElementById("clear-void-btn");
   const clearVfBestBtn = document.getElementById("clear-vf-best-btn");
   const clearResearchBtn = document.getElementById("clear-research-btn");
+  const clearResearchRecBtn = document.getElementById("clear-research-rec-btn");
   const clearInfBtn = document.getElementById("clear-inf-btn");
   const clearResearchBoughtBtn = document.getElementById("clear-research-bought-btn");
   const resetInsBtn = document.getElementById("reset-ins-btn");
@@ -9001,6 +9002,7 @@ function applyTestModeUIGlobal() {
   if (clearVoidBtn) clearVoidBtn.classList.toggle("hidden", !state.testMode);
   if (clearVfBestBtn) clearVfBestBtn.classList.toggle("hidden", !state.testMode);
   if (clearResearchBtn) clearResearchBtn.classList.toggle("hidden", !state.testMode);
+  if (clearResearchRecBtn) clearResearchRecBtn.classList.toggle("hidden", !state.testMode);
   if (clearInfBtn) clearInfBtn.classList.toggle("hidden", !state.testMode);
   if (clearResearchBoughtBtn) clearResearchBoughtBtn.classList.toggle("hidden", !state.testMode);
   if (resetInsBtn) resetInsBtn.classList.toggle("hidden", !state.testMode);
@@ -9296,6 +9298,15 @@ function setupUI() {
     saveGame();
     updateResearchUI();
     setAutosaveStatus("实验数据与推论已清零");
+  });
+  // 测试工具：清除实验完成记录（完成次数计数与各实验历史最高等级归 0；
+  // ED/推论/已购研究/进行中的实验均不动）
+  document.getElementById("clear-research-rec-btn").addEventListener("click", () => {
+    state.researchDone = 0;
+    state.researchBest = {};
+    saveGame();
+    updateResearchUI();
+    setAutosaveStatus("实验完成记录已清除（ED 与已购研究保留）");
   });
   // 测试工具：仅清空推论（不动 ED 与已购买的研究）
   document.getElementById("clear-inf-btn").addEventListener("click", () => {

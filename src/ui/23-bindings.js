@@ -280,6 +280,15 @@ function setupUI() {
     updateResearchUI();
     setAutosaveStatus("实验数据与推论已清零");
   });
+  // 测试工具：清除实验完成记录（完成次数计数与各实验历史最高等级归 0；
+  // ED/推论/已购研究/进行中的实验均不动）
+  document.getElementById("clear-research-rec-btn").addEventListener("click", () => {
+    state.researchDone = 0;
+    state.researchBest = {};
+    saveGame();
+    updateResearchUI();
+    setAutosaveStatus("实验完成记录已清除（ED 与已购研究保留）");
+  });
   // 测试工具：仅清空推论（不动 ED 与已购买的研究）
   document.getElementById("clear-inf-btn").addEventListener("click", () => {
     setInfLog(NLOG);
