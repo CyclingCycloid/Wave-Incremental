@@ -1374,9 +1374,9 @@ function spRawGainLog() {
   // 首次保底 max(1, b)：log 域即 max(0, bLog)。
   // 注意不可写成 log10(1+10^bLog)（那是 1+b 的和）：普朗克温度处 b=1，首湮灭会变成 2 Sp
   const base = first > 0 ? Math.max(0, bLog) : bLog;
-  // 迈克尔逊-莫雷实验：奇点获取指数 ×0.7^n（log 域整体幂；乘在保底之后——首湮灭保底不丢）
+  // 迈克尔逊-莫雷实验：奇点获取指数 ×0.6^n（log 域整体幂；乘在保底之后——首湮灭保底不丢）
   const mmL = researchMmLevel();
-  return mmL >= 1 ? base * Math.pow(0.7, mmL) : base;
+  return mmL >= 1 ? base * Math.pow(0.6, mmL) : base;
 }
 function spGainExact() {
   if (state.testBreakRules) return 0;
@@ -3964,7 +3964,7 @@ function bhEffectLog() {
   if (mLog <= 0) return 0;
   let exp = 0.2 + sbu2Eff() * 0.05; // SF 第二效果已移至虚数密度获取（svu3RhoTick），不再作用于黑洞效果指数
   const mmL = researchMmLevel();
-  if (mmL >= 1) exp *= Math.pow(0.7, mmL); // 迈克尔逊-莫雷实验：黑洞效果指数 ×0.7^n
+  if (mmL >= 1) exp *= Math.pow(0.6, mmL); // 迈克尔逊-莫雷实验：黑洞效果指数 ×0.6^n
   return clampLog(exp * mLog);
 }
 // 黑洞对时间速率的加成（仅扭曲状态）的 log10：×(1 + bhEffect)；AU34 引力扭曲：扭曲状态效果额外 ^2。
@@ -5477,13 +5477,13 @@ const RESEARCH_EXPS = [
       return `波长和波速获取公式的指数变为原来的 ${m < 0.1 ? m.toExponential(3) : m.toFixed(4)} 倍`
         + (n > 7 ? `，频率 ÷1e${(n - 7) * (n - 7) * 100}` : "");
     } },
-  // 迈克尔逊-莫雷实验（节点91 解锁，v0.6.3.3）：黑洞效果与奇点获取的指数 ×0.7^n；
+  // 迈克尔逊-莫雷实验（节点91 解锁，v0.6.3.3）：黑洞效果与奇点获取的指数 ×0.6^n；
   // 3 级起追加奇点效果指数 ×3/(n+1)（四个奇点效果指数同乘，见 mmSpEffectExpMult）
   { id: "mm", name: "迈克尔逊-莫雷实验", unlock: () => theoryOwned("91"),
     science: "旨在探测地球相对于假想「以太」运动的经典干涉实验。实验未发现预期中的干涉条纹位移，严重动摇了静止以太假说，并为狭义相对论的发展提供了重要的实验依据。",
     debuff: (n) => {
       if (n < 1) return "无削弱";
-      const m = Math.pow(0.7, n);
+      const m = Math.pow(0.6, n);
       return `黑洞效果和奇点获取的指数变为原来的 ${m < 0.1 ? m.toExponential(3) : m.toFixed(4)} 倍`
         + (n >= 3 ? `，奇点效果指数变为原来的 ${(3 / (n + 1)).toFixed(4)} 倍` : "");
     } },
@@ -5507,8 +5507,8 @@ function researchMmLevel() {
   const e = state.researchRun.exps.find(x => x.id === "mm");
   return e ? e.level : 0;
 }
-// MM 削弱①②：黑洞效果与奇点获取的指数倍数 0.7^n（分别作用于 bhEffectLog 的指数与 spRawGainLog 整体幂）
-function mmMult() { return Math.pow(0.7, researchMmLevel()); }
+// MM 削弱①②：黑洞效果与奇点获取的指数倍数 0.6^n（分别作用于 bhEffectLog 的指数与 spRawGainLog 整体幂）
+function mmMult() { return Math.pow(0.6, researchMmLevel()); }
 // MM 削弱③（3 级起）：奇点效果指数 ×3/(n+1)（n=3 时 ×0.75，随等级递减；n<3 时为 1）
 function mmSpEffectExpMult() { const n = researchMmLevel(); return n >= 3 ? 3 / (n + 1) : 1; }
 // ---------- 研究项目（v0.6.3.2：A71「乌云」解锁；消耗推论购买，每个理论深度 +1/3）----------

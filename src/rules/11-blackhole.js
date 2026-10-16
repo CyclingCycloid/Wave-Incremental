@@ -47,7 +47,7 @@ function bhEffectLog() {
   if (mLog <= 0) return 0;
   let exp = 0.2 + sbu2Eff() * 0.05; // SF 第二效果已移至虚数密度获取（svu3RhoTick），不再作用于黑洞效果指数
   const mmL = researchMmLevel();
-  if (mmL >= 1) exp *= Math.pow(0.7, mmL); // 迈克尔逊-莫雷实验：黑洞效果指数 ×0.7^n
+  if (mmL >= 1) exp *= Math.pow(0.6, mmL); // 迈克尔逊-莫雷实验：黑洞效果指数 ×0.6^n
   return clampLog(exp * mLog);
 }
 // 黑洞对时间速率的加成（仅扭曲状态）的 log10：×(1 + bhEffect)；AU34 引力扭曲：扭曲状态效果额外 ^2。
