@@ -1373,7 +1373,10 @@ function spRawGainLog() {
   const first = state.annihilations === 0 ? 1 : 0;
   // 首次保底 max(1, b)：log 域即 max(0, bLog)。
   // 注意不可写成 log10(1+10^bLog)（那是 1+b 的和）：普朗克温度处 b=1，首湮灭会变成 2 Sp
-  return first > 0 ? Math.max(0, bLog) : bLog;
+  const base = first > 0 ? Math.max(0, bLog) : bLog;
+  // 迈克尔逊-莫雷实验：奇点获取指数 ×0.7^n（log 域整体幂；乘在保底之后——首湮灭保底不丢）
+  const mmL = researchMmLevel();
+  return mmL >= 1 ? base * Math.pow(0.7, mmL) : base;
 }
 function spGainExact() {
   if (state.testBreakRules) return 0;
@@ -3959,7 +3962,9 @@ function bhEffect() {
 function bhEffectLog() {
   const mLog = getLogBhMass();
   if (mLog <= 0) return 0;
-  const exp = 0.2 + sbu2Eff() * 0.05; // SF 第二效果已移至虚数密度获取（svu3RhoTick），不再作用于黑洞效果指数
+  let exp = 0.2 + sbu2Eff() * 0.05; // SF 第二效果已移至虚数密度获取（svu3RhoTick），不再作用于黑洞效果指数
+  const mmL = researchMmLevel();
+  if (mmL >= 1) exp *= Math.pow(0.7, mmL); // 迈克尔逊-莫雷实验：黑洞效果指数 ×0.7^n
   return clampLog(exp * mLog);
 }
 // 黑洞对时间速率的加成（仅扭曲状态）的 log10：×(1 + bhEffect)；AU34 引力扭曲：扭曲状态效果额外 ^2。
@@ -5127,6 +5132,11 @@ const THEORY_NODES = [
   { id: "72", name: "光学-波动说 II", parents: ["62"], cost: 25, series: "wave",
     desc: "基于奇点加强奇点效果",
     effect: () => "当前指数乘数 ×" + fmt(node72SpBoostExpMult()) },
+  // 实验节点 II（v0.6.3.3）：解锁第二个实验「迈克尔逊-莫雷实验」。parents 二选一——
+  // 光学两系列互斥，任一系列走到 III 层即可购买；需求 达到 1e120 虚粒子 + 245 总灵感（不消耗）
+  { id: "91", name: "迈克尔逊-莫雷实验", parents: ["81", "82"], cost: 0, research: true,
+    desc: "增加一个实验",
+    reqIns: 245, reqVPLog: 120 },
 ];
 function theoryOwned(id) { return !!state.theoryNodes[id]; }
 // 波长公式内指数 e 的基础公式（节点71/72 改造前的原版，供「公式差值」显示）
@@ -5186,20 +5196,21 @@ function voidMs4ExpMult() {
   if (x <= 0) return 1;
   return 1 + Math.min(x, Math.sqrt(10 * x)) / 10;
 }
-function waveGainExp() { return 2 * daExpMult() * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult(); }   // 波速获取 ×(1+Sp)^exp
-function planckExp() { return 1.5 * daExpMult() * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult(); }   // 普朗克常数 ×(1+Sp)^exp
-function tempCapExp() { return 10 * daExpMult() * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult(); }   // 普朗克温度上限 ×(1+Sp)^exp
+function waveGainExp() { return 2 * daExpMult() * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult() * mmSpEffectExpMult(); }   // 波速获取 ×(1+Sp)^exp
+function planckExp() { return 1.5 * daExpMult() * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult() * mmSpEffectExpMult(); }   // 普朗克常数 ×(1+Sp)^exp
+function tempCapExp() { return 10 * daExpMult() * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult() * mmSpEffectExpMult(); }   // 普朗克温度上限 ×(1+Sp)^exp
 // 黑洞吸积效率（AU43）^exp；SF（v0.6.3.3）：指数 +lg(1+lg(1+SF))/4（零哨兵时 +0）
 function accretionExp() {
   // 黑洞吸积效率（AU43）^exp——SF 第二效果不作用于此（「黑洞效果指数」专指黑洞基础效果的指数，
   // 即 bhEffectLog 的 0.2+0.05·sbu2，见 11-blackhole.js）
-  return 3 * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult();
+  return 3 * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult() * mmSpEffectExpMult();
 }
 function theoryAvailable(def) {
   if (theoryOwned(def.id) || def.placeholder) return false;
   if (+def.id[0] > theoryDepthEff() + 1e-9) return false; // 理论深度：更深层的节点暂不可购（显示？？？；1e-9 容差防浮点残差）
   if (def.hiddenUntilIns && getLogTotalIns() < Math.log10(def.hiddenUntilIns)) return false; // 节点51：总灵感 <50 隐藏
-  if (def.reqIns && getLogTotalIns() < Math.log10(def.reqIns) - 1e-9) return false; // 节点51：总灵感门槛（含浮点容差）
+  if (def.reqIns && getLogTotalIns() < Math.log10(def.reqIns) - 1e-9) return false; // 节点51/91：总灵感门槛（含浮点容差）
+  if (def.reqVPLog !== undefined && getLogVP() < def.reqVPLog - 1e-9) return false; // 节点91：虚粒子门槛（达到 1e120）
   if (def.reqA63 && !state.ach.normal.includes("A63")) return false;
   if (def.priceTBD) return false; // 价格待定：暂无法购买
   if (theorySeriesLocked(def)) return false; // 光学系列互斥：另一系列已购则本系列不可购
@@ -5290,7 +5301,7 @@ function buyTheoryNode(id) {
 function exportTheoryTree() {
   // 紧凑格式（v0.6.3.2）：空层不输出占位分号，如只购 11/21/31/41 → "11;21;31;41;0d"
   const segs = [];
-  for (let li = 0; li <= 8; li++) {
+  for (let li = 0; li <= 9; li++) {
     const ids = THEORY_NODES.filter(n => +n.id[0] === li && theoryOwned(n.id)).map(n => n.id);
     if (ids.length) segs.push(ids.join(","));
   }
@@ -5466,6 +5477,16 @@ const RESEARCH_EXPS = [
       return `波长和波速获取公式的指数变为原来的 ${m < 0.1 ? m.toExponential(3) : m.toFixed(4)} 倍`
         + (n > 7 ? `，频率 ÷1e${(n - 7) * (n - 7) * 100}` : "");
     } },
+  // 迈克尔逊-莫雷实验（节点91 解锁，v0.6.3.3）：黑洞效果与奇点获取的指数 ×0.7^n；
+  // 3 级起追加奇点效果指数 ×3/(n+1)（四个奇点效果指数同乘，见 mmSpEffectExpMult）
+  { id: "mm", name: "迈克尔逊-莫雷实验", unlock: () => theoryOwned("91"),
+    science: "旨在探测地球相对于假想「以太」运动的经典干涉实验。实验未发现预期中的干涉条纹位移，严重动摇了静止以太假说，并为狭义相对论的发展提供了重要的实验依据。",
+    debuff: (n) => {
+      if (n < 1) return "无削弱";
+      const m = Math.pow(0.7, n);
+      return `黑洞效果和奇点获取的指数变为原来的 ${m < 0.1 ? m.toExponential(3) : m.toFixed(4)} 倍`
+        + (n >= 3 ? `，奇点效果指数变为原来的 ${(3 / (n + 1)).toFixed(4)} 倍` : "");
+    } },
 ];
 // 双缝干涉实验的每级削弱倍数：等级 1–4 为 0.6·0.8^(n-1)（0.6/0.48/0.384/0.3072）；
 // 5 级 ×0.5（0.1536）；6 级起每级 ×0.2（0.0768/0.01536/0.0030722……三处实现共用）
@@ -5480,6 +5501,16 @@ function researchSlitLevel() {
   const e = state.researchRun.exps.find(x => x.id === "slit");
   return e ? e.level : 0;
 }
+// 迈克尔逊-莫雷实验的等级（同款：实验进行中返回等级，否则 0）
+function researchMmLevel() {
+  if (!state.researchRun) return 0;
+  const e = state.researchRun.exps.find(x => x.id === "mm");
+  return e ? e.level : 0;
+}
+// MM 削弱①②：黑洞效果与奇点获取的指数倍数 0.7^n（分别作用于 bhEffectLog 的指数与 spRawGainLog 整体幂）
+function mmMult() { return Math.pow(0.7, researchMmLevel()); }
+// MM 削弱③（3 级起）：奇点效果指数 ×3/(n+1)（n=3 时 ×0.75，随等级递减；n<3 时为 1）
+function mmSpEffectExpMult() { const n = researchMmLevel(); return n >= 3 ? 3 / (n + 1) : 1; }
 // ---------- 研究项目（v0.6.3.2：A71「乌云」解锁；消耗推论购买，每个理论深度 +1/3）----------
 // TODO(数值待定)：R6 的需求/价格为占位值，定稿后直接改这里
 const RESEARCH_DEFS = [
@@ -5657,7 +5688,7 @@ function researchMultipliers() {
   const run = state.researchRun;
   const exps = run ? run.exps : state.researchSel;
   const sum = exps.reduce((s, x) => s + x.level, 0);
-  const difficulty = exps.length ? Math.pow(3, sum) * Math.pow(10, exps.length - 1) : 0;
+  const difficulty = exps.length ? Math.pow(3, sum) * Math.pow(30, exps.length - 1) : 0; // 多实验基础难度：每 +1 个实验 ×30（v0.6.3.3 前 ×10）
   let pred = 0, bonus = 0;
   if (run) {
     const lgR1 = state.sp > 0 ? lg1FromLog(getLogSp()) : 0;   // RealSp = 当前持有 Sp
@@ -6101,7 +6132,8 @@ function buildCompactOnce() {
       line.setAttribute("x2", b.x + TREE_NODE_W / 2); line.setAttribute("y2", b.y);
       line.setAttribute("class", "tree-line");
       svg.appendChild(line);
-      compactEls.lines[def.id] = line; // 子节点隐藏时连线一并隐藏
+      // 子节点隐藏时连线一并隐藏（一节点可有多条父连线——如 91 的 81/82 二选一，存数组）
+      (compactEls.lines[def.id] = compactEls.lines[def.id] || []).push(line);
     }
   }
   const world = document.getElementById("tree-world");
@@ -6139,9 +6171,10 @@ const TREE_LAYOUT = {
   "61": { x: 295, y: 970 }, "62": { x: 595, y: 970 },
   "71": { x: 295, y: 1120 }, "72": { x: 595, y: 1120 },
   "81": { x: 295, y: 1270 }, "82": { x: 595, y: 1270 },
+  "91": { x: 445, y: 1420 },
 };
 const TREE_NODE_W = 150, TREE_NODE_H = 92;
-const TREE_WORLD_W = 1100, TREE_WORLD_H = 1450;
+const TREE_WORLD_W = 1100, TREE_WORLD_H = 1570;
 let treeView = { x: 0, y: 0, z: 1 }; // 平移/缩放状态
 function treeApplyView() {
   document.getElementById("tree-world").style.transform =
@@ -6342,8 +6375,8 @@ function updateCompactUI() {
     if (!el) continue;
     const visible = theoryNodeVisible(def);
     el.node.classList.toggle("hidden", !visible);
-    const line = (compactEls.lines || {})[def.id];
-    if (line) line.setAttribute("visibility", visible ? "visible" : "hidden");
+    const lines = (compactEls.lines || {})[def.id];
+    if (lines) for (const line of lines) line.setAttribute("visibility", visible ? "visible" : "hidden");
     if (!visible) continue;
     const owned = theoryOwned(def.id);
     // D02：显示遮蔽与 theoryAvailable 判购共用同一有效深度（含课题加成）
@@ -6369,7 +6402,7 @@ function updateCompactUI() {
       // 节点51：总灵感 <50 时一律显示 ？？？
       txt = "？？？\n？？？";
     } else {
-      const reqTxt = def.reqIns ? "需求：" + (def.reqA63 ? "拥有 A63、" : "") + "总灵感 " + def.reqIns + "（不消耗）"
+      const reqTxt = def.reqIns ? "需求：" + (def.reqA63 ? "拥有 A63、" : "") + (def.reqVPLog ? "达到 1e" + def.reqVPLog + " 虚粒子、" : "") + "总灵感 " + def.reqIns + "（不消耗）"
         : (def.priceTBD ? "价格待定（暂无法购买）" : "花费 " + def.cost + " 灵感");
       if (def.descHtml) html = def.descHtml + "<br>" + reqTxt;
       else txt = `${def.desc}\n${reqTxt}`;

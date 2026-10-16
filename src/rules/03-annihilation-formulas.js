@@ -55,7 +55,10 @@ function spRawGainLog() {
   const first = state.annihilations === 0 ? 1 : 0;
   // 首次保底 max(1, b)：log 域即 max(0, bLog)。
   // 注意不可写成 log10(1+10^bLog)（那是 1+b 的和）：普朗克温度处 b=1，首湮灭会变成 2 Sp
-  return first > 0 ? Math.max(0, bLog) : bLog;
+  const base = first > 0 ? Math.max(0, bLog) : bLog;
+  // 迈克尔逊-莫雷实验：奇点获取指数 ×0.7^n（log 域整体幂；乘在保底之后——首湮灭保底不丢）
+  const mmL = researchMmLevel();
+  return mmL >= 1 ? base * Math.pow(0.7, mmL) : base;
 }
 function spGainExact() {
   if (state.testBreakRules) return 0;

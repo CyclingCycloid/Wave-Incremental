@@ -115,7 +115,8 @@ function buildCompactOnce() {
       line.setAttribute("x2", b.x + TREE_NODE_W / 2); line.setAttribute("y2", b.y);
       line.setAttribute("class", "tree-line");
       svg.appendChild(line);
-      compactEls.lines[def.id] = line; // 子节点隐藏时连线一并隐藏
+      // 子节点隐藏时连线一并隐藏（一节点可有多条父连线——如 91 的 81/82 二选一，存数组）
+      (compactEls.lines[def.id] = compactEls.lines[def.id] || []).push(line);
     }
   }
   const world = document.getElementById("tree-world");
@@ -153,9 +154,10 @@ const TREE_LAYOUT = {
   "61": { x: 295, y: 970 }, "62": { x: 595, y: 970 },
   "71": { x: 295, y: 1120 }, "72": { x: 595, y: 1120 },
   "81": { x: 295, y: 1270 }, "82": { x: 595, y: 1270 },
+  "91": { x: 445, y: 1420 },
 };
 const TREE_NODE_W = 150, TREE_NODE_H = 92;
-const TREE_WORLD_W = 1100, TREE_WORLD_H = 1450;
+const TREE_WORLD_W = 1100, TREE_WORLD_H = 1570;
 let treeView = { x: 0, y: 0, z: 1 }; // 平移/缩放状态
 function treeApplyView() {
   document.getElementById("tree-world").style.transform =
@@ -356,8 +358,8 @@ function updateCompactUI() {
     if (!el) continue;
     const visible = theoryNodeVisible(def);
     el.node.classList.toggle("hidden", !visible);
-    const line = (compactEls.lines || {})[def.id];
-    if (line) line.setAttribute("visibility", visible ? "visible" : "hidden");
+    const lines = (compactEls.lines || {})[def.id];
+    if (lines) for (const line of lines) line.setAttribute("visibility", visible ? "visible" : "hidden");
     if (!visible) continue;
     const owned = theoryOwned(def.id);
     // D02：显示遮蔽与 theoryAvailable 判购共用同一有效深度（含课题加成）
@@ -383,7 +385,7 @@ function updateCompactUI() {
       // 节点51：总灵感 <50 时一律显示 ？？？
       txt = "？？？\n？？？";
     } else {
-      const reqTxt = def.reqIns ? "需求：" + (def.reqA63 ? "拥有 A63、" : "") + "总灵感 " + def.reqIns + "（不消耗）"
+      const reqTxt = def.reqIns ? "需求：" + (def.reqA63 ? "拥有 A63、" : "") + (def.reqVPLog ? "达到 1e" + def.reqVPLog + " 虚粒子、" : "") + "总灵感 " + def.reqIns + "（不消耗）"
         : (def.priceTBD ? "价格待定（暂无法购买）" : "花费 " + def.cost + " 灵感");
       if (def.descHtml) html = def.descHtml + "<br>" + reqTxt;
       else txt = `${def.desc}\n${reqTxt}`;
