@@ -40,6 +40,7 @@ function runOfflineSimulation(cappedSec, startMs) {
     uLog0: getLogU10(), ph0: getLogPhonons(), m0: getLogBhMass(), vp0: getLogVP(),
     sp0: getLogSp(), phAbs0: state.phonons, ann0: state.annihilations, simmed: false,
     cm0: getLogCM(),
+    sf0: getLogSF(), ne0: getLogNE(),
   };
   // O02：绝对虚拟时间轴——gameNow() 从 startMs（本次结算窗口的起点）推进到 ≈endMs，
   // 模拟期间写入的时间戳天然落在现实时间线上（≤ 当前时刻），无需事后平移
@@ -100,6 +101,8 @@ function runOfflineSimulation(cappedSec, startMs) {
   res.phAbs1 = state.phonons;
   res.ann1 = state.annihilations;
   res.cm1 = getLogCM();
+  res.sf1 = getLogSF();
+  res.ne1 = getLogNE();
   return res;
 }
 // 设置页开关高亮随当前档同步（init、导入、槽位加载后各调一次）
@@ -142,6 +145,12 @@ function showOfflineModal(raw, capped, res) {
   if (spCh) lines.push("奇点 +" + spCh);
   const cmCh = offlineAbsGain(res.cm0, res.cm1);
   if (cmCh) lines.push("卡拉比-丘流形 +" + cmCh);
+  if (researchBought("R11")) {
+    const sfCh = offlineAbsGain(res.sf0, res.sf1);
+    if (sfCh) lines.push("萨尔彼得频率 +" + sfCh);
+    const neCh = offlineAbsGain(res.ne0, res.ne1);
+    if (neCh) lines.push("冯·诺依曼熵 +" + neCh);
+  }
   // 离线期间冻结：明示无进度原因（10 次湮灭前达到上限即暂停，等待手动湮灭）
   if (annihilationFrozen()) lines.push("湮灭条件已满足：离线期间计算已暂停（湮灭后恢复）");
   if (lines.length <= 1) return; // 无实质收益（如生产为 0 挂机）不弹

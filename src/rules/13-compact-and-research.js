@@ -188,17 +188,24 @@ function node82CmMultLog() {
   const m = Math.max(c * c, Math.pow(10, 0.05 * getLogCM()));
   return clampLog(Math.log10(1 + m));
 }
-// 折叠器 tick：CM 按真实时间累积（挂 applyProduction，离线模拟共用）。
+// A73「多元」特殊奖励：现有成就加成倍率（×achTimeBase^普通成就数）额外作用于
+// 维度折叠器三种资源的生产速度——独立 log 加法项，不经节点 01 的时间倍率削弱、
+// 也不进 timeRate/timeRateLog（避免与全游戏时间倍率重复计算）
+function achFoldMultLog() {
+  if (!state.ach.normal.includes("A73")) return 0;
+  return state.ach.normal.length * Math.log10(achTimeBase());
+}
+// 折叠器 tick：CM/SF/NE 按真实时间累积（挂 applyProduction，离线模拟共用）。
 // 初始不受游戏速度影响；节点 01 后乘上严重削弱的时间倍率（真实 dt × 乘数）；
 // 节点 31 后再乘上基于奇点的加速乘数；R6 与里程碑3 第四 VF 效果再加度乘数（cmSpeedBonusLog）；
-// 节点 82 再乘上 CM 获取乘数（node82CmMultLog）
+// 节点 82 再乘上 CM 获取乘数（node82CmMultLog）；A73 后再乘上成就倍率（achFoldMultLog）
 function cmTick(realDt) {
   if (state.compactions < 1 || !state.testMode) return;
   if (tpTotal() <= 0) return;
   const rateLog = cmRateLog();
   if (rateLog <= NLOG + 1) return;
   const dtLog = Math.log10(Math.max(realDt, 1e-300)) + cmTimeMultLog();
-  setCMLog(logAddLogs(getLogCM(), rateLog + dtLog + cmSpAccelMultLog() + cmSpeedBonusLog() + node82CmMultLog()));
+  setCMLog(logAddLogs(getLogCM(), rateLog + dtLog + cmSpAccelMultLog() + cmSpeedBonusLog() + node82CmMultLog() + achFoldMultLog()));
 }
 // ---------- SF/NE 生产（v0.6.3.3，R11「广义维度折叠理论」后；三资源始终同时生产）----------
 // SF（萨尔彼得频率，时间主题）：基础速率 = TP × 3^√(max(0, b₁·(b₂−b₁)))（注意 TP 一次方，非 CM 的 TP²）
@@ -219,7 +226,7 @@ function neRateLog() {
 function foldTickShared(realDt, rateLog, setter, getCur) {
   if (rateLog <= NLOG + 1) return;
   const dtLog = Math.log10(Math.max(realDt, 1e-300)) + cmTimeMultLog();
-  setter(logAddLogs(getCur(), rateLog + dtLog + cmSpAccelMultLog() + cmSpeedBonusLog()));
+  setter(logAddLogs(getCur(), rateLog + dtLog + cmSpAccelMultLog() + cmSpeedBonusLog() + achFoldMultLog()));
 }
 function sfTick(realDt) {
   if (!researchBought("R11") || state.compactions < 1 || !state.testMode) return;

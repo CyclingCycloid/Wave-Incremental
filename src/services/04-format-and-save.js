@@ -455,6 +455,12 @@ function migrateState(rawObj, rawSave) {
   if (state.ins === null || state.ins === undefined) state.ins = fromLog(getLogIns());
   if (state.totalIns === null || state.totalIns === undefined) state.totalIns = fromLog(getLogTotalIns());
   if (state.cm === null || state.cm === undefined) state.cm = fromLog(getLogCM());
+  // v0.6.3.3：SF/NE 双表示回填（老档补 NLOG 零哨兵）与折叠器主题枚举
+  if (state.logSF === undefined || !isFinite(state.logSF)) state.logSF = NLOG;
+  if (state.sf === null || state.sf === undefined) state.sf = fromLog(getLogSF());
+  if (state.logNE === undefined || !isFinite(state.logNE)) state.logNE = NLOG;
+  if (state.ne === null || state.ne === undefined) state.ne = fromLog(getLogNE());
+  if (state.dimTheme === undefined || !["space", "time", "info"].includes(state.dimTheme)) state.dimTheme = "space";
   if (state.compStartReal === undefined || !isFinite(state.compStartReal)) state.compStartReal = 0;
   if (state.up3LastF === null || state.up3LastF === undefined) {
     const lp = getLogUp3LastF();
