@@ -2008,10 +2008,11 @@ function importSaveFromIo() {
 // ---------- Save slots ----------
 function slotKey(i) { return SLOT_KEY_PREFIX + "_" + i; }
 // 槽内存档的波长指数 e（用该存档自己的 CM；无卷缩数据时为 1）
-function slotWavelengthExp(cmLog) {
+function slotWavelengthExp(cmLog, has81) {
   if (cmLog === undefined || cmLog === null || !isFinite(cmLog) || cmLog <= NLOG + 1) return 1;
   const c = cmLog <= 15 ? Math.log10(Math.pow(10, cmLog) + 1) : cmLog; // lg(CM+1)
-  return 1 + Math.log10(1 + c / 3) / 10;
+  // 节点 81「光学-粒子说 III」已购时用改进公式（与 wavelengthExp 同口径）
+  return has81 ? 1 + Math.log10(1 + c) / 6 : 1 + Math.log10(1 + c / 3) / 10;
 }
 function getSlotInfo(i) {
   try {
@@ -2027,7 +2028,7 @@ function getSlotInfo(i) {
     const cmLog = (obj.logCM !== undefined && obj.logCM !== null && isFinite(obj.logCM) && obj.logCM > NLOG + 1)
       ? obj.logCM
       : (obj.cm > 0 && isFinite(obj.cm)) ? Math.log10(obj.cm) : NLOG;
-    return { freqLog: clampLog(uLog - slotWavelengthExp(cmLog) * lLog), realTime: obj.realTime || obj.playTime || 0, empty: false };
+    return { freqLog: clampLog(uLog - slotWavelengthExp(cmLog, !!(obj.theoryNodes && obj.theoryNodes["81"])) * lLog), realTime: obj.realTime || obj.playTime || 0, empty: false };
   } catch { return null; }
 }
 function saveToSlot(i) {
