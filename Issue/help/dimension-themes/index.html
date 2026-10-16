@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>维度折叠器 · 三主题动画候选</title>
+  <link rel="stylesheet" href="preview.css">
+  <script src="geometry.js" defer></script>
+  <script src="renderer.js" defer></script>
+  <script src="preview.js" defer></script>
+</head>
+<body>
+  <main id="fold-preview" data-theme="space">
+    <h1>维度折叠器</h1>
+    <nav aria-label="选择动画主题">
+      <button type="button" data-theme="space" aria-pressed="true">空间 · CM</button>
+      <button type="button" data-theme="time" aria-pressed="false">时间 · SF</button>
+      <button type="button" data-theme="info" aria-pressed="false">信息 · NE</button>
+    </nav>
+    <canvas id="fold-canvas" role="img" aria-label="橙色二十四胞体线框旋转投影">浏览器需要支持 Canvas 2D。</canvas>
+    <footer>
+      <span id="fold-caption" aria-live="polite">正二十四胞体 · 24 顶点 · 96 条边</span>
+      <button type="button" id="fold-pause" aria-pressed="false">暂停动画</button>
+    </footer>
+    <p class="note">独立装饰预览 · 不读取游戏或存档</p>
+    <noscript>请启用 JavaScript 查看动画。</noscript>
+  </main>
+</body>
+</html>

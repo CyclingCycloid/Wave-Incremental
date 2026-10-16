@@ -4,6 +4,8 @@
 
 ## 维度折叠器动画
 
+三主题动画候选位于 [dimension-themes/index.html](dimension-themes/index.html)：空间为橙色二十四胞体，时间为紫色十六胞体，信息为蓝色四维超立方体。双击可切换预览；接入计划见 [dimension-themes/PLAN.md](dimension-themes/PLAN.md)，接口与文件说明见 [dimension-themes/README.md](dimension-themes/README.md)。本次未接入主游戏。
+
 已选定的二十四胞体动画位于 [dimension-24cell/index.html](dimension-24cell/index.html)，双击即可查看独立预览。可编辑片段与接入说明见 [dimension-24cell/README.md](dimension-24cell/README.md)。
 
 ## 当前交付范围

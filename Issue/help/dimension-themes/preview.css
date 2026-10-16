@@ -1,0 +1,42 @@
+:root {
+  color-scheme: light dark;
+  --page: light-dark(#ffffff, #181818);
+  --panel: light-dark(#fafafa, #19191c);
+  --text: light-dark(#35353c, #e5e5ec);
+  --muted: light-dark(#686872, #aaaab6);
+  --border: light-dark(#d5d5dd, #383840);
+  --button: light-dark(#eeeeef, #252529);
+  background: var(--page); color: var(--text);
+  font: 14px/1.5 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+body { max-width: 760px; margin: 0 auto; padding: 20px 14px; }
+#fold-preview {
+  --fold-space-line: light-dark(#c36814, #ff8c1a);
+  --fold-space-bright: light-dark(#d97c22, #ffb347);
+  --fold-space-rear: light-dark(#858585, #727277);
+  --fold-time-line: light-dark(#7545c2, #a78bfa);
+  --fold-time-bright: light-dark(#6635ad, #d8c5ff);
+  --fold-time-rear: light-dark(#88828e, #857c91);
+  --fold-info-line: light-dark(#287fae, #5fb8e6);
+  --fold-info-bright: light-dark(#176b98, #b5e5ff);
+  --fold-info-rear: light-dark(#85909a, #7a8b97);
+  --active: var(--fold-space-line);
+}
+#fold-preview[data-theme="time"] { --active: var(--fold-time-line); }
+#fold-preview[data-theme="info"] { --active: var(--fold-info-line); }
+h1 { text-align: center; color: var(--active); font-size: 18px; font-weight: 500; margin: 0 0 12px; }
+nav { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+button {
+  font: inherit; background: var(--button); color: var(--text); border: 1px solid var(--border);
+  border-radius: 5px; padding: 5px 10px; cursor: pointer;
+}
+nav button[aria-pressed="true"] { color: var(--active); border-color: var(--active); }
+button:focus-visible { outline: 2px solid var(--active); outline-offset: 3px; }
+#fold-canvas { display: block; width: 100%; height: 230px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; }
+footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; }
+#fold-caption { color: var(--muted); }
+#fold-pause { flex-shrink: 0; }
+.note { text-align: center; color: var(--muted); font-size: 12px; margin: 14px 0 0; }
+@media (max-width: 420px) { footer { flex-wrap: wrap; } #fold-canvas { height: 190px; } }
+@media (pointer: coarse) { button { min-height: 44px; } }
