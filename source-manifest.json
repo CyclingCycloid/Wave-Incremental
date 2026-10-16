@@ -140,7 +140,7 @@
     "构建产物 game.js = modules 清单中的独立模块（log-math/save-codec/slog-tetration 为纯函数工厂；geometry/renderer 为自执行 IIFE 装饰库，自 Issue/help/dimension-themes 定稿逐字节拷入，renderer 依赖 geometry 先行）+ 25 段按序拼接（分段之间无 IIFE/无作用域隔离，经典脚本）。",
     "三模块的解构绑定位于 src/core/00-state.js（createLogMath/createSaveCodec/createSlogTetration），src 自含接线、不依赖构建注入。"
   ],
-  "candidateSourceSha256": "fc8684b6bdcd01ee45c7165ec638a5fb91b15983afed4c9f95be10016c775b60",
-  "candidateInputsSha256": "b482d1308021703a93fb15e1c852a00e15ec78a773b97da987d7d8c6f24ec86a",
+  "candidateSourceSha256": "8cd157f3d671db697703a7cee3022cae9dacd7de26b851b9946cc1ddf7ec3d41",
+  "candidateInputsSha256": "a214f51347d185a718f47f45b325fb3394c3ca73f81ab6627ac67b6c48049ae4",
   "build": "node tools/build.mjs（改 src 后运行；指纹不符时用 --update 显式重建指纹）"
 }
