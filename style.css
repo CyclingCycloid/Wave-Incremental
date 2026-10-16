@@ -950,3 +950,20 @@ body[data-theme="white"] #news-ticker { color: #000000; }
 #sub-comp-dim { --d24-line: #ff8c1a; --d24-bright: #ffb347; --d24-rear: #727277; }
 #comp-dim24-canvas { display: block; width: 100%; max-width: 680px; height: 170px; margin: 2px auto 10px; border: 1px solid var(--border); border-radius: 6px; }
 body[data-theme="white"] #sub-comp-dim { --d24-line: #c36814; --d24-bright: #d97c22; --d24-rear: #858585; }
+
+/* ===== 维度折叠器三主题（v0.6.3.3，R11；空间=橙原样 / 时间=紫 / 信息=蓝） ===== */
+/* 覆盖 --orange 系与 --d24-* 动画色：只影响 #sub-comp-dim 内部（变量在 :root 定义，子树覆盖局部生效） */
+#sub-comp-dim[data-dim-theme="time"] {
+  --orange: #8b5cf6; --orange-bright: #a78bfa; --orange-dim: #6d3fd4;
+  --d24-line: #8b5cf6; --d24-bright: #a78bfa;
+}
+#sub-comp-dim[data-dim-theme="info"] {
+  --orange: #5fb8e6; --orange-bright: #7ec8f7; --orange-dim: #3f6ad4;
+  --d24-line: #5fb8e6; --d24-bright: #7ec8f7;
+}
+/* comp-btn hover 的硬编码橙 rgba 也要跟随主题 */
+#sub-comp-dim[data-dim-theme="time"] .comp-btn:hover { background: rgba(139, 92, 246, 0.12); }
+#sub-comp-dim[data-dim-theme="info"] .comp-btn:hover { background: rgba(95, 184, 230, 0.12); }
+.dim-theme-row { justify-content: center; margin: 0 0 6px; }
+.dim-theme-row button { padding: 3px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--btn-bg); color: var(--text-dim); font: inherit; cursor: pointer; }
+.dim-theme-row button.active { border-color: var(--orange); color: var(--orange); }

@@ -480,9 +480,14 @@
         <!-- 维度 -->
         <div class="subpage hidden" id="sub-comp-dim">
           <h3 class="compact-title">维度折叠器</h3>
+          <div class="btn-row dim-theme-row hidden" id="dim-theme-row">
+            <button data-dim-theme="space">空间</button>
+            <button data-dim-theme="time">时间</button>
+            <button data-dim-theme="info">信息</button>
+          </div>
           <canvas id="comp-dim24-canvas" aria-label="二十四胞体的旋转线框投影"></canvas>
           <div class="comp-dim-top">
-            <div class="comp-cm-value">卡拉比-丘流形（CM）：<span id="comp-cm-value">0</span></div>
+            <div class="comp-cm-value"><span id="comp-res-label">卡拉比-丘流形（CM）：</span><span id="comp-cm-value">0</span></div>
             <div class="comp-cm-rate" id="comp-cm-rate">每秒 +0（真实时间）</div>
           </div>
           <div class="comp-dim-formulas">

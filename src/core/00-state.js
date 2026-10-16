@@ -3,7 +3,7 @@
 // ---------- Save schema ----------
 function defaultState() {
   return {
-    version: "0.6.3.2",
+    version: "0.6.3.3",
     // 物理资源
     U: 10,                 // 波速 m/s (默认国际单位制，double 缓存；极端值看 logU10)
     logU10: 1,             // log10(U) 权威表示（防溢出/下溢；U=0 时为 NLOG 哨兵）
@@ -106,6 +106,11 @@ function defaultState() {
     insFromF: 0, insFromSp: 0, insFromSS: 0, // 各途径已购灵感次数（决定下一次价格）
     cm: 0,                 // 卡拉比-丘流形（double 缓存；后台小数计算，显示取整）
     logCM: NLOG,           // log10(CM) 权威
+    sf: 0,                 // 萨尔彼得频率 SF（v0.6.3.3，时间主题；R11 后生产）
+    logSF: NLOG,           // log10(SF) 权威
+    ne: 0,                 // 冯·诺依曼熵 NE（v0.6.3.3，信息主题；R11 后生产）
+    logNE: NLOG,           // log10(NE) 权威
+    dimTheme: "space",     // 维度折叠器主题：space（空间/CM）/ time（时间/SF）/ info（信息/NE）——仅显示切换，三资源始终同产
     tp: 0,                 // 未转换的拓扑节点（可转换为点/边/面；卷缩重置保留）
     tpV: 0, tpE: 0, tpF: 0, // 已转换的点 V / 边 E / 面 F（各消耗 1 TP，可退回）
     theoryNodes: {},       // 理论树已购节点（id→1，如 "01"）

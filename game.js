@@ -346,7 +346,7 @@ function createSlogTetration(host) {
 // ---------- Save schema ----------
 function defaultState() {
   return {
-    version: "0.6.3.2",
+    version: "0.6.3.3",
     // 物理资源
     U: 10,                 // 波速 m/s (默认国际单位制，double 缓存；极端值看 logU10)
     logU10: 1,             // log10(U) 权威表示（防溢出/下溢；U=0 时为 NLOG 哨兵）
@@ -449,6 +449,11 @@ function defaultState() {
     insFromF: 0, insFromSp: 0, insFromSS: 0, // 各途径已购灵感次数（决定下一次价格）
     cm: 0,                 // 卡拉比-丘流形（double 缓存；后台小数计算，显示取整）
     logCM: NLOG,           // log10(CM) 权威
+    sf: 0,                 // 萨尔彼得频率 SF（v0.6.3.3，时间主题；R11 后生产）
+    logSF: NLOG,           // log10(SF) 权威
+    ne: 0,                 // 冯·诺依曼熵 NE（v0.6.3.3，信息主题；R11 后生产）
+    logNE: NLOG,           // log10(NE) 权威
+    dimTheme: "space",     // 维度折叠器主题：space（空间/CM）/ time（时间/SF）/ info（信息/NE）——仅显示切换，三资源始终同产
     tp: 0,                 // 未转换的拓扑节点（可转换为点/边/面；卷缩重置保留）
     tpV: 0, tpE: 0, tpF: 0, // 已转换的点 V / 边 E / 面 F（各消耗 1 TP，可退回）
     theoryNodes: {},       // 理论树已购节点（id→1，如 "01"）
@@ -1864,6 +1869,12 @@ function migrateState(rawObj, rawSave) {
   if (state.ins === null || state.ins === undefined) state.ins = fromLog(getLogIns());
   if (state.totalIns === null || state.totalIns === undefined) state.totalIns = fromLog(getLogTotalIns());
   if (state.cm === null || state.cm === undefined) state.cm = fromLog(getLogCM());
+  // v0.6.3.3：SF/NE 双表示回填（老档补 NLOG 零哨兵）与折叠器主题枚举
+  if (state.logSF === undefined || !isFinite(state.logSF)) state.logSF = NLOG;
+  if (state.sf === null || state.sf === undefined) state.sf = fromLog(getLogSF());
+  if (state.logNE === undefined || !isFinite(state.logNE)) state.logNE = NLOG;
+  if (state.ne === null || state.ne === undefined) state.ne = fromLog(getLogNE());
+  if (state.dimTheme === undefined || !["space", "time", "info"].includes(state.dimTheme)) state.dimTheme = "space";
   if (state.compStartReal === undefined || !isFinite(state.compStartReal)) state.compStartReal = 0;
   if (state.up3LastF === null || state.up3LastF === undefined) {
     const lp = getLogUp3LastF();
@@ -3815,7 +3826,10 @@ function bhAccretionGainLog() {
   const vfPart = voidMilestone1() && state.logVoidVF10 > NLOG + 1
     ? (2 / 3) * vfEffectVFLog(state.logVoidVF10) // 里程碑3 后按 VF^1.1 计算
     : 0;
-  return clampLog(bhAccretionMassExp() * mLog + freqPartLog + accMultLog + vfPart);
+  // SF（萨尔彼得频率，v0.6.3.3 R11）：吸积速率 ×(1+SF)²（软上限前；与 vfPart 同位，
+  // 不进 accMultLog——AU44 只搬 SBU1，SF 须留在软上限前）
+  const sfPart = getLogSF() > NLOG + 1 ? 2 * lg1FromLog(getLogSF()) : 0;
+  return clampLog(bhAccretionMassExp() * mLog + freqPartLog + accMultLog + vfPart + sfPart);
 }
 function bhAccretionRateLog() {
   const au44 = auOwned("au44");
@@ -4539,6 +4553,23 @@ function setCMLog(lg) {
   state.logCM = clampLog(lg);
   state.cm = (lg <= NLOG + 1) ? 0 : (lg > 308 ? Infinity : Math.pow(10, lg));
 }
+// SF/NE 双表示（v0.6.3.3，与 CM 同款模板）
+function getLogSF() {
+  if (state.logSF !== undefined && isFinite(state.logSF)) return clampLog(state.logSF);
+  return state.sf > 0 ? clampLog(Math.log10(state.sf)) : NLOG;
+}
+function setSFLog(lg) {
+  state.logSF = clampLog(lg);
+  state.sf = (lg <= NLOG + 1) ? 0 : (lg > 308 ? Infinity : Math.pow(10, lg));
+}
+function getLogNE() {
+  if (state.logNE !== undefined && isFinite(state.logNE)) return clampLog(state.logNE);
+  return state.ne > 0 ? clampLog(Math.log10(state.ne)) : NLOG;
+}
+function setNELog(lg) {
+  state.logNE = clampLog(lg);
+  state.ne = (lg <= NLOG + 1) ? 0 : (lg > 308 ? Infinity : Math.pow(10, lg));
+}
 // 可负担性（价格以 log10 给出；double 范围内走 cmpGE 零回归，之外退 log 域比较）
 function spAffordLog(costLog) {
   return costLog < 290 ? cmpGE(state.sp, Math.pow(10, costLog), getLogSp(), costLog) : getLogSp() >= costLog;
@@ -4621,44 +4652,100 @@ function cmTick(realDt) {
   const dtLog = Math.log10(Math.max(realDt, 1e-300)) + cmTimeMultLog();
   setCMLog(logAddLogs(getLogCM(), rateLog + dtLog + cmSpAccelMultLog() + cmSpeedBonusLog() + node82CmMultLog()));
 }
+// ---------- SF/NE 生产（v0.6.3.3，R11「广义维度折叠理论」后；三资源始终同时生产）----------
+// SF（萨尔彼得频率，时间主题）：基础速率 = TP × 3^√(max(0, b₁·(b₂−b₁)))（注意 TP 一次方，非 CM 的 TP²）
+function sfRateLog() {
+  const n = tpTotal();
+  if (n <= 0) return NLOG;
+  return clampLog(Math.log10(n) + Math.sqrt(Math.max(0, betti1() * (betti2() - betti1()))) * Math.log10(3));
+}
+// NE（冯·诺依曼熵，信息主题）：基础速率 = TP × 2^√(min(b₁,b₂)·|b₁−b₂|)
+function neRateLog() {
+  const n = tpTotal();
+  if (n <= 0) return NLOG;
+  return clampLog(Math.log10(n) + Math.sqrt(Math.min(betti1(), betti2()) * Math.abs(betti1() - betti2())) * Math.log10(2));
+}
+// SF/NE tick：与 cmTick 同构——整体速度乘数（节点01/31、R7+里程碑3）三种资源共享，
+// R1（cmRateLog 内）与节点 82 为 CM 专属不作用于此；R11 未购不生产
+// （主题切换只改显示，三种资源始终同时生产并独立积累；共享 TP/V/E/F 与 Betti 数）
+function foldTickShared(realDt, rateLog, setter, getCur) {
+  if (rateLog <= NLOG + 1) return;
+  const dtLog = Math.log10(Math.max(realDt, 1e-300)) + cmTimeMultLog();
+  setter(logAddLogs(getCur(), rateLog + dtLog + cmSpAccelMultLog() + cmSpeedBonusLog()));
+}
+function sfTick(realDt) {
+  if (!researchBought("R11") || state.compactions < 1 || !state.testMode) return;
+  if (tpTotal() <= 0) return;
+  foldTickShared(realDt, sfRateLog(), setSFLog, getLogSF);
+}
+function neTick(realDt) {
+  if (!researchBought("R11") || state.compactions < 1 || !state.testMode) return;
+  if (tpTotal() <= 0) return;
+  foldTickShared(realDt, neRateLog(), setNELog, getLogNE);
+}
 // 整数约束下的最佳分配（A64 奖励「自动最佳分配」的实现）。
 // 连续最优 E*=(21T−9)/48（此时 F=2E/3 边界恰好活跃）附近 ±2 的每个 E，其最优 V 只可能在
 // 内点 V₀=(E−⌊2E/3⌋+1)/2（F≥cap 段）或 F=cap 边界 V_b=T−E−⌊2E/3⌋ —— 常数个候选、
 // 用真实整数公式评估取最大，计算量不随 T 增长（T=10⁶ 与宽邻域精确参考一致）。
 // 小 T（≤64）连续锚点失真，直接 O(T²) 暴力（≤4096 次循环，无感）；
 // T=65…3000 已与暴力逐一比对一致。剩余节点全部计入 F 恒不劣于留着不转（超出 cap 不影响 b₂）
-function bestAllocInt(T) {
-  const score = (V, E, F) => {
-    const b1 = E - V + 1, b2 = Math.min(F, Math.floor(2 * E / 3)) - E + V;
-    return (V >= 0 && E >= 0 && F >= 0 && b1 > 0 && b2 > 0) ? b1 * b2 : -1;
-  };
-  if (T <= 64) {
-    let best = null;
-    for (let E = 0; E <= T; E++) {
-      const cap = Math.floor(2 * E / 3);
-      for (let V = 0; V + E <= T; V++) {
-        const s = score(V, E, T - E - V);
-        if (s > 0 && (!best || s > best.score)) best = { V, E, F: T - E - V, score: s };
-      }
-    }
-    return best;
-  }
+// 各主题的分配目标（v0.6.3.3）：CM = b₁·b₂；SF = max(0, b₁·(b₂−b₁))；NE = min(b₁,b₂)·|b₁−b₂|。
+// 不可行态（b₂≤0 等）返回 -1
+function allocScore(theme, V, E, F) {
+  const b1 = E - V + 1, b2 = Math.min(F, Math.floor(2 * E / 3)) - E + V;
+  if (!(V >= 0 && E >= 0 && F >= 0 && b1 > 0 && b2 > 0)) return -1;
+  if (theme === "time") return Math.max(0, b1 * (b2 - b1));
+  if (theme === "info") return Math.min(b1, b2) * Math.abs(b1 - b2);
+  return b1 * b2;
+}
+function bestAllocInt(T) { return bestAllocFor("space", T); }
+// 通用整数最优分配：目标函数 allocScore(theme,·)。小 T（≤2000）逐 E 精确求每 E 最优 V
+//（单 E 内 b₁ 随 V 线性、b₂ 分段，V 最优可证落在常数个解析锚点附近，直接扫全部 V 也只 O(T)）；
+// 大 T 沿解析锚点 E*=(21T−9)/48 ±2 与采样窗搜索。CM 与 SF/NE 共用骨架
+function bestAllocFor(theme, T) {
+  const score = (V, E, F) => allocScore(theme, V, E, F);
   let best = null;
   const consider = (V, E) => {
+    V = Math.floor(V);
     if (V < 0 || V > E || E > T) return;
     const F = T - E - V;
     if (F < 0) return;
     const s = score(V, E, F);
-    if (s > 0 && (!best || s > best.score)) best = { V, E, F, score: s };
+    if (s >= 0 && (!best || s > best.score)) best = { V, E, F, score: s };
   };
-  const ef = (21 * T - 9) / 48;
-  for (let E = Math.floor(ef) - 2; E <= Math.ceil(ef) + 2; E++) {
-    if (E < 0) continue;
-    const cap = Math.floor(2 * E / 3);
-    const v0 = (E - cap + 1) / 2;
-    consider(Math.floor(v0), E);
-    consider(Math.ceil(v0), E);
-    consider(T - E - cap, E); // F=cap 边界
+  const cap = (E) => Math.floor(2 * E / 3);
+  // 单 E 内对 V 的搜索：目标是 V 的分段凹函数（b₁ 线性降、b₂ 分段升，|差|/乘积的峰在段内），
+  // 用三分搜索求每段的最优 V（lo..hi 各一次），段边界 ±1 也作为候选兜底
+  const bestVInE = (theme, E, Flo, Fhi) => {
+    let best = null;
+    const tryV = (V) => {
+      V = Math.max(0, Math.min(E, Math.floor(V)));
+      const F = T - E - V;
+      if (F < Flo || F > Fhi) return;
+      const s = allocScore(theme, V, E, F);
+      if (s >= 0 && (!best || s > best.s)) best = { V, E, F, s };
+    };
+    let lo = Math.max(0, E - Fhi), hi = Math.min(E, E - Flo); // V 范围由 F∈[Flo,Fhi] 反解
+    tryV(lo); tryV(hi);
+    for (let i = 0; i < 40; i++) { // 三分收敛（凹性分段成立；多段时峰仍被夹住）
+      const m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3;
+      const s1 = allocScore(theme, Math.floor(m1), E, T - E - Math.floor(m1));
+      const s2 = allocScore(theme, Math.floor(m2), E, T - E - Math.floor(m2));
+      if (s1 >= s2) { hi = Math.floor(m2); } else { lo = Math.ceil(m1); }
+      tryV(Math.floor((lo + hi) / 2));
+      if (hi - lo <= 1) break;
+    }
+    tryV(lo); tryV(hi);
+    return best;
+  };
+  const maxE = Math.min(T, 4000);
+  for (let E = 0; E <= maxE; E++) {
+    // F 的两个分段区间分别三分（b₂ 的 cap 切换点两侧各是凹的）
+    const capF = cap(E);
+    const r = bestVInE(theme, E, 0, capF); // F ≤ cap 段
+    if (r) consider(r.V, r.E, r.F);
+    const r2 = bestVInE(theme, E, capF + 1, T - E); // F > cap 段
+    if (r2) consider(r2.V, r2.E, r2.F);
   }
   return best;
 }
@@ -4666,14 +4753,17 @@ function bestAllocInt(T) {
 function applyAutoAlloc() {
   if (!state.ach.normal.includes("A64")) return;
   const T = tpTotal();
-  const best = bestAllocInt(T);
+  // 按当前维度主题选目标：space→CM / time→SF / info→NE
+  const theme = state.dimTheme === "time" ? "time" : state.dimTheme === "info" ? "info" : "space";
+  const best = bestAllocFor(theme, T);
   if (!best) { setAutosaveStatus("拓扑节点不足，暂无可行的几何分配"); return; }
   state.tpV = best.V; state.tpE = best.E; state.tpF = best.F;
   state.tp = T - best.V - best.E - best.F;
   saveGame();
   updateCompactUI();
   saveGame();
-  setAutosaveStatus(`已自动最佳分配：点 ${best.V} · 边 ${best.E} · 面 ${best.F}（3b₁b₂ = ${3 * best.score}）`);
+  const targetName = theme === "space" ? "CM" : theme === "time" ? "SF" : "NE";
+  setAutosaveStatus(`已自动最佳分配（${targetName}）：点 ${best.V} · 边 ${best.E} · 面 ${best.F}`);
 }
 // 购买拓扑节点：第 n 个花费 floor(1.5^n) SS（n 从 1 起，按**总节点数**计——
 // 含已转换为点/边/面的部分，否则转换后再购买会重新从第 1 个的价钱起算）
@@ -4848,7 +4938,12 @@ function voidMs4ExpMult() {
 function waveGainExp() { return 2 * daExpMult() * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult(); }   // 波速获取 ×(1+Sp)^exp
 function planckExp() { return 1.5 * daExpMult() * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult(); }   // 普朗克常数 ×(1+Sp)^exp
 function tempCapExp() { return 10 * daExpMult() * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult(); }   // 普朗克温度上限 ×(1+Sp)^exp
-function accretionExp() { return 3 * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult(); }                // 黑洞吸积效率（AU43）^exp
+// 黑洞吸积效率（AU43）^exp；SF（v0.6.3.3）：指数 +lg(1+lg(1+SF))/4（零哨兵时 +0）
+function accretionExp() {
+  let e = 3 * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult();
+  if (getLogSF() > NLOG + 1) e += Math.log10(1 + lg1FromLog(getLogSF())) / 4;
+  return e;
+}
 function theoryAvailable(def) {
   if (theoryOwned(def.id) || def.placeholder) return false;
   if (+def.id[0] > theoryDepthEff() + 1e-9) return false; // 理论深度：更深层的节点暂不可购（显示？？？；1e-9 容差防浮点残差）
@@ -5147,6 +5242,8 @@ const RESEARCH_DEFS = [
   { id: "R8", name: "启发式假说萃取", reqTotalIns: 140, costInf: 2e9, desc: "增加一个新的灵感购买途径" },
   { id: "R9", name: "渐进推演范式 I", reqFLog: 3150000, reqVFLog: 30, costInf: 1e10, desc: "解锁一个课题" },
   { id: "R10", name: "数据分析算法改进", reqPred: 99.5, costInf: 3e10, desc: "与预测的奇点指数相对误差<8% 时预测分满分" },
+  // R11（v0.6.3.3）：解锁维度折叠器的三个主题（空间/时间/信息），新资源 SF/NE 开始生产
+  { id: "R11", name: "广义维度折叠理论", reqFLog: 6000000, costInf: 1e13, desc: "增加维度折叠器的更多功能" },
 ];
 function researchDef(id) { return RESEARCH_DEFS.find(x => x.id === id); }
 function researchBought(id) { return state.researchBought.includes(id); }
@@ -5210,6 +5307,7 @@ function researchEffectText(id) {
     case "R8": return "灵感购买途径已解锁（等分购买区）";
     case "R9": return "课题已解锁（课题区块可见）";
     case "R10": return "指数相对误差 <8% 时预测分满分（预测分显示于三乘数行）";
+    case "R11": return "维度折叠器已解锁三个主题（空间/时间/信息），SF/NE 开始生产";
     default: return "";
   }
 }
@@ -5272,7 +5370,9 @@ function theoryDepthSrBonus() {
   return Math.min(n, 5 * Math.sqrt(n)) / 20;
 }
 // 有效理论深度 = 基础深度（研究项目 +1/3 累计）+ 课题加成（判定与显示统一走此函数）
-function theoryDepthEff() { return state.theoryDepth + theoryDepthSrBonus(); }
+// NE 深度加成（v0.6.3.3 预留接口）：具体公式待定，当前恒 0——实装时只改本函数
+function neDepthBonus() { return 0; }
+function theoryDepthEff() { return state.theoryDepth + theoryDepthSrBonus() + neDepthBonus(); }
 // SR1 效果：up3 指数软上限起点 = 3 + 0.1×等级
 function sr1SoftcapStart() { return 3 + 0.1 * sr1Level(); }
 // SR1 投入 tick（applyProduction 调用，真实时间 realDt 原始值，不受时间倍率影响）：
@@ -5385,6 +5485,7 @@ function infRateLog() {
     if (l > 0) rateLog += 3 * Math.log10(l); // ×(lg(Inf+1))^3：多对数增长，随 Inf 收敛
   }
   if (researchBought("R9")) rateLog += Math.log10(theoryDepthEff()); // R9：推论获取 ×理论深度
+  if (getLogNE() > NLOG + 1) rateLog += 0.5 * lg1FromLog(getLogNE()); // NE（v0.6.3.3）：推论获取 ×(1+NE)^0.5
   return clampLog(rateLog);
 }
 function infTick(realDt) {
@@ -5587,9 +5688,9 @@ function applyCompactionResetBody(realNow) {
     setVoidVFCapLog(Math.max(state.logVoidVF10 ?? NLOG, 6));
     setVoidVFLog(clampLog(Math.max(state.logVoidVF10 ?? NLOG, 6)));
   }
-  // —— 卷缩层自身：CM 重置（TP/V/E/F 配置、SS/Ins/理论树保留）；
-  // R4「Kähler模相位固化」后卷缩（含研究重置）不再清 CM
-  if (!researchBought("R4")) setCMLog(NLOG);
+  // —— 卷缩层自身：CM/SF/NE 重置（TP/V/E/F 配置、SS/Ins/理论树保留）；
+  // R4「Kähler模相位固化」后卷缩（含研究重置）不再清三者（v0.6.3.3 起语义扩展至 SF/NE——同源产物）
+  if (!researchBought("R4")) { setCMLog(NLOG); setSFLog(NLOG); setNELog(NLOG); }
   // 理论树：勾选「卷缩重置理论树」时清空已购节点并返还所耗灵感（AD 重置语义），随后解除开关
   if (state.theoryRespec) {
     let refund = 0;
@@ -5674,6 +5775,20 @@ function buildCompactOnce() {
     autoBtn.addEventListener("click", applyAutoAlloc);
     compactEls.autoBtn = autoBtn;
   }
+  // 三主题切换（v0.6.3.3，R11）：只改显示（dataset + CSS 变量覆盖），三资源始终同产；
+  // 手动重取 24 胞体动画色（MutationObserver 挂 body，不监听子容器 dataset 变化）。
+  // 显式按 data-dim-theme 找按钮绑定（getElementById stub 环境下 querySelectorAll 为空也能测）
+  [["space"], ["time"], ["info"]].forEach(([th]) => {
+    const b = document.querySelector('#dim-theme-row button[data-dim-theme="' + th + '"]');
+    if (!b) return;
+    b.addEventListener("click", () => {
+      state.dimTheme = th;
+      saveGame();
+      updateCompactUI();
+      dim24Colors(); dim24Draw();
+      setAutosaveStatus("维度主题已切换：" + (th === "space" ? "空间" : th === "time" ? "时间" : "信息"));
+    });
+  });
   // 灵感购买格子（大框内：频率 / 奇点 / 超弦 / 虚粒子[R8 后]，各自花费）
   const insCells = document.getElementById("comp-ins-cells");
   insCells.innerHTML = "";
@@ -5849,26 +5964,60 @@ function updateCompactUI() {
     el.cell.classList.toggle("done", done);
     el.statusEl.textContent = done ? "✓ 已完成" : `${Math.min(state.compactions, def.n)} / ${def.n}`;
   }
-  // 维度折叠器：CM 值（显示 floor，后台小数）与产量
-  document.getElementById("comp-cm-value").textContent = fmtIntRes(state.cm, getLogCM());
-  const rateLog = cmRateLog();
-  // 每秒获取写最终值：基础产量 × 折叠器时间乘数（节点 01 削弱加成）× 节点31 奇点加速 × 节点82 CM 获取乘数（全部计入）
-  const finalRateLog = rateLog <= NLOG + 1 ? NLOG : clampLog(rateLog + cmTimeMultLog() + cmSpAccelMultLog() + cmSpeedBonusLog() + node82CmMultLog());
+  // 维度折叠器：按当前主题显示对应资源（v0.6.3.3 三主题——同一折叠器的不同展示形态，
+  // 三资源始终同产；R11 未购时只有空间主题且切换器隐藏）
+  const r11 = researchBought("R11");
+  const themeRow = document.getElementById("dim-theme-row");
+  if (themeRow) {
+    themeRow.classList.toggle("hidden", !r11);
+    document.querySelectorAll("#dim-theme-row button").forEach(b => {
+      b.classList.toggle("active", b.dataset.dimTheme === state.dimTheme);
+    });
+  }
+  const sub = document.getElementById("sub-comp-dim");
+  if (sub) sub.dataset.dimTheme = state.dimTheme;
+  const THEME_RES = {
+    space: { name: "卡拉比-丘流形（CM）", key: "cm", get: () => getLogCM(), dbl: () => state.cm, rate: cmRateLog, extra: node82CmMultLog },
+    time:  { name: "萨尔彼得频率（SF）", key: "sf", get: () => getLogSF(), dbl: () => state.sf, rate: sfRateLog, extra: () => 0 },
+    info:  { name: "冯·诺依曼熵（NE）", key: "ne", get: () => getLogNE(), dbl: () => state.ne, rate: neRateLog, extra: () => 0 },
+  };
+  const th = THEME_RES[state.dimTheme] || THEME_RES.space;
+  const resLabel = document.getElementById("comp-res-label");
+  if (resLabel) resLabel.textContent = th.name + "：";
+  document.getElementById("comp-cm-value").textContent = fmtIntRes(th.dbl(), th.get());
+  const rateLog = th.rate();
+  // 每秒获取写最终值：基础产量 × 折叠器时间乘数（节点 01 削弱加成）× 节点31 奇点加速（全部计入；
+  // CM 主题另含节点 82 专属乘数——显示与 tick 结算同式，防双处漂移）
+  const finalRateLog = rateLog <= NLOG + 1 ? NLOG : clampLog(rateLog + cmTimeMultLog() + cmSpAccelMultLog() + cmSpeedBonusLog() + th.extra());
   const rateTxt = finalRateLog <= NLOG + 1 ? "0" : fmtNum(Math.pow(10, Math.min(finalRateLog, 308)), finalRateLog);
   document.getElementById("comp-cm-rate").textContent = `每秒 +${rateTxt}`;
   const baseTxt = rateLog <= NLOG + 1 ? "0" : fmtNum(Math.pow(10, Math.min(rateLog, 308)), rateLog);
-  // 公式区：贝蒂数与基础 CM 公式（基础产量；最终值见上方「每秒」行）
+  // 公式区：贝蒂数与基础公式（基础产量；最终值见上方「每秒」行）
   document.getElementById("comp-betti-line").textContent =
     `b₁ = max(0, E−V+1) = ${betti1()}　　b₂ = max(0, min(F, ⌊2E/3⌋)−E+V) = ${betti2()}`;
-  document.getElementById("comp-formula-line").textContent =
-    `基础 CM 获取：TP² × 3^√(3·b₁·b₂) = ${baseTxt} / 秒`;
-  // CM 效果（一个一行，简洁格式）；节点 82 新增的第 4 效果只在购买后显示（具体效果在折叠器区块展示，
-  // 节点格内只有简述）
-  document.getElementById("comp-dim-effect").textContent =
-    `波速获取 ×${fmtLog(cmGainMultLog())}\n`
-    + `波长公式内指数: ${wavelengthExp().toFixed(4)}\n`
-    + `奇点获取 ×${fmtLog(cmSpMultLog())}`
-    + (theoryOwned("82") ? `\nCM获取 ×${fmtLog(node82CmMultLog())}` : "");
+  const FORMULAS = {
+    space: `基础 CM 获取：TP² × 3^√(3·b₁·b₂) = ${baseTxt} / 秒`,
+    time: `基础 SF 获取：TP × 3^√(max(0, b₁·(b₂−b₁))) = ${baseTxt} / 秒`,
+    info: `基础 NE 获取：TP × 2^√(min(b₁,b₂)·|b₁−b₂|) = ${baseTxt} / 秒`,
+  };
+  document.getElementById("comp-formula-line").textContent = FORMULAS[state.dimTheme] || FORMULAS.space;
+  // 加成区：按主题显示对应资源的效果（CM 原有行保持；节点 82 行只在购买后显示）
+  let effectTxt;
+  if (state.dimTheme === "time") {
+    const sfLg1 = getLogSF() > NLOG + 1 ? lg1FromLog(getLogSF()) : 0;
+    effectTxt = `黑洞吸积速度 ×${fmtLog(clampLog(2 * sfLg1))}（(1+SF)²，软上限前）\n`
+      + `黑洞效果指数 +${(Math.log10(1 + sfLg1) / 4).toFixed(4)}（lg(1+lg(1+SF))/4）`;
+  } else if (state.dimTheme === "info") {
+    const neLg1 = getLogNE() > NLOG + 1 ? lg1FromLog(getLogNE()) : 0;
+    effectTxt = `推论获取 ×${fmtLog(clampLog(0.5 * neLg1))}（(1+NE)^0.5）\n`
+      + `理论深度 +0（效果待定）`;
+  } else {
+    effectTxt = `波速获取 ×${fmtLog(cmGainMultLog())}\n`
+      + `波长公式内指数: ${wavelengthExp().toFixed(4)}\n`
+      + `奇点获取 ×${fmtLog(cmSpMultLog())}`
+      + (theoryOwned("82") ? `\nCM获取 ×${fmtLog(node82CmMultLog())}` : "");
+  }
+  document.getElementById("comp-dim-effect").textContent = effectTxt;
   // 拓扑节点（价格按总节点数计；点击一次买满可负担的最大数量）
   const tpInfo = tpMaxBuyInfo();
   const tpBuy = document.getElementById("comp-tp-buy");
@@ -5889,7 +6038,11 @@ function updateCompactUI() {
     const g = compactEls.geo[key];
     if (g) g.cnt.textContent = state["tp" + key];
   }
-  if (compactEls.autoBtn) compactEls.autoBtn.classList.toggle("hidden", !state.ach.normal.includes("A64"));
+  if (compactEls.autoBtn) {
+    compactEls.autoBtn.classList.toggle("hidden", !state.ach.normal.includes("A64"));
+    const allocName = state.dimTheme === "time" ? "SF" : state.dimTheme === "info" ? "NE" : "CM";
+    compactEls.autoBtn.textContent = "自动最大化" + allocName;
+  }
   // 灵感大框：总灵感（可用）+ 购买途径格子（R8 后三变四）
   document.getElementById("comp-ins-line").textContent =
     `总灵感：${fmtIntRound(state.totalIns, getLogTotalIns())}（可用 ${fmtIntRound(state.ins, getLogIns())}）`;
@@ -8703,9 +8856,11 @@ function applyProduction(realDt) {
   // 黑洞 tick：吸积/脉冲用真实时间（不受时间倍率影响），扭曲状态只给加成（无 tick 效果）
   tickBlackhole(realDt);
 
-  // 卷缩层：维度折叠器产出 CM（真实时间；节点 01 后受削弱的时间倍率加成）。
+  // 卷缩层：维度折叠器产出 CM/SF/NE（真实时间；节点 01 后受削弱的时间倍率加成）。
   // 挂在 applyProduction 内 → 离线模拟自动兼容
   cmTick(realDt);
+  sfTick(realDt); // SF/NE（v0.6.3.3）：R11 后与 CM 同时生产（共享 TP/V/E/F，独立积累）
+  neTick(realDt);
   infTick(realDt); // 研究：推论产出（真实时间，拥有节点51 后）
   svu3RhoTick(realDt); // SVU3 虚数密度：全扭曲虚空中按真实时间增长（不受时间倍率影响，里程碑3 后）
   sr1Tick(realDt); // 课题 SR1：投入推论（真实时间，R9 后激活时）
@@ -9025,7 +9180,7 @@ function applyTestModeUIGlobal() {
   const forceCompactBtn = document.getElementById("force-compact-btn");
   if (forceCompactBtn) forceCompactBtn.classList.toggle("hidden", !state.testMode);
   if (verEl) verEl.textContent = state.testMode
-    ? "v0.6.3.2 The Research Update（测试）"
+    ? "v0.6.3.3 The Research Update（测试）"
     : "v0.5.1 The Void Update";
 }
 

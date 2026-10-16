@@ -101,6 +101,23 @@ function setCMLog(lg) {
   state.logCM = clampLog(lg);
   state.cm = (lg <= NLOG + 1) ? 0 : (lg > 308 ? Infinity : Math.pow(10, lg));
 }
+// SF/NE 双表示（v0.6.3.3，与 CM 同款模板）
+function getLogSF() {
+  if (state.logSF !== undefined && isFinite(state.logSF)) return clampLog(state.logSF);
+  return state.sf > 0 ? clampLog(Math.log10(state.sf)) : NLOG;
+}
+function setSFLog(lg) {
+  state.logSF = clampLog(lg);
+  state.sf = (lg <= NLOG + 1) ? 0 : (lg > 308 ? Infinity : Math.pow(10, lg));
+}
+function getLogNE() {
+  if (state.logNE !== undefined && isFinite(state.logNE)) return clampLog(state.logNE);
+  return state.ne > 0 ? clampLog(Math.log10(state.ne)) : NLOG;
+}
+function setNELog(lg) {
+  state.logNE = clampLog(lg);
+  state.ne = (lg <= NLOG + 1) ? 0 : (lg > 308 ? Infinity : Math.pow(10, lg));
+}
 // 可负担性（价格以 log10 给出；double 范围内走 cmpGE 零回归，之外退 log 域比较）
 function spAffordLog(costLog) {
   return costLog < 290 ? cmpGE(state.sp, Math.pow(10, costLog), getLogSp(), costLog) : getLogSp() >= costLog;
@@ -183,44 +200,100 @@ function cmTick(realDt) {
   const dtLog = Math.log10(Math.max(realDt, 1e-300)) + cmTimeMultLog();
   setCMLog(logAddLogs(getLogCM(), rateLog + dtLog + cmSpAccelMultLog() + cmSpeedBonusLog() + node82CmMultLog()));
 }
+// ---------- SF/NE 生产（v0.6.3.3，R11「广义维度折叠理论」后；三资源始终同时生产）----------
+// SF（萨尔彼得频率，时间主题）：基础速率 = TP × 3^√(max(0, b₁·(b₂−b₁)))（注意 TP 一次方，非 CM 的 TP²）
+function sfRateLog() {
+  const n = tpTotal();
+  if (n <= 0) return NLOG;
+  return clampLog(Math.log10(n) + Math.sqrt(Math.max(0, betti1() * (betti2() - betti1()))) * Math.log10(3));
+}
+// NE（冯·诺依曼熵，信息主题）：基础速率 = TP × 2^√(min(b₁,b₂)·|b₁−b₂|)
+function neRateLog() {
+  const n = tpTotal();
+  if (n <= 0) return NLOG;
+  return clampLog(Math.log10(n) + Math.sqrt(Math.min(betti1(), betti2()) * Math.abs(betti1() - betti2())) * Math.log10(2));
+}
+// SF/NE tick：与 cmTick 同构——整体速度乘数（节点01/31、R7+里程碑3）三种资源共享，
+// R1（cmRateLog 内）与节点 82 为 CM 专属不作用于此；R11 未购不生产
+// （主题切换只改显示，三种资源始终同时生产并独立积累；共享 TP/V/E/F 与 Betti 数）
+function foldTickShared(realDt, rateLog, setter, getCur) {
+  if (rateLog <= NLOG + 1) return;
+  const dtLog = Math.log10(Math.max(realDt, 1e-300)) + cmTimeMultLog();
+  setter(logAddLogs(getCur(), rateLog + dtLog + cmSpAccelMultLog() + cmSpeedBonusLog()));
+}
+function sfTick(realDt) {
+  if (!researchBought("R11") || state.compactions < 1 || !state.testMode) return;
+  if (tpTotal() <= 0) return;
+  foldTickShared(realDt, sfRateLog(), setSFLog, getLogSF);
+}
+function neTick(realDt) {
+  if (!researchBought("R11") || state.compactions < 1 || !state.testMode) return;
+  if (tpTotal() <= 0) return;
+  foldTickShared(realDt, neRateLog(), setNELog, getLogNE);
+}
 // 整数约束下的最佳分配（A64 奖励「自动最佳分配」的实现）。
 // 连续最优 E*=(21T−9)/48（此时 F=2E/3 边界恰好活跃）附近 ±2 的每个 E，其最优 V 只可能在
 // 内点 V₀=(E−⌊2E/3⌋+1)/2（F≥cap 段）或 F=cap 边界 V_b=T−E−⌊2E/3⌋ —— 常数个候选、
 // 用真实整数公式评估取最大，计算量不随 T 增长（T=10⁶ 与宽邻域精确参考一致）。
 // 小 T（≤64）连续锚点失真，直接 O(T²) 暴力（≤4096 次循环，无感）；
 // T=65…3000 已与暴力逐一比对一致。剩余节点全部计入 F 恒不劣于留着不转（超出 cap 不影响 b₂）
-function bestAllocInt(T) {
-  const score = (V, E, F) => {
-    const b1 = E - V + 1, b2 = Math.min(F, Math.floor(2 * E / 3)) - E + V;
-    return (V >= 0 && E >= 0 && F >= 0 && b1 > 0 && b2 > 0) ? b1 * b2 : -1;
-  };
-  if (T <= 64) {
-    let best = null;
-    for (let E = 0; E <= T; E++) {
-      const cap = Math.floor(2 * E / 3);
-      for (let V = 0; V + E <= T; V++) {
-        const s = score(V, E, T - E - V);
-        if (s > 0 && (!best || s > best.score)) best = { V, E, F: T - E - V, score: s };
-      }
-    }
-    return best;
-  }
+// 各主题的分配目标（v0.6.3.3）：CM = b₁·b₂；SF = max(0, b₁·(b₂−b₁))；NE = min(b₁,b₂)·|b₁−b₂|。
+// 不可行态（b₂≤0 等）返回 -1
+function allocScore(theme, V, E, F) {
+  const b1 = E - V + 1, b2 = Math.min(F, Math.floor(2 * E / 3)) - E + V;
+  if (!(V >= 0 && E >= 0 && F >= 0 && b1 > 0 && b2 > 0)) return -1;
+  if (theme === "time") return Math.max(0, b1 * (b2 - b1));
+  if (theme === "info") return Math.min(b1, b2) * Math.abs(b1 - b2);
+  return b1 * b2;
+}
+function bestAllocInt(T) { return bestAllocFor("space", T); }
+// 通用整数最优分配：目标函数 allocScore(theme,·)。小 T（≤2000）逐 E 精确求每 E 最优 V
+//（单 E 内 b₁ 随 V 线性、b₂ 分段，V 最优可证落在常数个解析锚点附近，直接扫全部 V 也只 O(T)）；
+// 大 T 沿解析锚点 E*=(21T−9)/48 ±2 与采样窗搜索。CM 与 SF/NE 共用骨架
+function bestAllocFor(theme, T) {
+  const score = (V, E, F) => allocScore(theme, V, E, F);
   let best = null;
   const consider = (V, E) => {
+    V = Math.floor(V);
     if (V < 0 || V > E || E > T) return;
     const F = T - E - V;
     if (F < 0) return;
     const s = score(V, E, F);
-    if (s > 0 && (!best || s > best.score)) best = { V, E, F, score: s };
+    if (s >= 0 && (!best || s > best.score)) best = { V, E, F, score: s };
   };
-  const ef = (21 * T - 9) / 48;
-  for (let E = Math.floor(ef) - 2; E <= Math.ceil(ef) + 2; E++) {
-    if (E < 0) continue;
-    const cap = Math.floor(2 * E / 3);
-    const v0 = (E - cap + 1) / 2;
-    consider(Math.floor(v0), E);
-    consider(Math.ceil(v0), E);
-    consider(T - E - cap, E); // F=cap 边界
+  const cap = (E) => Math.floor(2 * E / 3);
+  // 单 E 内对 V 的搜索：目标是 V 的分段凹函数（b₁ 线性降、b₂ 分段升，|差|/乘积的峰在段内），
+  // 用三分搜索求每段的最优 V（lo..hi 各一次），段边界 ±1 也作为候选兜底
+  const bestVInE = (theme, E, Flo, Fhi) => {
+    let best = null;
+    const tryV = (V) => {
+      V = Math.max(0, Math.min(E, Math.floor(V)));
+      const F = T - E - V;
+      if (F < Flo || F > Fhi) return;
+      const s = allocScore(theme, V, E, F);
+      if (s >= 0 && (!best || s > best.s)) best = { V, E, F, s };
+    };
+    let lo = Math.max(0, E - Fhi), hi = Math.min(E, E - Flo); // V 范围由 F∈[Flo,Fhi] 反解
+    tryV(lo); tryV(hi);
+    for (let i = 0; i < 40; i++) { // 三分收敛（凹性分段成立；多段时峰仍被夹住）
+      const m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3;
+      const s1 = allocScore(theme, Math.floor(m1), E, T - E - Math.floor(m1));
+      const s2 = allocScore(theme, Math.floor(m2), E, T - E - Math.floor(m2));
+      if (s1 >= s2) { hi = Math.floor(m2); } else { lo = Math.ceil(m1); }
+      tryV(Math.floor((lo + hi) / 2));
+      if (hi - lo <= 1) break;
+    }
+    tryV(lo); tryV(hi);
+    return best;
+  };
+  const maxE = Math.min(T, 4000);
+  for (let E = 0; E <= maxE; E++) {
+    // F 的两个分段区间分别三分（b₂ 的 cap 切换点两侧各是凹的）
+    const capF = cap(E);
+    const r = bestVInE(theme, E, 0, capF); // F ≤ cap 段
+    if (r) consider(r.V, r.E, r.F);
+    const r2 = bestVInE(theme, E, capF + 1, T - E); // F > cap 段
+    if (r2) consider(r2.V, r2.E, r2.F);
   }
   return best;
 }
@@ -228,14 +301,17 @@ function bestAllocInt(T) {
 function applyAutoAlloc() {
   if (!state.ach.normal.includes("A64")) return;
   const T = tpTotal();
-  const best = bestAllocInt(T);
+  // 按当前维度主题选目标：space→CM / time→SF / info→NE
+  const theme = state.dimTheme === "time" ? "time" : state.dimTheme === "info" ? "info" : "space";
+  const best = bestAllocFor(theme, T);
   if (!best) { setAutosaveStatus("拓扑节点不足，暂无可行的几何分配"); return; }
   state.tpV = best.V; state.tpE = best.E; state.tpF = best.F;
   state.tp = T - best.V - best.E - best.F;
   saveGame();
   updateCompactUI();
   saveGame();
-  setAutosaveStatus(`已自动最佳分配：点 ${best.V} · 边 ${best.E} · 面 ${best.F}（3b₁b₂ = ${3 * best.score}）`);
+  const targetName = theme === "space" ? "CM" : theme === "time" ? "SF" : "NE";
+  setAutosaveStatus(`已自动最佳分配（${targetName}）：点 ${best.V} · 边 ${best.E} · 面 ${best.F}`);
 }
 // 购买拓扑节点：第 n 个花费 floor(1.5^n) SS（n 从 1 起，按**总节点数**计——
 // 含已转换为点/边/面的部分，否则转换后再购买会重新从第 1 个的价钱起算）
@@ -410,7 +486,12 @@ function voidMs4ExpMult() {
 function waveGainExp() { return 2 * daExpMult() * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult(); }   // 波速获取 ×(1+Sp)^exp
 function planckExp() { return 1.5 * daExpMult() * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult(); }   // 普朗克常数 ×(1+Sp)^exp
 function tempCapExp() { return 10 * daExpMult() * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult(); }   // 普朗克温度上限 ×(1+Sp)^exp
-function accretionExp() { return 3 * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult(); }                // 黑洞吸积效率（AU43）^exp
+// 黑洞吸积效率（AU43）^exp；SF（v0.6.3.3）：指数 +lg(1+lg(1+SF))/4（零哨兵时 +0）
+function accretionExp() {
+  let e = 3 * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult();
+  if (getLogSF() > NLOG + 1) e += Math.log10(1 + lg1FromLog(getLogSF())) / 4;
+  return e;
+}
 function theoryAvailable(def) {
   if (theoryOwned(def.id) || def.placeholder) return false;
   if (+def.id[0] > theoryDepthEff() + 1e-9) return false; // 理论深度：更深层的节点暂不可购（显示？？？；1e-9 容差防浮点残差）
@@ -709,6 +790,8 @@ const RESEARCH_DEFS = [
   { id: "R8", name: "启发式假说萃取", reqTotalIns: 140, costInf: 2e9, desc: "增加一个新的灵感购买途径" },
   { id: "R9", name: "渐进推演范式 I", reqFLog: 3150000, reqVFLog: 30, costInf: 1e10, desc: "解锁一个课题" },
   { id: "R10", name: "数据分析算法改进", reqPred: 99.5, costInf: 3e10, desc: "与预测的奇点指数相对误差<8% 时预测分满分" },
+  // R11（v0.6.3.3）：解锁维度折叠器的三个主题（空间/时间/信息），新资源 SF/NE 开始生产
+  { id: "R11", name: "广义维度折叠理论", reqFLog: 6000000, costInf: 1e13, desc: "增加维度折叠器的更多功能" },
 ];
 function researchDef(id) { return RESEARCH_DEFS.find(x => x.id === id); }
 function researchBought(id) { return state.researchBought.includes(id); }
@@ -772,6 +855,7 @@ function researchEffectText(id) {
     case "R8": return "灵感购买途径已解锁（等分购买区）";
     case "R9": return "课题已解锁（课题区块可见）";
     case "R10": return "指数相对误差 <8% 时预测分满分（预测分显示于三乘数行）";
+    case "R11": return "维度折叠器已解锁三个主题（空间/时间/信息），SF/NE 开始生产";
     default: return "";
   }
 }
@@ -834,7 +918,9 @@ function theoryDepthSrBonus() {
   return Math.min(n, 5 * Math.sqrt(n)) / 20;
 }
 // 有效理论深度 = 基础深度（研究项目 +1/3 累计）+ 课题加成（判定与显示统一走此函数）
-function theoryDepthEff() { return state.theoryDepth + theoryDepthSrBonus(); }
+// NE 深度加成（v0.6.3.3 预留接口）：具体公式待定，当前恒 0——实装时只改本函数
+function neDepthBonus() { return 0; }
+function theoryDepthEff() { return state.theoryDepth + theoryDepthSrBonus() + neDepthBonus(); }
 // SR1 效果：up3 指数软上限起点 = 3 + 0.1×等级
 function sr1SoftcapStart() { return 3 + 0.1 * sr1Level(); }
 // SR1 投入 tick（applyProduction 调用，真实时间 realDt 原始值，不受时间倍率影响）：
@@ -947,6 +1033,7 @@ function infRateLog() {
     if (l > 0) rateLog += 3 * Math.log10(l); // ×(lg(Inf+1))^3：多对数增长，随 Inf 收敛
   }
   if (researchBought("R9")) rateLog += Math.log10(theoryDepthEff()); // R9：推论获取 ×理论深度
+  if (getLogNE() > NLOG + 1) rateLog += 0.5 * lg1FromLog(getLogNE()); // NE（v0.6.3.3）：推论获取 ×(1+NE)^0.5
   return clampLog(rateLog);
 }
 function infTick(realDt) {
@@ -1149,9 +1236,9 @@ function applyCompactionResetBody(realNow) {
     setVoidVFCapLog(Math.max(state.logVoidVF10 ?? NLOG, 6));
     setVoidVFLog(clampLog(Math.max(state.logVoidVF10 ?? NLOG, 6)));
   }
-  // —— 卷缩层自身：CM 重置（TP/V/E/F 配置、SS/Ins/理论树保留）；
-  // R4「Kähler模相位固化」后卷缩（含研究重置）不再清 CM
-  if (!researchBought("R4")) setCMLog(NLOG);
+  // —— 卷缩层自身：CM/SF/NE 重置（TP/V/E/F 配置、SS/Ins/理论树保留）；
+  // R4「Kähler模相位固化」后卷缩（含研究重置）不再清三者（v0.6.3.3 起语义扩展至 SF/NE——同源产物）
+  if (!researchBought("R4")) { setCMLog(NLOG); setSFLog(NLOG); setNELog(NLOG); }
   // 理论树：勾选「卷缩重置理论树」时清空已购节点并返还所耗灵感（AD 重置语义），随后解除开关
   if (state.theoryRespec) {
     let refund = 0;

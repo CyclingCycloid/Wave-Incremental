@@ -174,7 +174,7 @@ function applyTestModeUIGlobal() {
   const forceCompactBtn = document.getElementById("force-compact-btn");
   if (forceCompactBtn) forceCompactBtn.classList.toggle("hidden", !state.testMode);
   if (verEl) verEl.textContent = state.testMode
-    ? "v0.6.3.2 The Research Update（测试）"
+    ? "v0.6.3.3 The Research Update（测试）"
     : "v0.5.1 The Void Update";
 }
 

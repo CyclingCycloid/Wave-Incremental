@@ -46,6 +46,20 @@ function buildCompactOnce() {
     autoBtn.addEventListener("click", applyAutoAlloc);
     compactEls.autoBtn = autoBtn;
   }
+  // 三主题切换（v0.6.3.3，R11）：只改显示（dataset + CSS 变量覆盖），三资源始终同产；
+  // 手动重取 24 胞体动画色（MutationObserver 挂 body，不监听子容器 dataset 变化）。
+  // 显式按 data-dim-theme 找按钮绑定（getElementById stub 环境下 querySelectorAll 为空也能测）
+  [["space"], ["time"], ["info"]].forEach(([th]) => {
+    const b = document.querySelector('#dim-theme-row button[data-dim-theme="' + th + '"]');
+    if (!b) return;
+    b.addEventListener("click", () => {
+      state.dimTheme = th;
+      saveGame();
+      updateCompactUI();
+      dim24Colors(); dim24Draw();
+      setAutosaveStatus("维度主题已切换：" + (th === "space" ? "空间" : th === "time" ? "时间" : "信息"));
+    });
+  });
   // 灵感购买格子（大框内：频率 / 奇点 / 超弦 / 虚粒子[R8 后]，各自花费）
   const insCells = document.getElementById("comp-ins-cells");
   insCells.innerHTML = "";
@@ -221,26 +235,60 @@ function updateCompactUI() {
     el.cell.classList.toggle("done", done);
     el.statusEl.textContent = done ? "✓ 已完成" : `${Math.min(state.compactions, def.n)} / ${def.n}`;
   }
-  // 维度折叠器：CM 值（显示 floor，后台小数）与产量
-  document.getElementById("comp-cm-value").textContent = fmtIntRes(state.cm, getLogCM());
-  const rateLog = cmRateLog();
-  // 每秒获取写最终值：基础产量 × 折叠器时间乘数（节点 01 削弱加成）× 节点31 奇点加速 × 节点82 CM 获取乘数（全部计入）
-  const finalRateLog = rateLog <= NLOG + 1 ? NLOG : clampLog(rateLog + cmTimeMultLog() + cmSpAccelMultLog() + cmSpeedBonusLog() + node82CmMultLog());
+  // 维度折叠器：按当前主题显示对应资源（v0.6.3.3 三主题——同一折叠器的不同展示形态，
+  // 三资源始终同产；R11 未购时只有空间主题且切换器隐藏）
+  const r11 = researchBought("R11");
+  const themeRow = document.getElementById("dim-theme-row");
+  if (themeRow) {
+    themeRow.classList.toggle("hidden", !r11);
+    document.querySelectorAll("#dim-theme-row button").forEach(b => {
+      b.classList.toggle("active", b.dataset.dimTheme === state.dimTheme);
+    });
+  }
+  const sub = document.getElementById("sub-comp-dim");
+  if (sub) sub.dataset.dimTheme = state.dimTheme;
+  const THEME_RES = {
+    space: { name: "卡拉比-丘流形（CM）", key: "cm", get: () => getLogCM(), dbl: () => state.cm, rate: cmRateLog, extra: node82CmMultLog },
+    time:  { name: "萨尔彼得频率（SF）", key: "sf", get: () => getLogSF(), dbl: () => state.sf, rate: sfRateLog, extra: () => 0 },
+    info:  { name: "冯·诺依曼熵（NE）", key: "ne", get: () => getLogNE(), dbl: () => state.ne, rate: neRateLog, extra: () => 0 },
+  };
+  const th = THEME_RES[state.dimTheme] || THEME_RES.space;
+  const resLabel = document.getElementById("comp-res-label");
+  if (resLabel) resLabel.textContent = th.name + "：";
+  document.getElementById("comp-cm-value").textContent = fmtIntRes(th.dbl(), th.get());
+  const rateLog = th.rate();
+  // 每秒获取写最终值：基础产量 × 折叠器时间乘数（节点 01 削弱加成）× 节点31 奇点加速（全部计入；
+  // CM 主题另含节点 82 专属乘数——显示与 tick 结算同式，防双处漂移）
+  const finalRateLog = rateLog <= NLOG + 1 ? NLOG : clampLog(rateLog + cmTimeMultLog() + cmSpAccelMultLog() + cmSpeedBonusLog() + th.extra());
   const rateTxt = finalRateLog <= NLOG + 1 ? "0" : fmtNum(Math.pow(10, Math.min(finalRateLog, 308)), finalRateLog);
   document.getElementById("comp-cm-rate").textContent = `每秒 +${rateTxt}`;
   const baseTxt = rateLog <= NLOG + 1 ? "0" : fmtNum(Math.pow(10, Math.min(rateLog, 308)), rateLog);
-  // 公式区：贝蒂数与基础 CM 公式（基础产量；最终值见上方「每秒」行）
+  // 公式区：贝蒂数与基础公式（基础产量；最终值见上方「每秒」行）
   document.getElementById("comp-betti-line").textContent =
     `b₁ = max(0, E−V+1) = ${betti1()}　　b₂ = max(0, min(F, ⌊2E/3⌋)−E+V) = ${betti2()}`;
-  document.getElementById("comp-formula-line").textContent =
-    `基础 CM 获取：TP² × 3^√(3·b₁·b₂) = ${baseTxt} / 秒`;
-  // CM 效果（一个一行，简洁格式）；节点 82 新增的第 4 效果只在购买后显示（具体效果在折叠器区块展示，
-  // 节点格内只有简述）
-  document.getElementById("comp-dim-effect").textContent =
-    `波速获取 ×${fmtLog(cmGainMultLog())}\n`
-    + `波长公式内指数: ${wavelengthExp().toFixed(4)}\n`
-    + `奇点获取 ×${fmtLog(cmSpMultLog())}`
-    + (theoryOwned("82") ? `\nCM获取 ×${fmtLog(node82CmMultLog())}` : "");
+  const FORMULAS = {
+    space: `基础 CM 获取：TP² × 3^√(3·b₁·b₂) = ${baseTxt} / 秒`,
+    time: `基础 SF 获取：TP × 3^√(max(0, b₁·(b₂−b₁))) = ${baseTxt} / 秒`,
+    info: `基础 NE 获取：TP × 2^√(min(b₁,b₂)·|b₁−b₂|) = ${baseTxt} / 秒`,
+  };
+  document.getElementById("comp-formula-line").textContent = FORMULAS[state.dimTheme] || FORMULAS.space;
+  // 加成区：按主题显示对应资源的效果（CM 原有行保持；节点 82 行只在购买后显示）
+  let effectTxt;
+  if (state.dimTheme === "time") {
+    const sfLg1 = getLogSF() > NLOG + 1 ? lg1FromLog(getLogSF()) : 0;
+    effectTxt = `黑洞吸积速度 ×${fmtLog(clampLog(2 * sfLg1))}（(1+SF)²，软上限前）\n`
+      + `黑洞效果指数 +${(Math.log10(1 + sfLg1) / 4).toFixed(4)}（lg(1+lg(1+SF))/4）`;
+  } else if (state.dimTheme === "info") {
+    const neLg1 = getLogNE() > NLOG + 1 ? lg1FromLog(getLogNE()) : 0;
+    effectTxt = `推论获取 ×${fmtLog(clampLog(0.5 * neLg1))}（(1+NE)^0.5）\n`
+      + `理论深度 +0（效果待定）`;
+  } else {
+    effectTxt = `波速获取 ×${fmtLog(cmGainMultLog())}\n`
+      + `波长公式内指数: ${wavelengthExp().toFixed(4)}\n`
+      + `奇点获取 ×${fmtLog(cmSpMultLog())}`
+      + (theoryOwned("82") ? `\nCM获取 ×${fmtLog(node82CmMultLog())}` : "");
+  }
+  document.getElementById("comp-dim-effect").textContent = effectTxt;
   // 拓扑节点（价格按总节点数计；点击一次买满可负担的最大数量）
   const tpInfo = tpMaxBuyInfo();
   const tpBuy = document.getElementById("comp-tp-buy");
@@ -261,7 +309,11 @@ function updateCompactUI() {
     const g = compactEls.geo[key];
     if (g) g.cnt.textContent = state["tp" + key];
   }
-  if (compactEls.autoBtn) compactEls.autoBtn.classList.toggle("hidden", !state.ach.normal.includes("A64"));
+  if (compactEls.autoBtn) {
+    compactEls.autoBtn.classList.toggle("hidden", !state.ach.normal.includes("A64"));
+    const allocName = state.dimTheme === "time" ? "SF" : state.dimTheme === "info" ? "NE" : "CM";
+    compactEls.autoBtn.textContent = "自动最大化" + allocName;
+  }
   // 灵感大框：总灵感（可用）+ 购买途径格子（R8 后三变四）
   document.getElementById("comp-ins-line").textContent =
     `总灵感：${fmtIntRound(state.totalIns, getLogTotalIns())}（可用 ${fmtIntRound(state.ins, getLogIns())}）`;

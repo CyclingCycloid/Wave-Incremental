@@ -149,9 +149,11 @@ function applyProduction(realDt) {
   // 黑洞 tick：吸积/脉冲用真实时间（不受时间倍率影响），扭曲状态只给加成（无 tick 效果）
   tickBlackhole(realDt);
 
-  // 卷缩层：维度折叠器产出 CM（真实时间；节点 01 后受削弱的时间倍率加成）。
+  // 卷缩层：维度折叠器产出 CM/SF/NE（真实时间；节点 01 后受削弱的时间倍率加成）。
   // 挂在 applyProduction 内 → 离线模拟自动兼容
   cmTick(realDt);
+  sfTick(realDt); // SF/NE（v0.6.3.3）：R11 后与 CM 同时生产（共享 TP/V/E/F，独立积累）
+  neTick(realDt);
   infTick(realDt); // 研究：推论产出（真实时间，拥有节点51 后）
   svu3RhoTick(realDt); // SVU3 虚数密度：全扭曲虚空中按真实时间增长（不受时间倍率影响，里程碑3 后）
   sr1Tick(realDt); // 课题 SR1：投入推论（真实时间，R9 后激活时）

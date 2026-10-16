@@ -151,7 +151,10 @@ function bhAccretionGainLog() {
   const vfPart = voidMilestone1() && state.logVoidVF10 > NLOG + 1
     ? (2 / 3) * vfEffectVFLog(state.logVoidVF10) // 里程碑3 后按 VF^1.1 计算
     : 0;
-  return clampLog(bhAccretionMassExp() * mLog + freqPartLog + accMultLog + vfPart);
+  // SF（萨尔彼得频率，v0.6.3.3 R11）：吸积速率 ×(1+SF)²（软上限前；与 vfPart 同位，
+  // 不进 accMultLog——AU44 只搬 SBU1，SF 须留在软上限前）
+  const sfPart = getLogSF() > NLOG + 1 ? 2 * lg1FromLog(getLogSF()) : 0;
+  return clampLog(bhAccretionMassExp() * mLog + freqPartLog + accMultLog + vfPart + sfPart);
 }
 function bhAccretionRateLog() {
   const au44 = auOwned("au44");
