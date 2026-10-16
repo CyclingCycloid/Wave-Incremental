@@ -269,7 +269,7 @@ function updateCompactUI() {
   const FORMULAS = {
     space: `基础 CM 获取：TP² × 3^√(3·b₁·b₂) = ${baseTxt} / 秒`,
     time: `基础 SF 获取：TP × 3^√(max(0, b₁·(b₂−b₁))) = ${baseTxt} / 秒`,
-    info: `基础 NE 获取：TP² × 2^√(min(b₁,b₂)·|b₁−b₂|) = ${baseTxt} / 秒`,
+    info: `基础 NE 获取：√(TP × 2^√(min(b₁,b₂)·|b₁−b₂|)) = ${baseTxt} / 秒`,
   };
   document.getElementById("comp-formula-line").textContent = FORMULAS[state.dimTheme] || FORMULAS.space;
   // 加成区：按主题显示对应资源的效果（CM 原有行保持；节点 82 行只在购买后显示）

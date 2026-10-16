@@ -4673,8 +4673,8 @@ function sfRateLog() {
 function neRateLog() {
   const n = tpTotal();
   if (n <= 0) return NLOG;
-  // 基础公式的 TP 项为平方（TP²，与 CM 同底形）；指数项 √(min(b₁,b₂)·|b₁−b₂|)·lg2
-  return clampLog(2 * Math.log10(n) + Math.sqrt(Math.min(betti1(), betti2()) * Math.abs(betti1() - betti2())) * Math.log10(2));
+  // 基础公式整体开平方根：√(TP × 2^√(min(b₁,b₂)·|b₁−b₂|))——log 域 = 0.5×(lgTP + 指数项)
+  return clampLog(0.5 * (Math.log10(n) + Math.sqrt(Math.min(betti1(), betti2()) * Math.abs(betti1() - betti2())) * Math.log10(2)));
 }
 // SF/NE tick：与 cmTick 同构——整体速度乘数（节点01/31、R7+里程碑3）三种资源共享，
 // R1（cmRateLog 内）与节点 82 为 CM 专属不作用于此；R11 未购不生产
@@ -4951,9 +4951,9 @@ function planckExp() { return 1.5 * daExpMult() * theory11Exp() * node72SpBoostE
 function tempCapExp() { return 10 * daExpMult() * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult(); }   // 普朗克温度上限 ×(1+Sp)^exp
 // 黑洞吸积效率（AU43）^exp；SF（v0.6.3.3）：指数 +lg(1+lg(1+SF))/4（零哨兵时 +0）
 function accretionExp() {
-  let e = 3 * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult();
-  if (getLogSF() > NLOG + 1) e += Math.log10(1 + lg1FromLog(getLogSF())) / 4;
-  return e;
+  // 黑洞吸积效率（AU43）^exp——SF 第二效果不作用于此（「黑洞效果指数」专指黑洞基础效果的指数，
+  // 即 bhEffectLog 的 0.2+0.05·sbu2，见 11-blackhole.js）
+  return 3 * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult();
 }
 function theoryAvailable(def) {
   if (theoryOwned(def.id) || def.placeholder) return false;
@@ -6009,7 +6009,7 @@ function updateCompactUI() {
   const FORMULAS = {
     space: `基础 CM 获取：TP² × 3^√(3·b₁·b₂) = ${baseTxt} / 秒`,
     time: `基础 SF 获取：TP × 3^√(max(0, b₁·(b₂−b₁))) = ${baseTxt} / 秒`,
-    info: `基础 NE 获取：TP² × 2^√(min(b₁,b₂)·|b₁−b₂|) = ${baseTxt} / 秒`,
+    info: `基础 NE 获取：√(TP × 2^√(min(b₁,b₂)·|b₁−b₂|)) = ${baseTxt} / 秒`,
   };
   document.getElementById("comp-formula-line").textContent = FORMULAS[state.dimTheme] || FORMULAS.space;
   // 加成区：按主题显示对应资源的效果（CM 原有行保持；节点 82 行只在购买后显示）
