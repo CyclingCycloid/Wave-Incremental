@@ -269,9 +269,9 @@ function svu3RhoTick(realDt) {
   const wRaw = gainRateLog(true).log - svu3CapStart();
   if (!(wRaw > 0)) return;
   const m4 = voidMilestone4();
-  // SF（v0.6.3.3 R11）第二效果：虚数密度获取速度 ×√(1+2·lg(SF+1))（乘在分子 w 上；SF=0 时为 1）
+  // SF（v0.6.3.3 R11）第二效果：虚数密度获取速度 ×√(1+4·lg(SF+1))（乘在分子 w 上；SF=0 时为 1）
   const w = Math.max(wRaw, Math.pow(wRaw, m4 ? 1.3 : 1.1)) * (m4 ? Math.max(state.svu3N, 5) : 1)
-    * (getLogSF() > NLOG + 1 ? Math.sqrt(1 + 2 * lg1FromLog(getLogSF())) : 1);
+    * (getLogSF() > NLOG + 1 ? Math.sqrt(1 + 4 * lg1FromLog(getLogSF())) : 1);
   const k = m4
     ? 1 + Math.min(state.svu3N, 5 * Math.pow(state.svu3N / 5, 0.7)) / 3
     : 1 + state.svu3N / 3; // 阻尼指数（N=0 时恰为 1，走平方根闭式解）
