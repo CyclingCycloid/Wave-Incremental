@@ -89,7 +89,7 @@ function defaultState() {
     svu3NBest: 0,          // SVU3：历史最高相变数（相变时 latch 只增不减——M4 奇点加成基于此；老档以当前 N 兜底）
     voidMs4: 0,            // 虚空里程碑 4「相变重整」闩锁（N≥5 且深度≥8.5 达成后置 1，无序化不撤销）
 
-    // 卷缩层（v0.6.0.0 测试：第三重置层；SS=超弦 / Ins=灵感 / CM=卡拉比-丘流形）
+    // 卷缩层（v0.6.0.0 测试：第二重置层；SS=超弦 / Ins=灵感 / CM=卡拉比-丘流形）
     compactions: 0,        // 卷缩次数
     ss: 0,                 // 超弦（double 缓存）
     logDss: NLOG,          // log10(超弦) 权威（零哨兵 NLOG）
