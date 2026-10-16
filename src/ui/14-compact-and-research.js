@@ -284,7 +284,7 @@ function updateCompactUI() {
   } else if (state.dimTheme === "info") {
     const neLg1 = getLogNE() > NLOG + 1 ? lg1FromLog(getLogNE()) : 0;
     effectTxt = `推论获取 ×${fmtLog(clampLog(3 * Math.log10(1 + neLg1)))}\n`
-      + `理论深度 +0`;
+      + `理论深度 +${(13 * neLg1 / 1500).toFixed(4)}`;
   } else {
     effectTxt = `波速获取 ×${fmtLog(cmGainMultLog())}\n`
       + `波长公式内指数: ${wavelengthExp().toFixed(4)}\n`

@@ -928,8 +928,11 @@ function theoryDepthSrBonus() {
   return Math.min(n, 5 * Math.sqrt(n)) / 20;
 }
 // 有效理论深度 = 基础深度（研究项目 +1/3 累计）+ 课题加成（判定与显示统一走此函数）
-// NE 深度加成（v0.6.3.3 预留接口）：具体公式待定，当前恒 0——实装时只改本函数
-function neDepthBonus() { return 0; }
+// NE 深度加成（v0.6.3.3）：理论深度 +13·lg(NE+1)/1500（NE=0 时为 0；判定与显示统一经 theoryDepthEff）
+function neDepthBonus() {
+  const lg = getLogNE();
+  return lg > NLOG + 1 ? (13 * lg1FromLog(lg)) / 1500 : 0;
+}
 function theoryDepthEff() { return state.theoryDepth + theoryDepthSrBonus() + neDepthBonus(); }
 // SR1 效果：up3 指数软上限起点 = 3 + 0.1×等级
 function sr1SoftcapStart() { return 3 + 0.1 * sr1Level(); }
