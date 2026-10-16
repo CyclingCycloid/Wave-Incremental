@@ -341,6 +341,242 @@ function createSlogTetration(host) {
   });
 }
 
+/* Independent candidate geometry. No game state, storage or external dependencies. */
+(function (global) {
+  'use strict';
+  const freezeModel = (name, vertices, edges, drawing) => Object.freeze({
+    name,
+    vertices: Object.freeze(vertices.map(Object.freeze)),
+    edges: Object.freeze(edges.map(Object.freeze)),
+    drawing: Object.freeze(drawing),
+  });
+
+  function cell24() {
+    const vertices = [], edges = [];
+    for (let a = 0; a < 4; a++) for (let b = a + 1; b < 4; b++) {
+      for (const sa of [-1, 1]) for (const sb of [-1, 1]) {
+        const p = [0, 0, 0, 0];
+        p[a] = sa / Math.SQRT2; p[b] = sb / Math.SQRT2;
+        vertices.push(p);
+      }
+    }
+    for (let i = 0; i < vertices.length; i++) for (let j = i + 1; j < vertices.length; j++) {
+      let distance = 0;
+      for (let axis = 0; axis < 4; axis++) distance += (vertices[i][axis] - vertices[j][axis]) ** 2;
+      if (Math.abs(distance - 1) < 1e-8) edges.push([i, j]);
+    }
+    return freezeModel('正二十四胞体', vertices, edges, {
+      angleA: 0.29, phaseA: 0, angleB: 0.13, phaseB: 0.12,
+      camera4: 2.8, camera3: 4, tiltX: -0.28, tiltY: 0.38,
+      widthScale: 0.31, heightScale: 0.33,
+    });
+  }
+
+  function cell16() {
+    const vertices = [], edges = [];
+    for (let axis = 0; axis < 4; axis++) for (const sign of [-1, 1]) {
+      const p = [0, 0, 0, 0]; p[axis] = sign; vertices.push(p);
+    }
+    for (let i = 0; i < 8; i++) for (let j = i + 1; j < 8; j++) {
+      if (Math.floor(i / 2) !== Math.floor(j / 2)) edges.push([i, j]);
+    }
+    return freezeModel('正十六胞体', vertices, edges, {
+      angleA: 0.27, phaseA: 0.15, angleB: 0.13, phaseB: 0.4,
+      camera4: 3.3, camera3: 4.8, tiltX: -0.3, tiltY: 0.42,
+      widthScale: 0.275, heightScale: 0.374,
+    });
+  }
+
+  function cube4() {
+    const vertices = [], edges = [];
+    for (let bits = 0; bits < 16; bits++) {
+      vertices.push(Array.from({ length: 4 }, (_, axis) => ((bits >> axis) & 1) ? 0.5 : -0.5));
+      for (let axis = 0; axis < 4; axis++) {
+        const neighbor = bits ^ (1 << axis);
+        if (neighbor > bits) edges.push([bits, neighbor]);
+      }
+    }
+    return freezeModel('四维超立方体（正八胞体）', vertices, edges, {
+      angleA: 0.24, phaseA: 0.25, angleB: 0.17, phaseB: 0.2,
+      camera4: 3.3, camera3: 4.8, tiltX: -0.3, tiltY: 0.42,
+      widthScale: 0.28, heightScale: 0.39,
+    });
+  }
+
+  const models = Object.freeze({ space: cell24(), time: cell16(), info: cube4() });
+  global.WaveFoldGeometry = Object.freeze({ models });
+})(window);
+
+/* Independent candidate renderer. Load geometry.js first. */
+(function (global) {
+  'use strict';
+  const models = global.WaveFoldGeometry.models;
+  const mounted = new WeakMap();
+  const FPS_INTERVAL = 1000 / 30;
+  const validTheme = theme => Object.prototype.hasOwnProperty.call(models, theme);
+  const validSpeed = speed => Number.isFinite(speed) && speed >= 0 && speed <= 2;
+
+  function mount(canvas, options = {}) {
+    if (!(canvas instanceof HTMLCanvasElement)) throw new TypeError('Expected a canvas element.');
+    if (!validTheme(options.theme ?? 'space')) throw new RangeError('Unknown folding theme.');
+    if (!validSpeed(options.speed ?? 0.65)) throw new RangeError('Speed must be between 0 and 2.');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas 2D rendering is unavailable.');
+    mounted.get(canvas)?.destroy();
+
+    const buffers = Object.fromEntries(Object.entries(models).map(([key, model]) => [key, {
+      projected: new Float64Array(model.vertices.length * 3),
+      edges: model.edges.map(([a, b]) => ({ a: a * 3, b: b * 3, depth: 0 })),
+    }]));
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+    const appearance = matchMedia('(prefers-color-scheme: dark)');
+    const probe = document.createElement('span');
+    probe.hidden = true;
+    probe.setAttribute('aria-hidden', 'true');
+    canvas.parentElement.appendChild(probe);
+    const clocks = { space: 2.3, time: 2.3, info: 2.3 };
+    let theme = options.theme ?? 'space', speed = options.speed ?? 0.65;
+    let paused = Boolean(options.paused), enabled = true, intersecting = false, destroyed = false;
+    let width = 0, height = 0, ratio = 0, frameId = 0, previous = null;
+    let colors;
+    const byDepth = (a, b) => a.depth - b.depth;
+
+    function refreshColors() {
+      if (destroyed) return;
+      const resolve = name => {
+        probe.style.color = `var(--fold-${theme}-${name})`;
+        return getComputedStyle(probe).color;
+      };
+      colors = { line: resolve('line'), bright: resolve('bright'), rear: resolve('rear') };
+      draw();
+    }
+
+    function resize() {
+      if (destroyed) return;
+      const bounds = canvas.getBoundingClientRect();
+      const nextRatio = Math.min(global.devicePixelRatio || 1, 1.5);
+      width = bounds.width; height = bounds.height;
+      const nextWidth = Math.max(1, Math.round(width * nextRatio));
+      const nextHeight = Math.max(1, Math.round(height * nextRatio));
+      if (canvas.width !== nextWidth || canvas.height !== nextHeight || ratio !== nextRatio) {
+        ratio = nextRatio; canvas.width = nextWidth; canvas.height = nextHeight;
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      }
+      draw();
+    }
+
+    function draw() {
+      if (destroyed || !colors || width <= 0 || height <= 0) return;
+      const model = models[theme], rule = model.drawing, buffer = buffers[theme];
+      const points = buffer.projected, edges = buffer.edges, t = clocks[theme];
+      const sinA = Math.sin(t * rule.angleA + rule.phaseA), cosA = Math.cos(t * rule.angleA + rule.phaseA);
+      const sinB = Math.sin(t * rule.angleB + rule.phaseB), cosB = Math.cos(t * rule.angleB + rule.phaseB);
+      const sx = Math.sin(rule.tiltX), cx = Math.cos(rule.tiltX), sy = Math.sin(rule.tiltY), cy = Math.cos(rule.tiltY);
+      const scale = Math.min(width * rule.widthScale, height * rule.heightScale);
+      for (let i = 0; i < model.vertices.length; i++) {
+        const v = model.vertices[i];
+        // Rotate x-w and y-z, then project 4D -> 3D -> 2D. Unit-radius models
+        // stay away from the camera planes; these equations do not use resources.
+        const x = v[0] * cosA - v[3] * sinA, w = v[0] * sinA + v[3] * cosA;
+        const y = v[1] * cosB - v[2] * sinB, z = v[1] * sinB + v[2] * cosB;
+        const p4 = rule.camera4 / (rule.camera4 - w);
+        const y2 = (y * cx - z * sx) * p4, z2 = (y * sx + z * cx) * p4;
+        const x2 = x * p4 * cy + z2 * sy, depth = -x * p4 * sy + z2 * cy;
+        const perspective = rule.camera3 / (rule.camera3 - depth), index = i * 3;
+        points[index] = width / 2 + x2 * scale * perspective;
+        points[index + 1] = height / 2 + y2 * scale * perspective;
+        points[index + 2] = depth;
+      }
+      ctx.clearRect(0, 0, width, height);
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      for (const edge of edges) edge.depth = (points[edge.a + 2] + points[edge.b + 2]) / 2;
+      edges.sort(byDepth);
+      for (const edge of edges) {
+        const front = edge.depth > 0;
+        ctx.strokeStyle = front ? colors.line : colors.rear;
+        ctx.globalAlpha = front ? 0.56 + 0.35 * Math.min(1, edge.depth) : 0.17 + 0.17 * Math.max(0, 1 + edge.depth);
+        ctx.lineWidth = front ? 1.15 : 0.85;
+        ctx.beginPath(); ctx.moveTo(points[edge.a], points[edge.a + 1]);
+        ctx.lineTo(points[edge.b], points[edge.b + 1]); ctx.stroke();
+      }
+      for (let i = 0; i < points.length; i += 3) {
+        const front = points[i + 2] > 0;
+        ctx.fillStyle = front ? colors.bright : colors.rear; ctx.globalAlpha = front ? 0.9 : 0.28;
+        ctx.beginPath(); ctx.arc(points[i], points[i + 1], 1.5, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    function active() {
+      return !destroyed && canvas.isConnected && enabled && intersecting && width > 0 && height > 0
+        && !document.hidden && !reduced.matches && !paused && speed > 0;
+    }
+    function schedule() { if (!frameId && active()) frameId = requestAnimationFrame(tick); }
+    function stop() {
+      if (frameId) cancelAnimationFrame(frameId);
+      frameId = 0; previous = null;
+    }
+    function tick(now) {
+      frameId = 0;
+      if (!active()) { previous = null; return; }
+      if (previous === null) previous = now;
+      const elapsed = now - previous;
+      if (elapsed >= FPS_INTERVAL) {
+        clocks[theme] += Math.min(elapsed / 1000, 0.1) * speed;
+        previous = now; draw();
+      }
+      schedule();
+    }
+    function sync() { stop(); draw(); schedule(); }
+    function environmentChanged() { resize(); refreshColors(); sync(); }
+    function visibilityChanged() { stop(); if (!document.hidden) resize(); schedule(); }
+
+    const sizeObserver = new ResizeObserver(() => { resize(); sync(); });
+    const intersectionObserver = new IntersectionObserver(entries => {
+      intersecting = entries[0]?.isIntersecting ?? false;
+      if (intersecting) resize();
+      sync();
+    });
+    sizeObserver.observe(canvas); intersectionObserver.observe(canvas);
+    document.addEventListener('visibilitychange', visibilityChanged);
+    global.addEventListener('resize', environmentChanged);
+    reduced.addEventListener('change', sync);
+    appearance.addEventListener('change', environmentChanged);
+
+    const controller = Object.freeze({
+      setTheme(next) {
+        if (destroyed) return;
+        if (!validTheme(next)) throw new RangeError('Unknown folding theme.');
+        if (next === theme) return;
+        stop(); theme = next; refreshColors(); schedule();
+      },
+      setPaused(value) { if (!destroyed) { paused = Boolean(value); sync(); } },
+      setVisible(value) { if (!destroyed) { enabled = Boolean(value); sync(); } },
+      setSpeed(value) {
+        if (destroyed) return;
+        if (!validSpeed(value)) throw new RangeError('Speed must be between 0 and 2.');
+        speed = value; sync();
+      },
+      refreshColors, resize, draw,
+      destroy() {
+        if (destroyed) return;
+        stop(); destroyed = true;
+        sizeObserver.disconnect(); intersectionObserver.disconnect();
+        document.removeEventListener('visibilitychange', visibilityChanged);
+        global.removeEventListener('resize', environmentChanged);
+        reduced.removeEventListener('change', sync);
+        appearance.removeEventListener('change', environmentChanged);
+        probe.remove(); ctx.clearRect(0, 0, width, height);
+        mounted.delete(canvas);
+      },
+    });
+    mounted.set(canvas, controller);
+    refreshColors(); resize(); schedule();
+    return controller;
+  }
+  global.WaveFoldAnimations = Object.freeze({ mount });
+})(window);
+
 /* ===== Wave Incremental v0.6.3 — game logic ===== */
 
 // ---------- Save schema ----------
@@ -5804,7 +6040,7 @@ function buildCompactOnce() {
       state.dimTheme = th;
       saveGame();
       updateCompactUI();
-      dim24Colors(); dim24Draw();
+      foldSyncTheme(); // setTheme 内部含换色与重绘（--fold-{theme}-* 按主题直读）
       setAutosaveStatus("维度主题已切换：" + (th === "space" ? "空间" : th === "time" ? "时间" : "信息"));
     });
   });
@@ -6397,133 +6633,23 @@ function updateCompactButton() {
 
 
 
-// ---------- 二十四胞体装饰动画（维度折叠器页；Issue/help/dimension-24cell 选定方案接入）----------
-// 四维正二十四胞体（24 顶点 96 边）线框：双平面 4D 旋转 → 4D→3D 透视 → 3D 旋转 → 屏幕透视，
-// 边按深度排序分层着色（前景橙/后景灰，白主题换深色系）。几何只生成一次；
-// 30fps 上限、dt 封顶 0.1s、速度 0.65、time 初值 2.3（与选定预览一致）；
-// 画布离屏/子页隐藏/标签页隐藏自动停；prefers-reduced-motion 静态一帧。纯装饰，不涉任何数值。
-const DIM24_MODEL = (() => {
-  const vertices = [], edges = [];
-  for (let a = 0; a < 4; a++) for (let b = a + 1; b < 4; b++)
-    for (const sa of [-1, 1]) for (const sb of [-1, 1]) {
-      const p = [0, 0, 0, 0];
-      p[a] = sa / Math.SQRT2; p[b] = sb / Math.SQRT2;
-      vertices.push(p);
-    }
-  for (let i = 0; i < vertices.length; i++) for (let j = i + 1; j < vertices.length; j++) {
-    let d = 0;
-    for (let ax = 0; ax < 4; ax++) d += (vertices[i][ax] - vertices[j][ax]) ** 2;
-    if (Math.abs(d - 1) < 1e-8) edges.push([i, j]);
-  }
-  return { vertices, edges };
-})();
-const dim24 = { time: 2.3, speed: 0.65, size: 1, w: 0, h: 0, ratio: 0, colors: null, playing: true, visible: true, frameId: 0, prev: 0 };
-// 主题色解析：隐藏探针读 CSS 变量计算值（data-theme 切换后由 recolor 重取）
-function dim24Colors() {
-  const probe = document.getElementById("dim24-probe");
-  const cs = getComputedStyle(probe);
-  dim24.colors = {
-    line: cs.getPropertyValue("--d24-line").trim(),
-    bright: cs.getPropertyValue("--d24-bright").trim(),
-    rear: cs.getPropertyValue("--d24-rear").trim(),
-  };
-}
-function dim24Resize() {
+// ---------- 维度折叠器装饰动画（三主题：space=正二十四胞体 / time=正十六胞体 / info=四维超立方体）----------
+// 实现在 src/modules/geometry.js + renderer.js（Issue/help/dimension-themes 候选定稿逐字节拷入）：
+// mount 单实例自持全部调度（30fps 上限、ResizeObserver/IntersectionObserver、标签隐藏、
+// prefers-reduced-motion 静态帧），游戏侧只保留挂载、主题同步与页面外观联动。
+// 空间主题与旧二十四胞体投影同款几何/旋转平面/相机/参数；纯装饰，不涉任何数值。
+// 主题门槛由既有游戏逻辑负责：R11 前主题切换按钮不可见（dimTheme 恒 space），装饰库不判研究。
+let foldAnim = null; // WaveFoldAnimations 唯一实例（boot 挂载后常驻；子页/画布离屏由 IntersectionObserver 自动停）
+function foldTheme() { return ["space", "time", "info"].includes(state.dimTheme) ? state.dimTheme : "space"; }
+function foldSyncTheme() { if (foldAnim) foldAnim.setTheme(foldTheme()); }
+// boot 调用：挂载实例，并联动游戏黑白主题（body[data-theme] 为手动切换，renderer 只听系统
+// prefers-color-scheme，故由 MutationObserver 重取颜色——--fold-* 变量定义在 #sub-comp-dim 子树）
+function foldAnimBoot() {
   const canvas = document.getElementById("comp-dim24-canvas");
-  const box = canvas.getBoundingClientRect();
-  if (!box.width || !box.height) return false;
-  const ratio = Math.min(window.devicePixelRatio || 1, 1.5);
-  if (dim24.w !== box.width || dim24.h !== box.height || dim24.ratio !== ratio) {
-    dim24.w = box.width; dim24.h = box.height; dim24.ratio = ratio;
-    canvas.width = Math.round(box.width * ratio);
-    canvas.height = Math.round(box.height * ratio);
-    canvas.getContext("2d").setTransform(ratio, 0, 0, ratio, 0, 0);
-  }
-  return true;
-}
-function dim24Draw() {
-  const canvas = document.getElementById("comp-dim24-canvas");
-  if (!dim24Resize()) return;
-  const ctx = canvas.getContext("2d");
-  // 双平面 4D 旋转（角度随 time）+ 固定 3D 视角（与选定预览一致）
-  const t = dim24.time;
-  const planes = [[0, 3, Math.sin(t * 0.29), Math.cos(t * 0.29)], [1, 2, Math.sin(t * 0.13 + 0.12), Math.cos(t * 0.13 + 0.12)]];
-  const sx = Math.sin(-0.28), cx = Math.cos(-0.28), sy = Math.sin(0.38), cy = Math.cos(0.38);
-  const scale = Math.min(dim24.w * 0.31, dim24.h * 0.33) * dim24.size;
-  const pts = DIM24_MODEL.vertices.map(v => {
-    const p = [...v];
-    for (const [a, b, sine, cosine] of planes) {
-      const u = p[a], w = p[b];
-      p[a] = u * cosine - w * sine; p[b] = u * sine + w * cosine;
-    }
-    for (let d = 4; d > 3; d--) { // 4D → 3D 透视
-      const r = 2.8 / (2.8 - p[d - 1]);
-      for (let ax = 0; ax < d - 1; ax++) p[ax] *= r;
-    }
-    const y = p[1] * cx - p[2] * sx, z = p[1] * sx + p[2] * cx;
-    const x2 = p[0] * cy + z * sy, z2 = -p[0] * sy + z * cy;
-    const persp = 4 / (4 - z2);
-    return [dim24.w / 2 + x2 * scale * persp, dim24.h / 2 + y * scale * persp, z2];
-  });
-  ctx.clearRect(0, 0, dim24.w, dim24.h);
-  ctx.lineCap = "round"; ctx.lineJoin = "round";
-  const edges = DIM24_MODEL.edges
-    .map(e => ({ a: pts[e[0]], b: pts[e[1]], depth: (pts[e[0]][2] + pts[e[1]][2]) / 2 }))
-    .sort((x, y) => x.depth - y.depth);
-  for (const e of edges) {
-    const fg = e.depth > 0;
-    ctx.strokeStyle = fg ? dim24.colors.line : dim24.colors.rear;
-    ctx.globalAlpha = fg ? 0.56 + 0.35 * Math.min(1, e.depth) : 0.17 + 0.17 * Math.max(0, 1 + e.depth);
-    ctx.lineWidth = fg ? 1.15 : 0.85;
-    ctx.beginPath(); ctx.moveTo(e.a[0], e.a[1]); ctx.lineTo(e.b[0], e.b[1]); ctx.stroke();
-  }
-  for (const p of pts) {
-    ctx.fillStyle = p[2] > 0 ? dim24.colors.bright : dim24.colors.rear;
-    ctx.globalAlpha = p[2] > 0 ? 0.90 : 0.28;
-    ctx.beginPath(); ctx.arc(p[0], p[1], 1.5, 0, Math.PI * 2); ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-}
-function dim24Schedule() {
-  const canvas = document.getElementById("comp-dim24-canvas");
-  if (!dim24.frameId && canvas && canvas.isConnected && dim24.visible && !document.hidden && dim24.playing)
-    dim24.frameId = requestAnimationFrame(dim24Frame);
-}
-function dim24Frame(timestamp) {
-  dim24.frameId = 0;
-  if (!dim24.visible || document.hidden || !dim24.playing) { dim24.prev = 0; return; }
-  const elapsed = dim24.prev ? timestamp - dim24.prev : 34;
-  if (elapsed >= 1000 / 30) { // 30fps 上限
-    dim24.time += Math.min(elapsed / 1000, 0.10) * dim24.speed;
-    dim24.prev = timestamp;
-    dim24Draw();
-  }
-  dim24Schedule();
-}
-// boot 调用：建探针与观察器（画布离屏/主题切换/尺寸变化），画首帧并起播
-function dim24Boot() {
-  const canvas = document.getElementById("comp-dim24-canvas");
-  if (!canvas) return;
-  const probe = document.createElement("span");
-  probe.id = "dim24-probe";
-  probe.style.display = "none";
-  canvas.parentElement.appendChild(probe); // 挂子页内以继承 #sub-comp-dim 上的颜色变量
-  dim24Colors();
-  dim24.playing = !(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-  new ResizeObserver(() => dim24Draw()).observe(canvas);
-  new IntersectionObserver(entries => {
-    dim24.visible = entries[0] ? entries[0].isIntersecting : true;
-    if (!dim24.visible && dim24.frameId) { cancelAnimationFrame(dim24.frameId); dim24.frameId = 0; }
-    dim24.prev = 0; dim24Schedule();
-  }).observe(canvas);
-  const recolor = () => { dim24Colors(); dim24Draw(); };
-  new MutationObserver(recolor).observe(document.body, { attributes: true, attributeFilter: ["data-theme"] });
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden && dim24.frameId) { cancelAnimationFrame(dim24.frameId); dim24.frameId = 0; }
-    dim24.prev = 0; dim24Schedule();
-  });
-  dim24Draw();
-  dim24Schedule();
+  if (!canvas || !window.WaveFoldAnimations) return;
+  foldAnim = window.WaveFoldAnimations.mount(canvas, { theme: foldTheme(), speed: 0.65 });
+  new MutationObserver(() => { if (foldAnim) foldAnim.refreshColors(); })
+    .observe(document.body, { attributes: true, attributeFilter: ["data-theme"] });
 }
 // ---------- 黑洞 UI（build-once, in-place update）+ 旋转动画 ----------
 let bhBuilt = false, bhRefs = {}, bhStateBtns = [], bhAnimRAF = 0, bhAngle = 0, bhParticles = [], bhVpuSection = null, bhSvpuTopRow = null;
@@ -9697,7 +9823,7 @@ function init() {
   requestAnimationFrame(uiLoop);
   // 黑洞旋转动画循环（仅解锁后绘制，未解锁时低频空转）
   requestAnimationFrame(bhAnimLoop);
-  dim24Boot(); // 二十四胞体装饰动画（离屏/隐藏自动停，见 14-compact 尾部）
+  foldAnimBoot(); // 维度折叠器三主题装饰动画（离屏/隐藏自动停，见 14-compact 尾部）
   setInterval(() => { if (dirty) { saveGame(); dirty = false; } }, AUTOSAVE_INTERVAL);
   window.addEventListener("beforeunload", () => saveGame());
 

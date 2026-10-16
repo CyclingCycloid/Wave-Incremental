@@ -36,6 +36,15 @@
 - 恰为 1e310 可用（下限含等号）；进行中的实验不受影响（存量 researchRun 不回溯修改）
 - 验证：harness 断言（1e200 开始被拒 / 恰 1e310 正常开始）+ tail55 全量回归通过
 
+### 特性：维度折叠器动画三主题化——接入十六胞体与四维超立方体（Issue/help/dimension-themes 定稿）
+
+- **三主题几何**：空间=正二十四胞体（24 顶点/96 边，橙，与旧动画同款几何/旋转/相机/参数）/ 时间=正十六胞体（8 顶点/24 边，紫）/ 信息=四维超立方体·正八胞体（16 顶点/32 边，蓝）
+- **候选库接入**：geometry.js + renderer.js 自 Issue/help/dimension-themes 逐字节拷入 src/modules/ 并入构建（manifest modules 增至 5 项，geometry 先行）；renderer 单实例自持全部调度（30fps 上限、dt 封顶 0.1s、ResizeObserver/IntersectionObserver、标签隐藏、prefers-reduced-motion 静态帧、重复挂载自动销毁旧实例）
+- **旧实现移除**：DIM24_MODEL、dim24 状态对象、dim24Colors/Resize/Draw/Schedule/Frame/Boot 与 dim24-probe 探针全部删除；boot 改挂 foldAnimBoot（挂载 WaveFoldAnimations 单实例 + body[data-theme] 黑白切换经 MutationObserver 调 refreshColors——renderer 只听系统 prefers-color-scheme，游戏手动主题须自行联动）
+- **颜色变量**：--d24-* 三变量改 --fold-{space,time,info}-{line,bright,rear} 九变量（定义于 #sub-comp-dim；白主题沿用旧值：空间换深橙系、时间/信息线色不变仅后景灰提亮）；主题切换按钮点击走 setTheme（内部换色+重绘+续播），不再依赖页面 data-dim-theme 属性切动画色
+- 门槛不变：R11 前主题切换按钮不可见、动画固定空间主题（装饰库不判研究）；画布位置/尺寸不变；纯装饰不涉任何数值
+- 验证：构建后 node --check + tail55 全量回归（23 ok / ALL DONE）；浏览器实测（三几何计数 24/96、8/24、16/32；九变量计算样式逐一对照主题色；主题按钮切换后画布非零像素 5528/2441/2869 与边数密度排序一致；白主题 line 变 #c36814 且联动重绘；旧 dim24 全局符号与探针清零）
+
 ## v0.6.3.2 — The Research Update（测试中，数值待调）
 
 ### 测试按钮：新增「清除实验完成记录」

@@ -946,20 +946,27 @@ body[data-theme="white"] #news-ticker { color: #000000; }
 .research-done-card { cursor: pointer; transition: border-color .15s; }
 .research-done-card:hover { border-color: var(--accent); }
 
-/* 二十四胞体装饰动画（维度折叠器页；颜色变量供 JS 读取，主题化） */
-#sub-comp-dim { --d24-line: #ff8c1a; --d24-bright: #ffb347; --d24-rear: #727277; }
+/* 维度折叠器装饰动画（三主题；--fold-* 九个颜色变量供 renderer.js 探针按当前主题直读，主题化） */
+#sub-comp-dim {
+  --fold-space-line: #ff8c1a; --fold-space-bright: #ffb347; --fold-space-rear: #727277;
+  --fold-time-line: #8b5cf6; --fold-time-bright: #a78bfa; --fold-time-rear: #727277;
+  --fold-info-line: #5fb8e6; --fold-info-bright: #7ec8f7; --fold-info-rear: #727277;
+}
 #comp-dim24-canvas { display: block; width: 100%; max-width: 680px; height: 170px; margin: 2px auto 10px; border: 1px solid var(--border); border-radius: 6px; }
-body[data-theme="white"] #sub-comp-dim { --d24-line: #c36814; --d24-bright: #d97c22; --d24-rear: #858585; }
+/* 白主题：空间换深色系（沿用旧二十四胞体配色）；时间/信息线色沿用黑主题值，仅后景灰提亮（与接入前行为一致） */
+body[data-theme="white"] #sub-comp-dim {
+  --fold-space-line: #c36814; --fold-space-bright: #d97c22; --fold-space-rear: #858585;
+  --fold-time-rear: #858585; --fold-info-rear: #858585;
+}
 
 /* ===== 维度折叠器三主题（v0.6.3.3，R11；空间=橙原样 / 时间=紫 / 信息=蓝） ===== */
-/* 覆盖 --orange 系与 --d24-* 动画色：只影响 #sub-comp-dim 内部（变量在 :root 定义，子树覆盖局部生效） */
+/* 覆盖 --orange 系页面用色：只影响 #sub-comp-dim 内部（变量在 :root 定义，子树覆盖局部生效）；
+   动画色不再随 data-dim-theme 切换——renderer 按 --fold-{theme}-* 直读 */
 #sub-comp-dim[data-dim-theme="time"] {
   --orange: #8b5cf6; --orange-bright: #a78bfa; --orange-dim: #6d3fd4;
-  --d24-line: #8b5cf6; --d24-bright: #a78bfa;
 }
 #sub-comp-dim[data-dim-theme="info"] {
   --orange: #5fb8e6; --orange-bright: #7ec8f7; --orange-dim: #3f6ad4;
-  --d24-line: #5fb8e6; --d24-bright: #7ec8f7;
 }
 /* comp-btn hover 的硬编码橙 rgba 也要跟随主题 */
 #sub-comp-dim[data-dim-theme="time"] .comp-btn:hover { background: rgba(139, 92, 246, 0.12); }
