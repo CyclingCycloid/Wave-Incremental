@@ -9175,6 +9175,8 @@ function applyTestModeUIGlobal() {
   const clearResearchBtn = document.getElementById("clear-research-btn");
   const clearResearchRecBtn = document.getElementById("clear-research-rec-btn");
   const clearSrBtn = document.getElementById("clear-sr-btn");
+  const clearSfBtn = document.getElementById("clear-sf-btn");
+  const clearNeBtn = document.getElementById("clear-ne-btn");
   const clearInfBtn = document.getElementById("clear-inf-btn");
   const clearResearchBoughtBtn = document.getElementById("clear-research-bought-btn");
   const resetInsBtn = document.getElementById("reset-ins-btn");
@@ -9195,6 +9197,8 @@ function applyTestModeUIGlobal() {
   if (clearResearchBtn) clearResearchBtn.classList.toggle("hidden", !state.testMode);
   if (clearResearchRecBtn) clearResearchRecBtn.classList.toggle("hidden", !state.testMode);
   if (clearSrBtn) clearSrBtn.classList.toggle("hidden", !state.testMode);
+  if (clearSfBtn) clearSfBtn.classList.toggle("hidden", !state.testMode);
+  if (clearNeBtn) clearNeBtn.classList.toggle("hidden", !state.testMode);
   if (clearInfBtn) clearInfBtn.classList.toggle("hidden", !state.testMode);
   if (clearResearchBoughtBtn) clearResearchBoughtBtn.classList.toggle("hidden", !state.testMode);
   if (resetInsBtn) resetInsBtn.classList.toggle("hidden", !state.testMode);
@@ -9493,6 +9497,20 @@ function setupUI() {
   });
   // 测试工具：清除实验完成记录（完成次数计数与各实验历史最高等级归 0；
   // ED/推论/已购研究/进行中的实验均不动）
+  // 测试工具：仅清空 SF（CM/NE 不动）
+  document.getElementById("clear-sf-btn").addEventListener("click", () => {
+    setSFLog(NLOG);
+    saveGame();
+    updateCompactUI();
+    setAutosaveStatus("萨尔彼得频率已清零（CM/NE 保留）");
+  });
+  // 测试工具：仅清空 NE（CM/SF 不动）
+  document.getElementById("clear-ne-btn").addEventListener("click", () => {
+    setNELog(NLOG);
+    saveGame();
+    updateCompactUI();
+    setAutosaveStatus("冯·诺依曼熵已清零（CM/SF 保留）");
+  });
   // 测试工具：课题等级清零（SR1 累计投入归 0，等级与课题理论深度加成同步回退）
   document.getElementById("clear-sr-btn").addEventListener("click", () => {
     state.sr1InvestLog = NLOG;

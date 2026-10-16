@@ -146,6 +146,8 @@ function applyTestModeUIGlobal() {
   const clearResearchBtn = document.getElementById("clear-research-btn");
   const clearResearchRecBtn = document.getElementById("clear-research-rec-btn");
   const clearSrBtn = document.getElementById("clear-sr-btn");
+  const clearSfBtn = document.getElementById("clear-sf-btn");
+  const clearNeBtn = document.getElementById("clear-ne-btn");
   const clearInfBtn = document.getElementById("clear-inf-btn");
   const clearResearchBoughtBtn = document.getElementById("clear-research-bought-btn");
   const resetInsBtn = document.getElementById("reset-ins-btn");
@@ -166,6 +168,8 @@ function applyTestModeUIGlobal() {
   if (clearResearchBtn) clearResearchBtn.classList.toggle("hidden", !state.testMode);
   if (clearResearchRecBtn) clearResearchRecBtn.classList.toggle("hidden", !state.testMode);
   if (clearSrBtn) clearSrBtn.classList.toggle("hidden", !state.testMode);
+  if (clearSfBtn) clearSfBtn.classList.toggle("hidden", !state.testMode);
+  if (clearNeBtn) clearNeBtn.classList.toggle("hidden", !state.testMode);
   if (clearInfBtn) clearInfBtn.classList.toggle("hidden", !state.testMode);
   if (clearResearchBoughtBtn) clearResearchBoughtBtn.classList.toggle("hidden", !state.testMode);
   if (resetInsBtn) resetInsBtn.classList.toggle("hidden", !state.testMode);
