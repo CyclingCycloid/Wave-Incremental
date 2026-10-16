@@ -603,12 +603,16 @@ function buyTheoryNode(id) {
 function exportTheoryTree() {
   // 紧凑格式（v0.6.3.2）：空层不输出占位分号，如只购 11/21/31/41 → "11;21;31;41;0d"
   const segs = [];
-  for (let li = 0; li <= 9; li++) {
+  for (let li = 0; li <= TREE_MAX_LAYER; li++) {
     const ids = THEORY_NODES.filter(n => +n.id[0] === li && theoryOwned(n.id)).map(n => n.id);
     if (ids.length) segs.push(ids.join(","));
   }
   return (segs.length ? segs.join(";") + ";" : "") + "0d";
 }
+// 理论树最大层数（按节点 id 首位推导，当前 9——节点 91）；导出与解析共用。
+// 解析段数上限 = 最大层 + 2：层 0..最大层 的内容段 + 结尾「0d」——含 91 的满层树共 11 段
+//（旧上限 10 会把带 91 的预设整串误判为格式错误，读档失败）
+const TREE_MAX_LAYER = Math.max(...THEORY_NODES.map(n => +n.id[0]));
 // 解析理论树字符串：返回按「从上往下、从左往右」排序的节点 id 数组；格式有误返回 null。
 // 格式：层与层用「;」分隔、同层节点用「,」、末尾固定「0d」段。
 // v0.6.3.2 起节点 id 自带层号、段位不再参与校验——空层不占位的紧凑串与旧版带空层
@@ -616,7 +620,7 @@ function exportTheoryTree() {
 function parseTheoryTree(str) {
   if (typeof str !== "string") return null;
   const segs = str.trim().split(";");
-  if (segs.length < 1 || segs.length > 10 || segs[segs.length - 1] !== "0d") return null;
+  if (segs.length < 1 || segs.length > TREE_MAX_LAYER + 2 || segs[segs.length - 1] !== "0d") return null;
   const out = [];
   for (let li = 0; li < segs.length - 1; li++) {
     if (segs[li] === "") continue; // 兼容旧版空层占位
@@ -710,6 +714,16 @@ function renameTheoryPreset(i) {
   saveGame();
   updateCompactUI();
 }
+// 清除预设：只清该槽的理论树内容（槽位名保留，可重新保存/导入）
+function clearTheoryPreset(i) {
+  const p = state.theoryPresets[i];
+  if (!p || !p.tree) { setAutosaveStatus("预设 " + (p ? p.name : "PR" + (i + 1)) + " 为空"); return; }
+  if (!confirm(`确定清除预设 ${p.name} 的理论树吗？（槽位名保留）`)) return;
+  p.tree = "";
+  saveGame();
+  updateCompactUI();
+  setAutosaveStatus("已清除预设 " + p.name + " 的理论树");
+}
 // 预设（6 槽）：左键/右键切换内联菜单（加载/保存/导入/命名，作用于所选槽位）
 let theoryMenuIdx = -1; // 当前打开菜单的预设槽位（-1=隐藏）
 function closeTheoryPresetMenu() {
@@ -725,14 +739,14 @@ function showTheoryPresetMenu(idx) {
   m.classList.remove("hidden");
   // 按钮文案带上所选预设名（如「保存 PR1」），明确作用对象
   const nm = state.theoryPresets[idx] ? state.theoryPresets[idx].name : "PR" + (idx + 1);
-  const labels = ["加载", "保存", "导入", "命名"];
+  const labels = ["加载", "保存", "导入", "命名", "清除"];
   m.querySelectorAll("button").forEach((b, i) => { b.textContent = labels[i] + " " + nm; });
 }
 function setupTheoryPresetMenu() {
   const m = document.getElementById("theory-preset-menu");
   if (!m || m.dataset.wired) return;
   m.dataset.wired = "1";
-  const acts = [loadTheoryPreset, saveTheoryPreset, importTheoryPreset, renameTheoryPreset];
+  const acts = [loadTheoryPreset, saveTheoryPreset, importTheoryPreset, renameTheoryPreset, clearTheoryPreset];
   m.querySelectorAll("button").forEach((b, i) => {
     b.addEventListener("click", () => { const idx = theoryMenuIdx; closeTheoryPresetMenu(); if (idx >= 0) acts[i](idx); });
   });
