@@ -8425,7 +8425,7 @@ const NORMAL_ACH = [
     check: () => state.researchDone >= 1 || getLogED() > NLOG + 1 || state.ach.hidden.includes("S29") },
   { id: "A72", name: "立论", desc: "解锁课题", star: true, reward: "理论深度加成实验数据与推论获取",
     check: () => researchBought("R9") },
-  { id: "A73", name: "多元", desc: "购买研究「广义维度折叠理论」", star: true,
+  { id: "A73", name: "多元", desc: "升级维度折叠器", star: true,
     reward: "现有成就加成倍率额外作用于维度折叠器的生产速度（同时影响 CM/SF/NE，不与游戏时间倍率重复计算）",
     check: () => researchBought("R11") },
 ];
