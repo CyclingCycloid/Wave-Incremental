@@ -276,12 +276,12 @@ function updateCompactUI() {
   let effectTxt;
   if (state.dimTheme === "time") {
     const sfLg1 = getLogSF() > NLOG + 1 ? lg1FromLog(getLogSF()) : 0;
-    effectTxt = `黑洞吸积速度 ×${fmtLog(clampLog(2 * sfLg1))}（(1+SF)²，软上限前）\n`
-      + `黑洞效果指数 +${(Math.log10(1 + sfLg1) / 4).toFixed(4)}（lg(1+lg(1+SF))/4）`;
+    effectTxt = `黑洞吸积速度 ×${fmtLog(clampLog(2 * sfLg1))}\n`
+      + `黑洞效果指数 +${(Math.log10(1 + sfLg1) / 4).toFixed(4)}`;
   } else if (state.dimTheme === "info") {
     const neLg1 = getLogNE() > NLOG + 1 ? lg1FromLog(getLogNE()) : 0;
-    effectTxt = `推论获取 ×${fmtLog(clampLog(0.5 * neLg1))}（(1+NE)^0.5）\n`
-      + `理论深度 +0（效果待定）`;
+    effectTxt = `推论获取 ×${fmtLog(clampLog(0.5 * neLg1))}\n`
+      + `理论深度 +0`;
   } else {
     effectTxt = `波速获取 ×${fmtLog(cmGainMultLog())}\n`
       + `波长公式内指数: ${wavelengthExp().toFixed(4)}\n`
