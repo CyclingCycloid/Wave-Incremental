@@ -212,14 +212,15 @@ function cmTick(realDt) {
 function sfRateLog() {
   const n = tpTotal();
   if (n <= 0) return NLOG;
-  return clampLog(Math.log10(n) + Math.sqrt(Math.max(0, betti1() * (betti2() - betti1()))) * Math.log10(3));
+  // 平衡缩放：SF 速率 = CM 基础速率的平方根（整体 ×0.5 log 域）
+  return clampLog(0.5 * (2 * Math.log10(n) + Math.sqrt(Math.max(0, betti1() * (betti2() - betti1()))) * Math.log10(3)));
 }
-// NE（冯·诺依曼熵，信息主题）：基础速率 = TP × 2^√(min(b₁,b₂)·|b₁−b₂|)
+// NE（冯·诺依曼熵，信息主题）：基础速率 = 时间的平方根——即 SF 速率再开根
+//（log 域 0.25×CM 形；用户平衡缩放：空间 →√→ 时间 →√→ 信息）
 function neRateLog() {
   const n = tpTotal();
   if (n <= 0) return NLOG;
-  // 基础公式整体开平方根：√(TP × 2^√(min(b₁,b₂)·|b₁−b₂|))——log 域 = 0.5×(lgTP + 指数项)
-  return clampLog(0.5 * (Math.log10(n) + Math.sqrt(Math.min(betti1(), betti2()) * Math.abs(betti1() - betti2())) * Math.log10(2)));
+  return clampLog(0.25 * (2 * Math.log10(n) + Math.sqrt(Math.min(betti1(), betti2()) * Math.abs(betti1() - betti2())) * Math.log10(2)));
 }
 // SF/NE tick：与 cmTick 同构——整体速度乘数（节点01/31、R7+里程碑3）三种资源共享，
 // R1（cmRateLog 内）与节点 82 为 CM 专属不作用于此；R11 未购不生产

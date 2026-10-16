@@ -500,6 +500,9 @@ function applyHelpVisibility() {
     const el = document.getElementById(id);
     if (el) el.classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
   }
+  // 维度折叠器 II（三主题）：购买 R11 后显示（防剧透）
+  const dim2 = document.getElementById("help-compact-dim2");
+  if (dim2) dim2.classList.toggle("hidden", !researchBought("R11"));
   document.getElementById("stat-ann-group").classList.toggle("hidden", state.annihilations < 1);
   document.getElementById("stat-comp-area").classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
   // 卷缩后保持统计-挑战子页可见（否则湮灭次数归零会重新隐藏）

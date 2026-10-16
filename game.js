@@ -3203,6 +3203,9 @@ function applyHelpVisibility() {
     const el = document.getElementById(id);
     if (el) el.classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
   }
+  // 维度折叠器 II（三主题）：购买 R11 后显示（防剧透）
+  const dim2 = document.getElementById("help-compact-dim2");
+  if (dim2) dim2.classList.toggle("hidden", !researchBought("R11"));
   document.getElementById("stat-ann-group").classList.toggle("hidden", state.annihilations < 1);
   document.getElementById("stat-comp-area").classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
   // 卷缩后保持统计-挑战子页可见（否则湮灭次数归零会重新隐藏）
@@ -4667,14 +4670,15 @@ function cmTick(realDt) {
 function sfRateLog() {
   const n = tpTotal();
   if (n <= 0) return NLOG;
-  return clampLog(Math.log10(n) + Math.sqrt(Math.max(0, betti1() * (betti2() - betti1()))) * Math.log10(3));
+  // 平衡缩放：SF 速率 = CM 基础速率的平方根（整体 ×0.5 log 域）
+  return clampLog(0.5 * (2 * Math.log10(n) + Math.sqrt(Math.max(0, betti1() * (betti2() - betti1()))) * Math.log10(3)));
 }
-// NE（冯·诺依曼熵，信息主题）：基础速率 = TP × 2^√(min(b₁,b₂)·|b₁−b₂|)
+// NE（冯·诺依曼熵，信息主题）：基础速率 = 时间的平方根——即 SF 速率再开根
+//（log 域 0.25×CM 形；用户平衡缩放：空间 →√→ 时间 →√→ 信息）
 function neRateLog() {
   const n = tpTotal();
   if (n <= 0) return NLOG;
-  // 基础公式整体开平方根：√(TP × 2^√(min(b₁,b₂)·|b₁−b₂|))——log 域 = 0.5×(lgTP + 指数项)
-  return clampLog(0.5 * (Math.log10(n) + Math.sqrt(Math.min(betti1(), betti2()) * Math.abs(betti1() - betti2())) * Math.log10(2)));
+  return clampLog(0.25 * (2 * Math.log10(n) + Math.sqrt(Math.min(betti1(), betti2()) * Math.abs(betti1() - betti2())) * Math.log10(2)));
 }
 // SF/NE tick：与 cmTick 同构——整体速度乘数（节点01/31、R7+里程碑3）三种资源共享，
 // R1（cmRateLog 内）与节点 82 为 CM 专属不作用于此；R11 未购不生产
@@ -6008,8 +6012,8 @@ function updateCompactUI() {
     `b₁ = max(0, E−V+1) = ${betti1()}　　b₂ = max(0, min(F, ⌊2E/3⌋)−E+V) = ${betti2()}`;
   const FORMULAS = {
     space: `基础 CM 获取：TP² × 3^√(3·b₁·b₂) = ${baseTxt} / 秒`,
-    time: `基础 SF 获取：TP × 3^√(max(0, b₁·(b₂−b₁))) = ${baseTxt} / 秒`,
-    info: `基础 NE 获取：√(TP × 2^√(min(b₁,b₂)·|b₁−b₂|)) = ${baseTxt} / 秒`,
+    time: `基础 SF 获取：√(TP² × 3^√(max(0, b₁·(b₂−b₁)))) = ${baseTxt} / 秒`,
+    info: `基础 NE 获取：⁴√(TP² × 2^√(min(b₁,b₂)·|b₁−b₂|)) = ${baseTxt} / 秒`,
   };
   document.getElementById("comp-formula-line").textContent = FORMULAS[state.dimTheme] || FORMULAS.space;
   // 加成区：按主题显示对应资源的效果（CM 原有行保持；节点 82 行只在购买后显示）
