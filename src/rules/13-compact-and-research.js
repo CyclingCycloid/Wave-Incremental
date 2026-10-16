@@ -799,7 +799,7 @@ const RESEARCH_DEFS = [
   { id: "R7", name: "Ricci流预解算", reqED: 3.5e3, costInf: 2.5e8, desc: "基于推论增加维度折叠器速度" },
   { id: "R8", name: "启发式假说萃取", reqTotalIns: 140, costInf: 2e9, desc: "增加一个新的灵感购买途径" },
   { id: "R9", name: "渐进推演范式 I", reqFLog: 3150000, reqVFLog: 30, costInf: 1e10, desc: "解锁一个课题" },
-  { id: "R10", name: "数据分析算法改进", reqPred: 99.5, costInf: 3e10, desc: "与预测的奇点指数相对误差<8% 时预测分满分" },
+  { id: "R10", name: "数据分析算法改进", reqPred: 99.5, costInf: 3e10, desc: "与预测的奇点指数相对误差<5% 时预测分满分" },
   // R11（v0.6.3.3）：解锁维度折叠器的三个主题（空间/时间/信息），新资源 SF/NE 开始生产
   { id: "R11", name: "广义维度折叠理论", reqFLog: 6000000, costInf: 1e13, desc: "增加维度折叠器的更多功能" },
 ];
@@ -864,7 +864,7 @@ function researchEffectText(id) {
     }
     case "R8": return "灵感购买途径已解锁（等分购买区）";
     case "R9": return "课题已解锁（课题区块可见）";
-    case "R10": return "指数相对误差 <8% 时预测分满分（预测分显示于三乘数行）";
+    case "R10": return "指数相对误差 <5% 时预测分满分（预测分显示于三乘数行）";
     case "R11": return "维度折叠器已解锁三个主题（空间/时间/信息），SF/NE 开始生产";
     default: return "";
   }
@@ -967,8 +967,8 @@ function researchMultipliers() {
     const lgR1 = state.sp > 0 ? lg1FromLog(getLogSp()) : 0;   // RealSp = 当前持有 Sp
     const lgP1 = lg1FromLog(run.predictSpLog);
     pred = lgP1 <= 0 ? (lgR1 <= 0 ? 100 : 0) : 100 * (1 - Math.min(1, Math.abs(lgR1 - lgP1) / lgP1));
-    // R10「数据分析算法改进」：有预测且与预测的奇点指数相对误差 <8% 时预测分直接满分
-    if (researchBought("R10") && lgP1 > 0 && Math.abs(lgR1 - lgP1) / lgP1 < 0.08) pred = 100;
+    // R10「数据分析算法改进」：有预测且与预测的奇点指数相对误差 <5% 时预测分直接满分
+    if (researchBought("R10") && lgP1 > 0 && Math.abs(lgR1 - lgP1) / lgP1 < 0.05) pred = 100;
     const effR1 = Math.min(lgR1, lgP1); // 总奇点超过预测时，附加分按预测值计算
     // 附加分 = 奇点相关部分（硬上限 10）× √理论深度（R9「渐进推演范式 I」奖励，理论深度部分不受 10 上限限制）
     bonus = Math.min(10, Math.pow(Math.max(effR1, 0), 0.25)) * (researchBought("R9") ? Math.sqrt(theoryDepthEff()) : 1);
@@ -1010,6 +1010,8 @@ function startResearch() {
 }
 function researchExit() {
   if (!state.researchRun || !researchExitReady()) return;
+  // S31 谁让它进来的？：以预测分 0 分完成一次实验（结束=完成；放弃不计，与 S29 同口径）
+  if (researchMultipliers().pred <= 0) { grantHidden("S31"); updateAchievementsUI(); }
   const gainLog = researchEDGainLog();
   const before = getLogED();
   // 里程碑式：只有超过历史最高才入账；否则视为「获得 0 实验数据」（S29）

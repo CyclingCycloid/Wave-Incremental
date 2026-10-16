@@ -101,6 +101,7 @@ const HIDDEN_ACH = [
   { id: "S28", name: "增量神秘数字", check: () => false }, // 在理论树导入框输入 69（doImportTheoryTree 内授予）
   { id: "S29", name: "我想做的前人们都做过了", check: () => false }, // 结束一次获得 0 实验数据的实验（researchExit 内授予）
   { id: "S30", name: "人类完蛋了，欸不对走错片场了", check: () => false }, // 购买研究 R1「托特管状折叠」（buyResearch 内授予）
+  { id: "S31", name: "谁让它进来的？", check: () => false }, // 以预测分 0 分完成一次实验（researchExit 内授予；放弃不计）
 ];
 // S5 目标序列：S1,S1,S4,S5,S1,S4
 const S5_SEQUENCE = ["S1", "S1", "S4", "S5", "S1", "S4"];
