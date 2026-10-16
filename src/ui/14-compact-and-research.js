@@ -259,7 +259,7 @@ function updateCompactUI() {
   const rateLog = th.rate();
   // 每秒获取写最终值：基础产量 × 折叠器时间乘数（节点 01 削弱加成）× 节点31 奇点加速（全部计入；
   // CM 主题另含节点 82 专属乘数——显示与 tick 结算同式，防双处漂移）
-  const finalRateLog = rateLog <= NLOG + 1 ? NLOG : clampLog(rateLog + cmTimeMultLog() + cmSpAccelMultLog() + cmSpeedBonusLog() + th.extra());
+  const finalRateLog = rateLog <= NLOG + 1 ? NLOG : clampLog(rateLog + cmTimeMultLog() + cmSpAccelMultLog() + cmSpeedBonusLog() + achFoldMultLog() + th.extra());
   const rateTxt = finalRateLog <= NLOG + 1 ? "0" : fmtNum(Math.pow(10, Math.min(finalRateLog, 308)), finalRateLog);
   document.getElementById("comp-cm-rate").textContent = `每秒 +${rateTxt}`;
   const baseTxt = rateLog <= NLOG + 1 ? "0" : fmtNum(Math.pow(10, Math.min(rateLog, 308)), rateLog);
@@ -269,7 +269,7 @@ function updateCompactUI() {
   const FORMULAS = {
     space: `基础 CM 获取：TP² × 3^√(3·b₁·b₂) = ${baseTxt} / 秒`,
     time: `基础 SF 获取：TP × 3^√(max(0, b₁·(b₂−b₁))) = ${baseTxt} / 秒`,
-    info: `基础 NE 获取：TP × 2^√(min(b₁,b₂)·|b₁−b₂|) = ${baseTxt} / 秒`,
+    info: `基础 NE 获取：TP² × 2^√(min(b₁,b₂)·|b₁−b₂|) = ${baseTxt} / 秒`,
   };
   document.getElementById("comp-formula-line").textContent = FORMULAS[state.dimTheme] || FORMULAS.space;
   // 加成区：按主题显示对应资源的效果（CM 原有行保持；节点 82 行只在购买后显示）
@@ -280,7 +280,7 @@ function updateCompactUI() {
       + `黑洞效果指数 +${(Math.log10(1 + sfLg1) / 4).toFixed(4)}`;
   } else if (state.dimTheme === "info") {
     const neLg1 = getLogNE() > NLOG + 1 ? lg1FromLog(getLogNE()) : 0;
-    effectTxt = `推论获取 ×${fmtLog(clampLog(0.5 * neLg1))}\n`
+    effectTxt = `推论获取 ×${fmtLog(clampLog(3 * Math.log10(1 + neLg1)))}\n`
       + `理论深度 +0`;
   } else {
     effectTxt = `波速获取 ×${fmtLog(cmGainMultLog())}\n`

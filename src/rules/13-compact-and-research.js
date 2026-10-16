@@ -218,7 +218,8 @@ function sfRateLog() {
 function neRateLog() {
   const n = tpTotal();
   if (n <= 0) return NLOG;
-  return clampLog(Math.log10(n) + Math.sqrt(Math.min(betti1(), betti2()) * Math.abs(betti1() - betti2())) * Math.log10(2));
+  // 基础公式的 TP 项为平方（TP²，与 CM 同底形）；指数项 √(min(b₁,b₂)·|b₁−b₂|)·lg2
+  return clampLog(2 * Math.log10(n) + Math.sqrt(Math.min(betti1(), betti2()) * Math.abs(betti1() - betti2())) * Math.log10(2));
 }
 // SF/NE tick：与 cmTick 同构——整体速度乘数（节点01/31、R7+里程碑3）三种资源共享，
 // R1（cmRateLog 内）与节点 82 为 CM 专属不作用于此；R11 未购不生产
@@ -1040,7 +1041,7 @@ function infRateLog() {
     if (l > 0) rateLog += 3 * Math.log10(l); // ×(lg(Inf+1))^3：多对数增长，随 Inf 收敛
   }
   if (researchBought("R9")) rateLog += Math.log10(theoryDepthEff()); // R9：推论获取 ×理论深度
-  if (getLogNE() > NLOG + 1) rateLog += 0.5 * lg1FromLog(getLogNE()); // NE（v0.6.3.3）：推论获取 ×(1+NE)^0.5
+  if (getLogNE() > NLOG + 1) rateLog += 3 * Math.log10(1 + lg1FromLog(getLogNE())); // NE（v0.6.3.3）：推论获取 ×(1+lg(1+NE))³
   return clampLog(rateLog);
 }
 function infTick(realDt) {

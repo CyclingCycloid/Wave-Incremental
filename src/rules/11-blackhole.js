@@ -45,7 +45,10 @@ function bhEffect() {
 function bhEffectLog() {
   const mLog = getLogBhMass();
   if (mLog <= 0) return 0;
-  const exp = 0.2 + sbu2Eff() * 0.05;
+  // SF（v0.6.3.3）第二效果：黑洞效果指数 +lg(1+lg(1+SF))/4（与 accretionExp 同款，
+  // 黑洞页「扭曲效果」预览经此自动包含）
+  let exp = 0.2 + sbu2Eff() * 0.05;
+  if (getLogSF() > NLOG + 1) exp += Math.log10(1 + lg1FromLog(getLogSF())) / 4;
   return clampLog(exp * mLog);
 }
 // 黑洞对时间速率的加成（仅扭曲状态）的 log10：×(1 + bhEffect)；AU34 引力扭曲：扭曲状态效果额外 ^2。

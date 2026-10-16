@@ -282,6 +282,14 @@ function setupUI() {
   });
   // 测试工具：清除实验完成记录（完成次数计数与各实验历史最高等级归 0；
   // ED/推论/已购研究/进行中的实验均不动）
+  // 测试工具：课题等级清零（SR1 累计投入归 0，等级与课题理论深度加成同步回退）
+  document.getElementById("clear-sr-btn").addEventListener("click", () => {
+    state.sr1InvestLog = NLOG;
+    if (state.srActiveId === "SR1") state.srActiveId = "";
+    saveGame();
+    updateResearchUI();
+    setAutosaveStatus("课题等级已清零（理论深度加成同步回退）");
+  });
   document.getElementById("clear-research-rec-btn").addEventListener("click", () => {
     state.researchDone = 0;
     state.researchBest = {};

@@ -3720,7 +3720,10 @@ function bhEffect() {
 function bhEffectLog() {
   const mLog = getLogBhMass();
   if (mLog <= 0) return 0;
-  const exp = 0.2 + sbu2Eff() * 0.05;
+  // SF（v0.6.3.3）第二效果：黑洞效果指数 +lg(1+lg(1+SF))/4（与 accretionExp 同款，
+  // 黑洞页「扭曲效果」预览经此自动包含）
+  let exp = 0.2 + sbu2Eff() * 0.05;
+  if (getLogSF() > NLOG + 1) exp += Math.log10(1 + lg1FromLog(getLogSF())) / 4;
   return clampLog(exp * mLog);
 }
 // 黑洞对时间速率的加成（仅扭曲状态）的 log10：×(1 + bhEffect)；AU34 引力扭曲：扭曲状态效果额外 ^2。
@@ -4670,7 +4673,8 @@ function sfRateLog() {
 function neRateLog() {
   const n = tpTotal();
   if (n <= 0) return NLOG;
-  return clampLog(Math.log10(n) + Math.sqrt(Math.min(betti1(), betti2()) * Math.abs(betti1() - betti2())) * Math.log10(2));
+  // 基础公式的 TP 项为平方（TP²，与 CM 同底形）；指数项 √(min(b₁,b₂)·|b₁−b₂|)·lg2
+  return clampLog(2 * Math.log10(n) + Math.sqrt(Math.min(betti1(), betti2()) * Math.abs(betti1() - betti2())) * Math.log10(2));
 }
 // SF/NE tick：与 cmTick 同构——整体速度乘数（节点01/31、R7+里程碑3）三种资源共享，
 // R1（cmRateLog 内）与节点 82 为 CM 专属不作用于此；R11 未购不生产
@@ -5492,7 +5496,7 @@ function infRateLog() {
     if (l > 0) rateLog += 3 * Math.log10(l); // ×(lg(Inf+1))^3：多对数增长，随 Inf 收敛
   }
   if (researchBought("R9")) rateLog += Math.log10(theoryDepthEff()); // R9：推论获取 ×理论深度
-  if (getLogNE() > NLOG + 1) rateLog += 0.5 * lg1FromLog(getLogNE()); // NE（v0.6.3.3）：推论获取 ×(1+NE)^0.5
+  if (getLogNE() > NLOG + 1) rateLog += 3 * Math.log10(1 + lg1FromLog(getLogNE())); // NE（v0.6.3.3）：推论获取 ×(1+lg(1+NE))³
   return clampLog(rateLog);
 }
 function infTick(realDt) {
@@ -5995,7 +5999,7 @@ function updateCompactUI() {
   const rateLog = th.rate();
   // 每秒获取写最终值：基础产量 × 折叠器时间乘数（节点 01 削弱加成）× 节点31 奇点加速（全部计入；
   // CM 主题另含节点 82 专属乘数——显示与 tick 结算同式，防双处漂移）
-  const finalRateLog = rateLog <= NLOG + 1 ? NLOG : clampLog(rateLog + cmTimeMultLog() + cmSpAccelMultLog() + cmSpeedBonusLog() + th.extra());
+  const finalRateLog = rateLog <= NLOG + 1 ? NLOG : clampLog(rateLog + cmTimeMultLog() + cmSpAccelMultLog() + cmSpeedBonusLog() + achFoldMultLog() + th.extra());
   const rateTxt = finalRateLog <= NLOG + 1 ? "0" : fmtNum(Math.pow(10, Math.min(finalRateLog, 308)), finalRateLog);
   document.getElementById("comp-cm-rate").textContent = `每秒 +${rateTxt}`;
   const baseTxt = rateLog <= NLOG + 1 ? "0" : fmtNum(Math.pow(10, Math.min(rateLog, 308)), rateLog);
@@ -6005,7 +6009,7 @@ function updateCompactUI() {
   const FORMULAS = {
     space: `基础 CM 获取：TP² × 3^√(3·b₁·b₂) = ${baseTxt} / 秒`,
     time: `基础 SF 获取：TP × 3^√(max(0, b₁·(b₂−b₁))) = ${baseTxt} / 秒`,
-    info: `基础 NE 获取：TP × 2^√(min(b₁,b₂)·|b₁−b₂|) = ${baseTxt} / 秒`,
+    info: `基础 NE 获取：TP² × 2^√(min(b₁,b₂)·|b₁−b₂|) = ${baseTxt} / 秒`,
   };
   document.getElementById("comp-formula-line").textContent = FORMULAS[state.dimTheme] || FORMULAS.space;
   // 加成区：按主题显示对应资源的效果（CM 原有行保持；节点 82 行只在购买后显示）
@@ -6016,7 +6020,7 @@ function updateCompactUI() {
       + `黑洞效果指数 +${(Math.log10(1 + sfLg1) / 4).toFixed(4)}`;
   } else if (state.dimTheme === "info") {
     const neLg1 = getLogNE() > NLOG + 1 ? lg1FromLog(getLogNE()) : 0;
-    effectTxt = `推论获取 ×${fmtLog(clampLog(0.5 * neLg1))}\n`
+    effectTxt = `推论获取 ×${fmtLog(clampLog(3 * Math.log10(1 + neLg1)))}\n`
       + `理论深度 +0`;
   } else {
     effectTxt = `波速获取 ×${fmtLog(cmGainMultLog())}\n`
@@ -9170,6 +9174,7 @@ function applyTestModeUIGlobal() {
   const clearVfBestBtn = document.getElementById("clear-vf-best-btn");
   const clearResearchBtn = document.getElementById("clear-research-btn");
   const clearResearchRecBtn = document.getElementById("clear-research-rec-btn");
+  const clearSrBtn = document.getElementById("clear-sr-btn");
   const clearInfBtn = document.getElementById("clear-inf-btn");
   const clearResearchBoughtBtn = document.getElementById("clear-research-bought-btn");
   const resetInsBtn = document.getElementById("reset-ins-btn");
@@ -9189,6 +9194,7 @@ function applyTestModeUIGlobal() {
   if (clearVfBestBtn) clearVfBestBtn.classList.toggle("hidden", !state.testMode);
   if (clearResearchBtn) clearResearchBtn.classList.toggle("hidden", !state.testMode);
   if (clearResearchRecBtn) clearResearchRecBtn.classList.toggle("hidden", !state.testMode);
+  if (clearSrBtn) clearSrBtn.classList.toggle("hidden", !state.testMode);
   if (clearInfBtn) clearInfBtn.classList.toggle("hidden", !state.testMode);
   if (clearResearchBoughtBtn) clearResearchBoughtBtn.classList.toggle("hidden", !state.testMode);
   if (resetInsBtn) resetInsBtn.classList.toggle("hidden", !state.testMode);
@@ -9487,6 +9493,14 @@ function setupUI() {
   });
   // 测试工具：清除实验完成记录（完成次数计数与各实验历史最高等级归 0；
   // ED/推论/已购研究/进行中的实验均不动）
+  // 测试工具：课题等级清零（SR1 累计投入归 0，等级与课题理论深度加成同步回退）
+  document.getElementById("clear-sr-btn").addEventListener("click", () => {
+    state.sr1InvestLog = NLOG;
+    if (state.srActiveId === "SR1") state.srActiveId = "";
+    saveGame();
+    updateResearchUI();
+    setAutosaveStatus("课题等级已清零（理论深度加成同步回退）");
+  });
   document.getElementById("clear-research-rec-btn").addEventListener("click", () => {
     state.researchDone = 0;
     state.researchBest = {};
