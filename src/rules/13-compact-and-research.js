@@ -1004,6 +1004,7 @@ function startResearch() {
   if (state.researchRun) return;
   if (!state.researchSel.length) { setAutosaveStatus("请先选择至少一个实验"); return; }
   if (!(state.researchPredictSpLog > NLOG + 1)) { setAutosaveStatus("请先输入预测的总奇点"); return; }
+  if (state.researchPredictSpLog < 310) { setAutosaveStatus("预测总奇点不能低于 1e310"); return; } // 预测下限 1e310（旧档低于下限的存量值在开始时拦截）
   state.researchRun = { exps: state.researchSel.map(x => ({ id: x.id, level: x.level })), predictSpLog: state.researchPredictSpLog };
   researchResetBody(); // 进入实验：一次卷缩重置（不计次数），并重置 VP 与黑洞质量
   setAutosaveStatus("实验已开始");

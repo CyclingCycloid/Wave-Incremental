@@ -442,6 +442,11 @@ function buildResearchOnce() {
       predict.value = state.researchPredictSpLog > NLOG + 1 ? fmtNum(Math.pow(10, Math.min(state.researchPredictSpLog, 308)), state.researchPredictSpLog) : "";
       return;
     }
+    if (vLog < 310) { // 预测下限 1e310：低于下限拒绝并恢复当前有效值（与格式无效同款处理）
+      setAutosaveStatus("预测总奇点不能低于 1e310");
+      predict.value = state.researchPredictSpLog > NLOG + 1 ? fmtNum(Math.pow(10, Math.min(state.researchPredictSpLog, 308)), state.researchPredictSpLog) : "";
+      return;
+    }
     state.researchPredictSpLog = vLog; saveGame(); updateResearchUI();
   });
   document.getElementById("research-start-btn").addEventListener("click", () => {
