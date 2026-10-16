@@ -64,6 +64,14 @@ function renderFast() {
     fLog = clampLog(uLogD - getLogL10());
     f = (isFinite(extrapolatedU()) && state.L > 0) ? extrapolatedU() / state.L : Math.pow(10, fLog);
   }
+  // 双缝 7 级后的频率硬除：与 FLog 同一口径（显示层此前绕过 FLog 自算，漏扣）
+  {
+    const cut = slitCutLog();
+    if (cut > 0) {
+      fLog = clampLog(fLog - cut);
+      f = fLog > 308 ? Infinity : (fLog < -308 ? 0 : Math.pow(10, fLog));
+    }
+  }
   // 冻结态（10 次湮灭前就绪）：频率显示 Annihilated、增益 +0（生产与外推已停）
   if (annihilationFrozen()) {
     document.getElementById("freq-value").textContent = "Annihilated";

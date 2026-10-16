@@ -821,14 +821,17 @@ function wavelengthExp() {
 function gainPerLLog(gLog) {
   return clampLog(gLog - wavelengthExp() * (getLogL10() + distortLModLog()));
 }
+// 双缝干涉 7 级后的频率硬除量（log10）——FLog 与全局栏显示层共用，防两处口径漂移
+function slitCutLog() {
+  const slit = researchSlitLevel();
+  return slit > 7 ? (slit - 7) * (slit - 7) * 100 : 0;
+}
 function FLog() {
   // log 域：getLogU10 权威（U 超 1e308 时仍有限），永不返回 Infinity；
   // 卷缩后波长带指数 e：F = U/(L·膨胀倍率)^e（e=1 时与原式逐位一致）
   // 双缝干涉实验 7 级后：**频率本身**硬除以 1e((N−7)²·100)（作用于 F 的有效值——
   // 温度/Sp 获取/显示等一切依赖 F 的链路随之联动）
-  const slit = researchSlitLevel();
-  const cut = slit > 7 ? (slit - 7) * (slit - 7) * 100 : 0;
-  return clampLog(getLogU10() - wavelengthExp() * (getLogL10() + distortLModLog()) - cut);
+  return clampLog(getLogU10() - wavelengthExp() * (getLogL10() + distortLModLog()) - slitCutLog());
 }
 function F() {
   const logF = FLog();
@@ -7765,6 +7768,14 @@ function renderFast() {
   } else {
     fLog = clampLog(uLogD - getLogL10());
     f = (isFinite(extrapolatedU()) && state.L > 0) ? extrapolatedU() / state.L : Math.pow(10, fLog);
+  }
+  // 双缝 7 级后的频率硬除：与 FLog 同一口径（显示层此前绕过 FLog 自算，漏扣）
+  {
+    const cut = slitCutLog();
+    if (cut > 0) {
+      fLog = clampLog(fLog - cut);
+      f = fLog > 308 ? Infinity : (fLog < -308 ? 0 : Math.pow(10, fLog));
+    }
   }
   // 冻结态（10 次湮灭前就绪）：频率显示 Annihilated、增益 +0（生产与外推已停）
   if (annihilationFrozen()) {
