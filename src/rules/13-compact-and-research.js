@@ -1281,12 +1281,16 @@ function applyCompactionResetBody(realNow) {
   // —— 卷缩层自身：CM/SF/NE 重置（TP/V/E/F 配置、SS/Ins/理论树保留）；
   // R4「Kähler模相位固化」后卷缩（含研究重置）不再清三者（v0.6.3.3 起语义扩展至 SF/NE——同源产物）
   if (!researchBought("R4")) { setCMLog(NLOG); setSFLog(NLOG); setNELog(NLOG); }
-  // 理论树：勾选「卷缩重置理论树」时清空已购节点并返还所耗灵感（AD 重置语义），随后解除开关
+  // 理论树：勾选「卷缩重置理论树」时清空已购节点并返还所耗灵感（AD 重置语义），随后解除开关。
+  // 节点 51/91「曾购买即永久保持」：实验节点不清（价格为 0，无返还影响——研究入口不因 respec 失效）
   if (state.theoryRespec) {
     let refund = 0;
     for (const def of THEORY_NODES) if (theoryOwned(def.id)) refund += def.cost || 0;
     if (refund > 0) addInsLog(Math.log10(refund));
-    state.theoryNodes = {};
+    const keep = {};
+    if (theoryOwned("51")) keep["51"] = 1;
+    if (theoryOwned("91")) keep["91"] = 1;
+    state.theoryNodes = keep;
     state.theoryRespec = false;
   }
   // —— 计时 ——

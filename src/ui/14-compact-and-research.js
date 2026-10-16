@@ -82,7 +82,7 @@ function buildCompactOnce() {
     state.theoryRespec = !state.theoryRespec;
     saveGame();
     updateCompactUI();
-    setAutosaveStatus(state.theoryRespec ? "已勾选：下次卷缩重置时清空理论树并返还灵感" : "已取消卷缩重置理论树");
+    setAutosaveStatus(state.theoryRespec ? "已勾选：下次卷缩重置时清空理论树并返还灵感（实验节点 51/91 保持）" : "已取消卷缩重置理论树");
   });
   document.getElementById("theory-export-btn").addEventListener("click", copyTheoryTreeToClipboard);
   document.getElementById("theory-import-btn").addEventListener("click", doImportTheoryTree);
