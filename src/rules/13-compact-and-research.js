@@ -208,37 +208,38 @@ function cmTick(realDt) {
   setCMLog(logAddLogs(getLogCM(), rateLog + dtLog + cmSpAccelMultLog() + cmSpeedBonusLog() + node82CmMultLog() + achFoldMultLog()));
 }
 // ---------- SF/NE 生产（v0.6.3.3，R11「广义维度折叠理论」后；三资源始终同时生产）----------
-// SF（萨尔彼得频率，时间主题）：基础速率 = TP × 3^√(max(0, b₁·(b₂−b₁)))（注意 TP 一次方，非 CM 的 TP²）
+// SF（萨尔彼得频率，时间主题）：基础速率 = TP × 3^√(max(0, b₁·(b₂−b₁)))
 function sfRateLog() {
   const n = tpTotal();
   if (n <= 0) return NLOG;
-  // 平衡缩放：SF 速率 = CM 基础速率的平方根（整体 ×0.5 log 域）
-  return clampLog(0.5 * (2 * Math.log10(n) + Math.sqrt(Math.max(0, betti1() * (betti2() - betti1()))) * Math.log10(3)));
+  return clampLog(Math.log10(n) + Math.sqrt(Math.max(0, betti1() * (betti2() - betti1()))) * Math.log10(3));
 }
-// NE（冯·诺依曼熵，信息主题）：基础速率 = 时间的平方根——即 SF 速率再开根
-//（log 域 0.25×CM 形；用户平衡缩放：空间 →√→ 时间 →√→ 信息）
+// NE（冯·诺依曼熵，信息主题）：基础速率 = TP × 2^√(min(b₁,b₂)·|b₁−b₂|)
 function neRateLog() {
   const n = tpTotal();
   if (n <= 0) return NLOG;
-  return clampLog(0.25 * (2 * Math.log10(n) + Math.sqrt(Math.min(betti1(), betti2()) * Math.abs(betti1() - betti2())) * Math.log10(2)));
+  return clampLog(Math.log10(n) + Math.sqrt(Math.min(betti1(), betti2()) * Math.abs(betti1() - betti2())) * Math.log10(2));
 }
-// SF/NE tick：与 cmTick 同构——整体速度乘数（节点01/31、R7+里程碑3）三种资源共享，
-// R1（cmRateLog 内）与节点 82 为 CM 专属不作用于此；R11 未购不生产
-// （主题切换只改显示，三种资源始终同时生产并独立积累；共享 TP/V/E/F 与 Betti 数）
-function foldTickShared(realDt, rateLog, setter, getCur) {
+// SF/NE tick：与 cmTick 同构。**基础产出不受缩放影响**（各自公式原样）；
+// 平衡缩放只作用于**额外速度加成**（节点01 时间倍率、节点31、R7+里程碑3、A73——
+// log 域加法项之和）：SF 取平方根（×0.5）、NE 取四次根（×0.25，即时间的再开根）
+function foldSpeedBonusLog() {
+  return cmTimeMultLog() + cmSpAccelMultLog() + cmSpeedBonusLog() + achFoldMultLog();
+}
+function foldTickScaled(realDt, rateLog, scale, setter, getCur) {
   if (rateLog <= NLOG + 1) return;
-  const dtLog = Math.log10(Math.max(realDt, 1e-300)) + cmTimeMultLog();
-  setter(logAddLogs(getCur(), rateLog + dtLog + cmSpAccelMultLog() + cmSpeedBonusLog() + achFoldMultLog()));
+  const dtLog = Math.log10(Math.max(realDt, 1e-300)) + scale * foldSpeedBonusLog();
+  setter(logAddLogs(getCur(), rateLog + dtLog));
 }
 function sfTick(realDt) {
   if (!researchBought("R11") || state.compactions < 1 || !state.testMode) return;
   if (tpTotal() <= 0) return;
-  foldTickShared(realDt, sfRateLog(), setSFLog, getLogSF);
+  foldTickScaled(realDt, sfRateLog(), 0.5, setSFLog, getLogSF);
 }
 function neTick(realDt) {
   if (!researchBought("R11") || state.compactions < 1 || !state.testMode) return;
   if (tpTotal() <= 0) return;
-  foldTickShared(realDt, neRateLog(), setNELog, getLogNE);
+  foldTickScaled(realDt, neRateLog(), 0.25, setNELog, getLogNE);
 }
 // 整数约束下的最佳分配（A64 奖励「自动最佳分配」的实现）。
 // 连续最优 E*=(21T−9)/48（此时 F=2E/3 边界恰好活跃）附近 ±2 的每个 E，其最优 V 只可能在

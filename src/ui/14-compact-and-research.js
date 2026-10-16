@@ -257,9 +257,12 @@ function updateCompactUI() {
   if (resLabel) resLabel.textContent = th.name + "：";
   document.getElementById("comp-cm-value").textContent = fmtIntRes(th.dbl(), th.get());
   const rateLog = th.rate();
-  // 每秒获取写最终值：基础产量 × 折叠器时间乘数（节点 01 削弱加成）× 节点31 奇点加速（全部计入；
-  // CM 主题另含节点 82 专属乘数——显示与 tick 结算同式，防双处漂移）
-  const finalRateLog = rateLog <= NLOG + 1 ? NLOG : clampLog(rateLog + cmTimeMultLog() + cmSpAccelMultLog() + cmSpeedBonusLog() + achFoldMultLog() + th.extra());
+  // 每秒获取写最终值：基础产量 + 额外速度加成（节点01/31、R7+里程碑3、A73）——
+  // SF 主题的加成取平方根、NE 取四次根（基础产出不受缩放影响；显示与 tick 结算同式）
+  const SPEED_SCALE = { space: 1, time: 0.5, info: 0.25 };
+  const scale = SPEED_SCALE[state.dimTheme] ?? 1;
+  const finalRateLog = rateLog <= NLOG + 1 ? NLOG
+    : clampLog(rateLog + scale * foldSpeedBonusLog() + (state.dimTheme === "space" ? th.extra() : 0));
   const rateTxt = finalRateLog <= NLOG + 1 ? "0" : fmtNum(Math.pow(10, Math.min(finalRateLog, 308)), finalRateLog);
   document.getElementById("comp-cm-rate").textContent = `每秒 +${rateTxt}`;
   const baseTxt = rateLog <= NLOG + 1 ? "0" : fmtNum(Math.pow(10, Math.min(rateLog, 308)), rateLog);
@@ -268,8 +271,8 @@ function updateCompactUI() {
     `b₁ = max(0, E−V+1) = ${betti1()}　　b₂ = max(0, min(F, ⌊2E/3⌋)−E+V) = ${betti2()}`;
   const FORMULAS = {
     space: `基础 CM 获取：TP² × 3^√(3·b₁·b₂) = ${baseTxt} / 秒`,
-    time: `基础 SF 获取：√(TP² × 3^√(max(0, b₁·(b₂−b₁)))) = ${baseTxt} / 秒`,
-    info: `基础 NE 获取：⁴√(TP² × 2^√(min(b₁,b₂)·|b₁−b₂|)) = ${baseTxt} / 秒`,
+    time: `基础 SF 获取：TP × 3^√(max(0, b₁·(b₂−b₁))) = ${baseTxt} / 秒`,
+    info: `基础 NE 获取：TP × 2^√(min(b₁,b₂)·|b₁−b₂|) = ${baseTxt} / 秒`,
   };
   document.getElementById("comp-formula-line").textContent = FORMULAS[state.dimTheme] || FORMULAS.space;
   // 加成区：按主题显示对应资源的效果（CM 原有行保持；节点 82 行只在购买后显示）
