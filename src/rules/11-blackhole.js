@@ -154,10 +154,7 @@ function bhAccretionGainLog() {
   const vfPart = voidMilestone1() && state.logVoidVF10 > NLOG + 1
     ? (2 / 3) * vfEffectVFLog(state.logVoidVF10) // 里程碑3 后按 VF^1.1 计算
     : 0;
-  // SF（萨尔彼得频率，v0.6.3.3 R11）：吸积速率 ×(1+SF)²（软上限前；与 vfPart 同位，
-  // 不进 accMultLog——AU44 只搬 SBU1，SF 须留在软上限前）
-  const sfPart = getLogSF() > NLOG + 1 ? 2 * lg1FromLog(getLogSF()) : 0;
-  return clampLog(bhAccretionMassExp() * mLog + freqPartLog + accMultLog + vfPart + sfPart);
+  return clampLog(bhAccretionMassExp() * mLog + freqPartLog + accMultLog + vfPart);
 }
 function bhAccretionRateLog() {
   const au44 = auOwned("au44");
@@ -174,6 +171,9 @@ function bhAccretionRateLog() {
   // AU44：SBU1 倍率在软上限之后乘上；软上限未触发时正常生效
   //（否则低增益区间该升级完全无效）
   if (au44 && sbu1Total > 0) gainLog = clampLog(gainLog + sbu1Total * Math.log10(2));
+  // SF（萨尔彼得频率，v0.6.3.3 R11）第一效果：吸积速率 ×(1+SF)² 在软上限之后乘上
+  //（软上限未触发时与直乘等价；不进 Gain 的 accMultLog——AU44 只搬 SBU1，VF 仍留软上限前）
+  if (getLogSF() > NLOG + 1) gainLog = clampLog(gainLog + 2 * lg1FromLog(getLogSF()));
   return gainLog;
 }
 // 黑洞质量获取是否正受软上限影响（显示提示用）：用与 bhAccretionRateLog 相同的软上限前 Gain
