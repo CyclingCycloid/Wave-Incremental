@@ -494,19 +494,18 @@ function applyHelpVisibility() {
   // 课题帮助段（研究章节内）：购买 R9 解锁课题后显示（防剧透）
   const helpSr = document.getElementById("help-sr-extra");
   if (helpSr) helpSr.classList.toggle("hidden", !researchBought("R9"));
-  // 卷缩章节：测试模式下首次卷缩后显示
   // 卷缩相关帮助章节（卷缩/维度/理论树/研究）：首次卷缩后显示（里程碑与卷缩页重复，已删除该节）
   for (const id of ["help-compact", "help-compact-dim", "help-compact-theory", "help-compact-research"]) {
     const el = document.getElementById(id);
-    if (el) el.classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
+    if (el) el.classList.toggle("hidden", !(state.compactions >= 1));
   }
   // 维度折叠器 II（三主题）：购买 R11 后显示（防剧透）
   const dim2 = document.getElementById("help-compact-dim2");
   if (dim2) dim2.classList.toggle("hidden", !researchBought("R11"));
   document.getElementById("stat-ann-group").classList.toggle("hidden", state.annihilations < 1);
-  document.getElementById("stat-comp-area").classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
+  document.getElementById("stat-comp-area").classList.toggle("hidden", !(state.compactions >= 1));
   // 卷缩后保持统计-挑战子页可见（否则湮灭次数归零会重新隐藏）
   document.getElementById("subtab-stats-challenge").classList.toggle("hidden", state.annihilations < 20 && state.compactions < 1);
-  document.getElementById("comp-history-area").classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
+  document.getElementById("comp-history-area").classList.toggle("hidden", !(state.compactions >= 1));
 }
 

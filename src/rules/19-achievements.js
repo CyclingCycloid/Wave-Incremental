@@ -46,7 +46,7 @@ const NORMAL_ACH = [
   { id: "A52", name: "超载", desc: "达到 1e50 Sp", star: true, reward: "解锁“虚空”选项卡", check: () => getLogTotalSp() >= 50 },
   { id: "A53", name: "融合", desc: "完成至少两种扭曲的虚空", star: true, reward: "up1 获得免费等级 1（重置不清零）", check: () => state.voidBestRules >= 2 },
   { id: "A54", name: "混沌", desc: "完成所有扭曲生效的虚空", check: () => state.voidBestRules >= 8 },
-  { id: "A55", name: "卷缩", desc: "达到 1.79e308 奇点", star: true, reward: "解锁下一个重置层：卷缩（测试中）；任何重置后初始波速为 1e3 m/s", check: () => getLogSp() >= SP_SOFTCAP_PIVOT_LOG },
+  { id: "A55", name: "卷缩", desc: "达到 1.79e308 奇点", star: true, reward: "解锁下一个重置层：卷缩；任何重置后初始波速为 1e3 m/s", check: () => getLogSp() >= SP_SOFTCAP_PIVOT_LOG },
   { id: "A61", name: "折叠", desc: "开始产出卡拉比-丘流形", check: () => getLogCM() > NLOG + 1 },
   { id: "A62", name: "理论", desc: "购买九个理论树节点", check: () => Object.keys(state.theoryNodes).length >= 9 },
   { id: "A63", name: "里程", desc: "获得所有卷缩里程碑", check: () => COMP_MILESTONES.every(m => state.compactions >= m.n) },

@@ -582,7 +582,7 @@ function createSlogTetration(host) {
 // ---------- Save schema ----------
 function defaultState() {
   return {
-    version: "0.6.3.3",
+    version: "0.6.4.1",
     // 物理资源
     U: 10,                 // 波速 m/s (默认国际单位制，double 缓存；极端值看 logU10)
     logU10: 1,             // log10(U) 权威表示（防溢出/下溢；U=0 时为 NLOG 哨兵）
@@ -3440,20 +3440,19 @@ function applyHelpVisibility() {
   // 课题帮助段（研究章节内）：购买 R9 解锁课题后显示（防剧透）
   const helpSr = document.getElementById("help-sr-extra");
   if (helpSr) helpSr.classList.toggle("hidden", !researchBought("R9"));
-  // 卷缩章节：测试模式下首次卷缩后显示
   // 卷缩相关帮助章节（卷缩/维度/理论树/研究）：首次卷缩后显示（里程碑与卷缩页重复，已删除该节）
   for (const id of ["help-compact", "help-compact-dim", "help-compact-theory", "help-compact-research"]) {
     const el = document.getElementById(id);
-    if (el) el.classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
+    if (el) el.classList.toggle("hidden", !(state.compactions >= 1));
   }
   // 维度折叠器 II（三主题）：购买 R11 后显示（防剧透）
   const dim2 = document.getElementById("help-compact-dim2");
   if (dim2) dim2.classList.toggle("hidden", !researchBought("R11"));
   document.getElementById("stat-ann-group").classList.toggle("hidden", state.annihilations < 1);
-  document.getElementById("stat-comp-area").classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
+  document.getElementById("stat-comp-area").classList.toggle("hidden", !(state.compactions >= 1));
   // 卷缩后保持统计-挑战子页可见（否则湮灭次数归零会重新隐藏）
   document.getElementById("subtab-stats-challenge").classList.toggle("hidden", state.annihilations < 20 && state.compactions < 1);
-  document.getElementById("comp-history-area").classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
+  document.getElementById("comp-history-area").classList.toggle("hidden", !(state.compactions >= 1));
 }
 
 // ---------- 奇点升级（3DA 里程碑解锁）----------
@@ -4902,7 +4901,7 @@ function achFoldMultLog() {
 // 节点 31 后再乘上基于奇点的加速乘数；R6 与里程碑3 第四 VF 效果再加度乘数（cmSpeedBonusLog）；
 // 节点 82 再乘上 CM 获取乘数（node82CmMultLog）；A73 后再乘上成就倍率（achFoldMultLog）
 function cmTick(realDt) {
-  if (state.compactions < 1 || !state.testMode) return;
+  if (state.compactions < 1) return;
   if (tpTotal() <= 0) return;
   const rateLog = cmRateLog();
   if (rateLog <= NLOG + 1) return;
@@ -4934,12 +4933,12 @@ function foldTickScaled(realDt, rateLog, scale, setter, getCur) {
   setter(logAddLogs(getCur(), rateLog + dtLog));
 }
 function sfTick(realDt) {
-  if (!researchBought("R11") || state.compactions < 1 || !state.testMode) return;
+  if (!researchBought("R11") || state.compactions < 1) return;
   if (tpTotal() <= 0) return;
   foldTickScaled(realDt, sfRateLog(), 0.5, setSFLog, getLogSF);
 }
 function neTick(realDt) {
-  if (!researchBought("R11") || state.compactions < 1 || !state.testMode) return;
+  if (!researchBought("R11") || state.compactions < 1) return;
   if (tpTotal() <= 0) return;
   foldTickScaled(realDt, neRateLog(), 0.25, setNELog, getLogNE);
 }
@@ -5137,10 +5136,11 @@ const THEORY_NODES = [
     desc: "基于奇点加强奇点效果",
     effect: () => "当前指数乘数 ×" + fmt(node72SpBoostExpMult()) },
   // 实验节点 II（v0.6.3.3）：解锁第二个实验「迈克尔逊-莫雷实验」。parents 二选一——
-  // 光学两系列互斥，任一系列走到 III 层即可购买；需求 达到 1e120 虚粒子 + 245 总灵感（不消耗）
+  // 光学两系列互斥，任一系列走到 III 层即可购买；需求 达到 1e120 虚粒子 + 245 总灵感（不消耗）。
+  // testModeOnly：v0.6.4 开放至 R11——测试外可见但不可购（显示「未实装」），测试内完整可用
   { id: "91", name: "迈克尔逊-莫雷实验", parents: ["81", "82"], cost: 0, research: true,
     desc: "增加一个实验",
-    reqIns: 245, reqVPLog: 120 },
+    reqIns: 245, reqVPLog: 120, testModeOnly: true },
 ];
 function theoryOwned(id) { return !!state.theoryNodes[id]; }
 // 波长公式内指数 e 的基础公式（节点71/72 改造前的原版，供「公式差值」显示）
@@ -5210,7 +5210,7 @@ function accretionExp() {
   return 3 * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult() * mmSpEffectExpMult();
 }
 function theoryAvailable(def) {
-  if (theoryOwned(def.id) || def.placeholder) return false;
+  if (theoryOwned(def.id) || def.placeholder || (def.testModeOnly && !state.testMode)) return false;
   if (+def.id[0] > theoryDepthEff() + 1e-9) return false; // 理论深度：更深层的节点暂不可购（显示？？？；1e-9 容差防浮点残差）
   // 需求门槛节点（51/91 及未来同类 reqIns 节点）「曾购买」闩锁：买过即免除全部需求
   //（总灵感/虚粒子/A63/隐藏阈值——重置理论树或测试工具清树都不清闩锁；父节点规则照常）
@@ -5502,9 +5502,9 @@ const RESEARCH_EXPS = [
       return `波长和波速获取公式的指数变为原来的 ${m < 0.1 ? m.toExponential(3) : m.toFixed(4)} 倍`
         + (n > 7 ? `，频率 ÷1e${(n - 7) * (n - 7) * 100}` : "");
     } },
-  // 迈克尔逊-莫雷实验（节点91 解锁，v0.6.3.3）：黑洞效果指数 ×0.7^n、奇点获取指数 ×0.85^n；
-  // 6 级起追加奇点效果指数 ×5/n（四个奇点效果指数同乘，见 mmSpEffectExpMult）
-  { id: "mm", name: "迈克尔逊-莫雷实验", unlock: () => theoryOwned("91"),
+  // 迈克尔逊-莫雷实验（节点91 解锁，v0.6.3.3；v0.6.4 起测试外不出现——节点91 未实装）：
+  // 黑洞效果指数 ×0.7^n、奇点获取指数 ×0.85^n；6 级起追加奇点效果指数 ×5/n（四个奇点效果指数同乘）
+  { id: "mm", name: "迈克尔逊-莫雷实验", unlock: () => theoryOwned("91") && state.testMode,
     science: "旨在探测地球相对于假想「以太」运动的经典干涉实验。实验未发现预期中的干涉条纹位移，严重动摇了静止以太假说，并为狭义相对论的发展提供了重要的实验依据。",
     debuff: (n) => {
       if (n < 1) return "无削弱";
@@ -5834,8 +5834,7 @@ const COMP_MILESTONES = [
 ];
 // 卷缩条件：VP ≥ 1e36、完成 A54（所有扭曲生效的虚空）、Sp ≥ 1.79e308（Sp 软上限拐点）
 function canCompactify() {
-  return state.testMode
-    && state.ach.normal.includes("A55")
+  return state.ach.normal.includes("A55")
     && !state.voidActive
     && getLogVP() >= 36
     && state.voidBestRules >= 8
@@ -6275,7 +6274,7 @@ function setupTreePanZoom() {
 }
 function updateCompactUI() {
   if (simActive) return;
-  if (!state.testMode || state.compactions < 1) return;
+  if (state.compactions < 1) return;
   buildCompactOnce();
   // 里程碑（横条：编号 + 进度 + 奖励 + 状态）
   for (let i = 0; i < COMP_MILESTONES.length; i++) {
@@ -6428,8 +6427,8 @@ function updateCompactUI() {
     } else if (tdGated) {
       // 理论深度不足：名字/效果/价格全？？？（编号仍可见）
       txt = "？？？\n？？？";
-    } else if (def.placeholder) {
-      // 占位节点：无论上级是否已购一律显示「未实装」（信息对玩家无价值）
+    } else if (def.placeholder || (def.testModeOnly && !state.testMode)) {
+      // 占位节点 / 测试外未开放的 testModeOnly 节点（如 91）：显示「未实装」（已拥有者走上方拥有分支）
       txt = "未实装\n（后续版本）";
     } else if (def.hiddenUntilIns && !reqLatch && getLogTotalIns() < Math.log10(def.hiddenUntilIns)) {
       // 节点51：总灵感 <50 时一律显示 ？？？（曾购买免除）
@@ -6647,10 +6646,10 @@ function updateResearchUI() {
   }
 }
 
-// 卷缩层可见性：主选项卡与全局栏超弦显示（首次卷缩后、且测试模式下）
+// 卷缩层可见性：主选项卡与全局栏超弦显示（首次卷缩后）
 function applyCompactVisibility() {
   if (simActive) return;
-  const show = state.testMode && state.compactions >= 1;
+  const show = state.compactions >= 1;
   document.getElementById("tab-compact").classList.toggle("hidden", !show);
   document.getElementById("ss-display").classList.toggle("hidden", !show);
   if (!show && !document.getElementById("page-compact").classList.contains("hidden")) {
@@ -6661,7 +6660,7 @@ function applyCompactVisibility() {
 function updateCompactButton() {
   const btn = document.getElementById("compactify-btn");
   if (!btn) return;
-  const show = state.testMode && state.ach.normal.includes("A55");
+  const show = state.ach.normal.includes("A55");
   btn.classList.toggle("hidden", !show);
   if (!show) return;
   // 研究实验进行中：顶栏按钮替换为结束/放弃实验（结束条件=Sp 拐点，XX 为可获得−当前 ED 的差）
@@ -8208,8 +8207,8 @@ function renderFast() {
   } else {
     trEl.classList.add("hidden");
   }
-  // 超弦显示（卷缩层：首次卷缩后、测试模式下；显隐由 applyCompactVisibility 管理）
-  if (state.testMode && state.compactions >= 1) {
+  // 超弦显示（卷缩层：首次卷缩后；显隐由 applyCompactVisibility 管理）
+  if (state.compactions >= 1) {
     document.getElementById("ss-value").textContent = fmtIntRound(state.ss, getLogSS());
   }
   // 狭窄宇宙：剩余购买次数
@@ -8279,8 +8278,8 @@ function renderStats() {
   // 卷缩统计（v0.6.0.0 测试，独立分组；不随卷缩重置——统计-通用/挑战之外的新组）
   const compGroup = document.getElementById("stat-comp-area");
   if (compGroup) {
-    compGroup.classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
-    if (state.testMode && state.compactions >= 1) {
+    compGroup.classList.toggle("hidden", !(state.compactions >= 1));
+    if (state.compactions >= 1) {
       const compReal = state.compStartReal > 0 ? (Date.now() - state.compStartReal) / 1000 : 0;
       document.getElementById("stat-comp-time").textContent =
         `${fmtTime(compReal, true)} / ${fmtTimeLog(state.compGameElapsed, state.compGameElapsedLog)}`;
@@ -8482,7 +8481,7 @@ const NORMAL_ACH = [
   { id: "A52", name: "超载", desc: "达到 1e50 Sp", star: true, reward: "解锁“虚空”选项卡", check: () => getLogTotalSp() >= 50 },
   { id: "A53", name: "融合", desc: "完成至少两种扭曲的虚空", star: true, reward: "up1 获得免费等级 1（重置不清零）", check: () => state.voidBestRules >= 2 },
   { id: "A54", name: "混沌", desc: "完成所有扭曲生效的虚空", check: () => state.voidBestRules >= 8 },
-  { id: "A55", name: "卷缩", desc: "达到 1.79e308 奇点", star: true, reward: "解锁下一个重置层：卷缩（测试中）；任何重置后初始波速为 1e3 m/s", check: () => getLogSp() >= SP_SOFTCAP_PIVOT_LOG },
+  { id: "A55", name: "卷缩", desc: "达到 1.79e308 奇点", star: true, reward: "解锁下一个重置层：卷缩；任何重置后初始波速为 1e3 m/s", check: () => getLogSp() >= SP_SOFTCAP_PIVOT_LOG },
   { id: "A61", name: "折叠", desc: "开始产出卡拉比-丘流形", check: () => getLogCM() > NLOG + 1 },
   { id: "A62", name: "理论", desc: "购买九个理论树节点", check: () => Object.keys(state.theoryNodes).length >= 9 },
   { id: "A63", name: "里程", desc: "获得所有卷缩里程碑", check: () => COMP_MILESTONES.every(m => state.compactions >= m.n) },
@@ -9137,7 +9136,7 @@ function tickProgression(realDt) {
     if (!state.autoUp3 && hasMilestone(8)) state.autoUp3 = 1;
     if (!state.autoAnn && hasMilestone(10)) state.autoAnn = 1;
   }
-  if (state.testMode && state.compactions >= 1) {
+  if (state.compactions >= 1) {
     if (!state.autoSau && compMilestone(16)) { state.autoSau = 1; setAutosaveStatus("自动化解锁：可重复奇点升级（卷缩里程碑 16）"); }
     if (!state.autoSbu && compMilestone(18)) { state.autoSbu = 1; setAutosaveStatus("自动化解锁：黑洞升级（卷缩里程碑 18）"); }
     if (!state.autoSvpu && compMilestone(20)) { state.autoSvpu = 1; setAutosaveStatus("自动化解锁：虚粒子升级（卷缩里程碑 20）"); }
@@ -9233,7 +9232,7 @@ function tick() {
     if (bhUnlocked()) updateBlackholeUI();
     if (state.ach.normal.includes("A52")) updateVoidUI();
   }
-  if (state.testMode && state.compactions >= 1) updateCompactUI();
+  if (state.compactions >= 1) updateCompactUI();
   if (theoryOwned("51")) updateResearchUI();
   if (!document.getElementById("page-stats").classList.contains("hidden")) renderStats();
   if (!document.getElementById("page-achievements").classList.contains("hidden")) updateAchievementsUI();
@@ -9373,7 +9372,8 @@ function handleGameHotkey(e) {
 }
 
 // 测试模式 UI 同步（全局：危险操作区按钮显隐 + 顶栏版本显示）
-// v0.5.1 内容已对全员开放：危险操作区保留「清零VF」「无Sp湮灭」工具，顶栏版本恒为 v0.5.1
+// v0.6.4 起卷缩层已对全员开放（至 R11；节点91 测试外未实装）：
+// 顶栏版本双轨——非测试 v0.6.4 The Compaction Update / 测试 v0.6.4.1 The Research Update
 // 测试模式：开发者预览开关——用于隔离尚未正式发布的开发中内容（如未来的新重置层）。
 // 约定：开发中的内容用 if (state.testMode) 门控逻辑 + UI 显隐，正式发布时删除门控即可；
 // 测试模式本身不给予任何已正式发布的内容
@@ -9421,8 +9421,8 @@ function applyTestModeUIGlobal() {
   const forceCompactBtn = document.getElementById("force-compact-btn");
   if (forceCompactBtn) forceCompactBtn.classList.toggle("hidden", !state.testMode);
   if (verEl) verEl.textContent = state.testMode
-    ? "v0.6.3.3 The Research Update（测试）"
-    : "v0.5.1 The Void Update";
+    ? "v0.6.4.1 The Research Update（测试）"
+    : "v0.6.4 The Compaction Update";
 }
 
 // ---------- Wire up UI ----------
@@ -9844,7 +9844,7 @@ function init() {
   applyPhononVisibility();
   applyAnnihilationVisibility();
   // 卷缩层：本次卷缩真实时间基缺失时补发（老档/异常档兜底），并同步可见性与按钮
-  if (state.testMode && state.compactions >= 1 && !state.compStartReal) {
+  if (state.compactions >= 1 && !state.compStartReal) {
     state.compStartReal = gameNow();
     state.compGameElapsed = 0; state.compGameElapsedLog = NLOG;
   }

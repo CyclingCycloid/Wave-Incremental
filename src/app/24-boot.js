@@ -18,7 +18,7 @@ function init() {
   applyPhononVisibility();
   applyAnnihilationVisibility();
   // 卷缩层：本次卷缩真实时间基缺失时补发（老档/异常档兜底），并同步可见性与按钮
-  if (state.testMode && state.compactions >= 1 && !state.compStartReal) {
+  if (state.compactions >= 1 && !state.compStartReal) {
     state.compStartReal = gameNow();
     state.compGameElapsed = 0; state.compGameElapsedLog = NLOG;
   }

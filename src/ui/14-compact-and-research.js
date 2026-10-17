@@ -227,7 +227,7 @@ function setupTreePanZoom() {
 }
 function updateCompactUI() {
   if (simActive) return;
-  if (!state.testMode || state.compactions < 1) return;
+  if (state.compactions < 1) return;
   buildCompactOnce();
   // 里程碑（横条：编号 + 进度 + 奖励 + 状态）
   for (let i = 0; i < COMP_MILESTONES.length; i++) {
@@ -380,8 +380,8 @@ function updateCompactUI() {
     } else if (tdGated) {
       // 理论深度不足：名字/效果/价格全？？？（编号仍可见）
       txt = "？？？\n？？？";
-    } else if (def.placeholder) {
-      // 占位节点：无论上级是否已购一律显示「未实装」（信息对玩家无价值）
+    } else if (def.placeholder || (def.testModeOnly && !state.testMode)) {
+      // 占位节点 / 测试外未开放的 testModeOnly 节点（如 91）：显示「未实装」（已拥有者走上方拥有分支）
       txt = "未实装\n（后续版本）";
     } else if (def.hiddenUntilIns && !reqLatch && getLogTotalIns() < Math.log10(def.hiddenUntilIns)) {
       // 节点51：总灵感 <50 时一律显示 ？？？（曾购买免除）
@@ -599,10 +599,10 @@ function updateResearchUI() {
   }
 }
 
-// 卷缩层可见性：主选项卡与全局栏超弦显示（首次卷缩后、且测试模式下）
+// 卷缩层可见性：主选项卡与全局栏超弦显示（首次卷缩后）
 function applyCompactVisibility() {
   if (simActive) return;
-  const show = state.testMode && state.compactions >= 1;
+  const show = state.compactions >= 1;
   document.getElementById("tab-compact").classList.toggle("hidden", !show);
   document.getElementById("ss-display").classList.toggle("hidden", !show);
   if (!show && !document.getElementById("page-compact").classList.contains("hidden")) {
@@ -613,7 +613,7 @@ function applyCompactVisibility() {
 function updateCompactButton() {
   const btn = document.getElementById("compactify-btn");
   if (!btn) return;
-  const show = state.testMode && state.ach.normal.includes("A55");
+  const show = state.ach.normal.includes("A55");
   btn.classList.toggle("hidden", !show);
   if (!show) return;
   // 研究实验进行中：顶栏按钮替换为结束/放弃实验（结束条件=Sp 拐点，XX 为可获得−当前 ED 的差）

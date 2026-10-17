@@ -127,8 +127,8 @@ function renderFast() {
   } else {
     trEl.classList.add("hidden");
   }
-  // 超弦显示（卷缩层：首次卷缩后、测试模式下；显隐由 applyCompactVisibility 管理）
-  if (state.testMode && state.compactions >= 1) {
+  // 超弦显示（卷缩层：首次卷缩后；显隐由 applyCompactVisibility 管理）
+  if (state.compactions >= 1) {
     document.getElementById("ss-value").textContent = fmtIntRound(state.ss, getLogSS());
   }
   // 狭窄宇宙：剩余购买次数
@@ -198,8 +198,8 @@ function renderStats() {
   // 卷缩统计（v0.6.0.0 测试，独立分组；不随卷缩重置——统计-通用/挑战之外的新组）
   const compGroup = document.getElementById("stat-comp-area");
   if (compGroup) {
-    compGroup.classList.toggle("hidden", !(state.testMode && state.compactions >= 1));
-    if (state.testMode && state.compactions >= 1) {
+    compGroup.classList.toggle("hidden", !(state.compactions >= 1));
+    if (state.compactions >= 1) {
       const compReal = state.compStartReal > 0 ? (Date.now() - state.compStartReal) / 1000 : 0;
       document.getElementById("stat-comp-time").textContent =
         `${fmtTime(compReal, true)} / ${fmtTimeLog(state.compGameElapsed, state.compGameElapsedLog)}`;

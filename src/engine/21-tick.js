@@ -195,7 +195,7 @@ function tickProgression(realDt) {
     if (!state.autoUp3 && hasMilestone(8)) state.autoUp3 = 1;
     if (!state.autoAnn && hasMilestone(10)) state.autoAnn = 1;
   }
-  if (state.testMode && state.compactions >= 1) {
+  if (state.compactions >= 1) {
     if (!state.autoSau && compMilestone(16)) { state.autoSau = 1; setAutosaveStatus("自动化解锁：可重复奇点升级（卷缩里程碑 16）"); }
     if (!state.autoSbu && compMilestone(18)) { state.autoSbu = 1; setAutosaveStatus("自动化解锁：黑洞升级（卷缩里程碑 18）"); }
     if (!state.autoSvpu && compMilestone(20)) { state.autoSvpu = 1; setAutosaveStatus("自动化解锁：虚粒子升级（卷缩里程碑 20）"); }
@@ -291,7 +291,7 @@ function tick() {
     if (bhUnlocked()) updateBlackholeUI();
     if (state.ach.normal.includes("A52")) updateVoidUI();
   }
-  if (state.testMode && state.compactions >= 1) updateCompactUI();
+  if (state.compactions >= 1) updateCompactUI();
   if (theoryOwned("51")) updateResearchUI();
   if (!document.getElementById("page-stats").classList.contains("hidden")) renderStats();
   if (!document.getElementById("page-achievements").classList.contains("hidden")) updateAchievementsUI();

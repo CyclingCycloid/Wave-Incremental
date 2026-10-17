@@ -200,7 +200,7 @@ function achFoldMultLog() {
 // 节点 31 后再乘上基于奇点的加速乘数；R6 与里程碑3 第四 VF 效果再加度乘数（cmSpeedBonusLog）；
 // 节点 82 再乘上 CM 获取乘数（node82CmMultLog）；A73 后再乘上成就倍率（achFoldMultLog）
 function cmTick(realDt) {
-  if (state.compactions < 1 || !state.testMode) return;
+  if (state.compactions < 1) return;
   if (tpTotal() <= 0) return;
   const rateLog = cmRateLog();
   if (rateLog <= NLOG + 1) return;
@@ -232,12 +232,12 @@ function foldTickScaled(realDt, rateLog, scale, setter, getCur) {
   setter(logAddLogs(getCur(), rateLog + dtLog));
 }
 function sfTick(realDt) {
-  if (!researchBought("R11") || state.compactions < 1 || !state.testMode) return;
+  if (!researchBought("R11") || state.compactions < 1) return;
   if (tpTotal() <= 0) return;
   foldTickScaled(realDt, sfRateLog(), 0.5, setSFLog, getLogSF);
 }
 function neTick(realDt) {
-  if (!researchBought("R11") || state.compactions < 1 || !state.testMode) return;
+  if (!researchBought("R11") || state.compactions < 1) return;
   if (tpTotal() <= 0) return;
   foldTickScaled(realDt, neRateLog(), 0.25, setNELog, getLogNE);
 }
@@ -435,10 +435,11 @@ const THEORY_NODES = [
     desc: "基于奇点加强奇点效果",
     effect: () => "当前指数乘数 ×" + fmt(node72SpBoostExpMult()) },
   // 实验节点 II（v0.6.3.3）：解锁第二个实验「迈克尔逊-莫雷实验」。parents 二选一——
-  // 光学两系列互斥，任一系列走到 III 层即可购买；需求 达到 1e120 虚粒子 + 245 总灵感（不消耗）
+  // 光学两系列互斥，任一系列走到 III 层即可购买；需求 达到 1e120 虚粒子 + 245 总灵感（不消耗）。
+  // testModeOnly：v0.6.4 开放至 R11——测试外可见但不可购（显示「未实装」），测试内完整可用
   { id: "91", name: "迈克尔逊-莫雷实验", parents: ["81", "82"], cost: 0, research: true,
     desc: "增加一个实验",
-    reqIns: 245, reqVPLog: 120 },
+    reqIns: 245, reqVPLog: 120, testModeOnly: true },
 ];
 function theoryOwned(id) { return !!state.theoryNodes[id]; }
 // 波长公式内指数 e 的基础公式（节点71/72 改造前的原版，供「公式差值」显示）
@@ -508,7 +509,7 @@ function accretionExp() {
   return 3 * theory11Exp() * node72SpBoostExpMult() * voidMs4ExpMult() * mmSpEffectExpMult();
 }
 function theoryAvailable(def) {
-  if (theoryOwned(def.id) || def.placeholder) return false;
+  if (theoryOwned(def.id) || def.placeholder || (def.testModeOnly && !state.testMode)) return false;
   if (+def.id[0] > theoryDepthEff() + 1e-9) return false; // 理论深度：更深层的节点暂不可购（显示？？？；1e-9 容差防浮点残差）
   // 需求门槛节点（51/91 及未来同类 reqIns 节点）「曾购买」闩锁：买过即免除全部需求
   //（总灵感/虚粒子/A63/隐藏阈值——重置理论树或测试工具清树都不清闩锁；父节点规则照常）
@@ -800,9 +801,9 @@ const RESEARCH_EXPS = [
       return `波长和波速获取公式的指数变为原来的 ${m < 0.1 ? m.toExponential(3) : m.toFixed(4)} 倍`
         + (n > 7 ? `，频率 ÷1e${(n - 7) * (n - 7) * 100}` : "");
     } },
-  // 迈克尔逊-莫雷实验（节点91 解锁，v0.6.3.3）：黑洞效果指数 ×0.7^n、奇点获取指数 ×0.85^n；
-  // 6 级起追加奇点效果指数 ×5/n（四个奇点效果指数同乘，见 mmSpEffectExpMult）
-  { id: "mm", name: "迈克尔逊-莫雷实验", unlock: () => theoryOwned("91"),
+  // 迈克尔逊-莫雷实验（节点91 解锁，v0.6.3.3；v0.6.4 起测试外不出现——节点91 未实装）：
+  // 黑洞效果指数 ×0.7^n、奇点获取指数 ×0.85^n；6 级起追加奇点效果指数 ×5/n（四个奇点效果指数同乘）
+  { id: "mm", name: "迈克尔逊-莫雷实验", unlock: () => theoryOwned("91") && state.testMode,
     science: "旨在探测地球相对于假想「以太」运动的经典干涉实验。实验未发现预期中的干涉条纹位移，严重动摇了静止以太假说，并为狭义相对论的发展提供了重要的实验依据。",
     debuff: (n) => {
       if (n < 1) return "无削弱";
@@ -1132,8 +1133,7 @@ const COMP_MILESTONES = [
 ];
 // 卷缩条件：VP ≥ 1e36、完成 A54（所有扭曲生效的虚空）、Sp ≥ 1.79e308（Sp 软上限拐点）
 function canCompactify() {
-  return state.testMode
-    && state.ach.normal.includes("A55")
+  return state.ach.normal.includes("A55")
     && !state.voidActive
     && getLogVP() >= 36
     && state.voidBestRules >= 8

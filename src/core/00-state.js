@@ -3,7 +3,7 @@
 // ---------- Save schema ----------
 function defaultState() {
   return {
-    version: "0.6.3.3",
+    version: "0.6.4.1",
     // 物理资源
     U: 10,                 // 波速 m/s (默认国际单位制，double 缓存；极端值看 logU10)
     logU10: 1,             // log10(U) 权威表示（防溢出/下溢；U=0 时为 NLOG 哨兵）

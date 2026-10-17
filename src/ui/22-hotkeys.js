@@ -132,7 +132,8 @@ function handleGameHotkey(e) {
 }
 
 // 测试模式 UI 同步（全局：危险操作区按钮显隐 + 顶栏版本显示）
-// v0.5.1 内容已对全员开放：危险操作区保留「清零VF」「无Sp湮灭」工具，顶栏版本恒为 v0.5.1
+// v0.6.4 起卷缩层已对全员开放（至 R11；节点91 测试外未实装）：
+// 顶栏版本双轨——非测试 v0.6.4 The Compaction Update / 测试 v0.6.4.1 The Research Update
 // 测试模式：开发者预览开关——用于隔离尚未正式发布的开发中内容（如未来的新重置层）。
 // 约定：开发中的内容用 if (state.testMode) 门控逻辑 + UI 显隐，正式发布时删除门控即可；
 // 测试模式本身不给予任何已正式发布的内容
@@ -180,7 +181,7 @@ function applyTestModeUIGlobal() {
   const forceCompactBtn = document.getElementById("force-compact-btn");
   if (forceCompactBtn) forceCompactBtn.classList.toggle("hidden", !state.testMode);
   if (verEl) verEl.textContent = state.testMode
-    ? "v0.6.3.3 The Research Update（测试）"
-    : "v0.5.1 The Void Update";
+    ? "v0.6.4.1 The Research Update（测试）"
+    : "v0.6.4 The Compaction Update";
 }
 

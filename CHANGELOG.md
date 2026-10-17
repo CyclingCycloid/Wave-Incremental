@@ -2,6 +2,15 @@
 
 > 玩家向精简版更新日志见 [CHANGELOG-player.md](CHANGELOG-player.md)（游戏内「查看 Changelog」入口指向该文件）。本文件为开发向详细日志，后续详细改动仍记录于此。
 
+## v0.6.4.1 — The Research Update（测试中）
+
+### 特性：卷缩层正式开放（至 R11）——测试外解禁 + 节点 91 测试外未实装 + 双版本号
+
+- **测试外内容开放至 R11**：移除卷缩层全部 testMode 门控（共 15 处：cmTick/sfTick/neTick 生产、canCompactify、updateCompactUI/applyCompactVisibility/updateCompactButton、tickProgression 里程碑补发与 tick 的 updateCompactUI 调用、renderFast 超弦显示、renderStats 卷缩统计组、帮助四节与统计两区、boot compStartReal 回填）——正式玩家达成 A55 等条件即可卷缩，SS/灵感/维度折叠器三主题/理论树/研究实验与项目 R1–R11/课题全部可玩；测试模式入口、退出与危险操作区工具原样保留
+- **节点 91 测试外封锁**：THEORY_NODES 91 新增 testModeOnly 标记——theoryAvailable 在需求/「曾购买免需求」闩锁之前直接拒绝（测试外不可购），节点卡片显示「未实装（后续版本）」（可见性不变；测试内购买过的玩家退出测试后仍显示拥有态）；MM 实验卡 unlock 追加 `&& state.testMode`（测试外不出现；进行中的实验照常结算削弱直至结束）
+- **双版本号**：顶栏非测试显示 **v0.6.4 The Compaction Update** / 测试显示 **v0.6.4.1 The Research Update（测试）**（随测试开关切换；index.html 静态默认为前者，存档 version 0.6.4.1）；A55 奖励文案去掉「（测试中）」
+- 验证：harness 断言（测试外 91 需求全达标仍不可购/购买无效果/mm 卡不出现、测试内恢复可购且 mm 卡出现、cmTick 无 testMode 正常产 CM、canCompactify 测试外条件满足返回 true）+ tail55 全量回归通过
+
 ## v0.6.3.3 — The Research Update（测试中，数值待调）
 
 ### 新增：R11「广义维度折叠理论」+ 维度折叠器三主题（空间/时间/信息）
