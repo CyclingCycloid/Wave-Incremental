@@ -510,10 +510,15 @@ function accretionExp() {
 function theoryAvailable(def) {
   if (theoryOwned(def.id) || def.placeholder) return false;
   if (+def.id[0] > theoryDepthEff() + 1e-9) return false; // 理论深度：更深层的节点暂不可购（显示？？？；1e-9 容差防浮点残差）
-  if (def.hiddenUntilIns && getLogTotalIns() < Math.log10(def.hiddenUntilIns)) return false; // 节点51：总灵感 <50 隐藏
-  if (def.reqIns && getLogTotalIns() < Math.log10(def.reqIns) - 1e-9) return false; // 节点51/91：总灵感门槛（含浮点容差）
-  if (def.reqVPLog !== undefined && getLogVP() < def.reqVPLog - 1e-9) return false; // 节点91：虚粒子门槛（达到 1e120）
-  if (def.reqA63 && !state.ach.normal.includes("A63")) return false;
+  // 需求门槛节点（51/91 及未来同类 reqIns 节点）「曾购买」闩锁：买过即免除全部需求
+  //（总灵感/虚粒子/A63/隐藏阈值——重置理论树或测试工具清树都不清闩锁；父节点规则照常）
+  const reqLatch = def.reqIns && state.theoryReqBought && state.theoryReqBought[def.id];
+  if (!reqLatch) {
+    if (def.hiddenUntilIns && getLogTotalIns() < Math.log10(def.hiddenUntilIns)) return false; // 节点51：总灵感 <50 隐藏
+    if (def.reqIns && getLogTotalIns() < Math.log10(def.reqIns) - 1e-9) return false; // 节点51/91：总灵感门槛（含浮点容差）
+    if (def.reqVPLog !== undefined && getLogVP() < def.reqVPLog - 1e-9) return false; // 节点91：虚粒子门槛（达到 1e120）
+    if (def.reqA63 && !state.ach.normal.includes("A63")) return false;
+  }
   if (def.priceTBD) return false; // 价格待定：暂无法购买
   if (theorySeriesLocked(def)) return false; // 光学系列互斥：另一系列已购则本系列不可购
   return def.parents.length === 0 || def.parents.some(p => theoryOwned(p));
@@ -595,6 +600,7 @@ function buyTheoryNode(id) {
   }
   state.theoryNodes[id] = 1;
   if (id === "51") state.theory51Bought = 1; // 曾购买过 51：光学系列节点此后一直可见
+  if (def.reqIns) (state.theoryReqBought = state.theoryReqBought || {})[id] = 1; // 曾购买闩锁：再次购买免除需求
   saveGame();
   setAutosaveStatus("理论解锁：" + def.name);
 }
@@ -647,6 +653,7 @@ function importTheoryTreeList(ids) {
     }
     state.theoryNodes[id] = 1;
     if (id === "51") state.theory51Bought = 1;
+    if (def.reqIns) (state.theoryReqBought = state.theoryReqBought || {})[id] = 1; // 曾购买闩锁：再次购买免除需求
 
     saveGame();
     bought++;

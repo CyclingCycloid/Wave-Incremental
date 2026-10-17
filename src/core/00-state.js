@@ -115,6 +115,7 @@ function defaultState() {
     tpV: 0, tpE: 0, tpF: 0, // 已转换的点 V / 边 E / 面 F（各消耗 1 TP，可退回）
     theoryNodes: {},       // 理论树已购节点（id→1，如 "01"）
     theory51Bought: 0,     // 节点51「曾购买过」闩锁（重置理论树不清；光学系列节点以此保持可见）
+    theoryReqBought: {},   // 需求门槛节点（51/91 及未来同类）「曾购买」闩锁：再次购买免除需求（任何重置不清，仅硬重置随新档消失）
     theoryRespec: false,   // 理论树重置开关：下次卷缩重置时清空已购理论并返还灵感
     theoryPresets: [1, 2, 3, 4, 5, 6].map(n => ({ name: "PR" + n, tree: "" })), // 理论树预设（右键管理）
     theoryDepth: 5,        // 理论深度：层号 ≤ TD 的理论树节点可购（v0.6.3）

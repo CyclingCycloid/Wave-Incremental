@@ -386,6 +386,9 @@ function migrateState(rawObj, rawSave) {
   // 节点51「曾购买过」闩锁：defaultState 已给默认 0，老档不会出现 undefined——
   // 直接按「当前拥有 51 即置位」补记（新档购买路径必置位，不存在拥有 51 但 flag=0 的合法状态）
   if (theoryOwned("51")) state.theory51Bought = 1;
+  // 需求门槛节点「曾购买」闩锁（再次购买免需求）：老档按当前拥有补记（同 theory51Bought 口径）
+  if (typeof state.theoryReqBought !== "object" || state.theoryReqBought === null || Array.isArray(state.theoryReqBought)) state.theoryReqBought = {};
+  for (const def of THEORY_NODES) if (def.reqIns && theoryOwned(def.id)) state.theoryReqBought[def.id] = 1;
   if (state.annMaxTLog === undefined || !isFinite(state.annMaxTLog)) state.annMaxTLog = NLOG;
   // 历史最高持有 VF：仅对缺失/损坏的字段做一次性初始化（取当前持有量）。
   // 不得用「当前持有量」回填已清零的记录——「清空历史最高VF」测试按钮就是要把记录归 0 重测

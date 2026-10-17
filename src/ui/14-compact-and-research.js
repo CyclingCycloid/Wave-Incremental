@@ -370,6 +370,8 @@ function updateCompactUI() {
     el.node.classList.toggle("locked", !owned && !theoryAvailable(def));
     let txt;
     let html = null; // 节点51 等带彩色描述的节点走 innerHTML（“理论”橙色、“研究”天蓝色）
+    // 需求门槛节点「曾购买」闩锁：免除需求后不再 ？？？遮蔽，需求行改显「已免除」
+    const reqLatch = def.reqIns && state.theoryReqBought && state.theoryReqBought[def.id];
     if (owned) {
       // 购买后：提示文字（描述）保持不变 + 显示当前效果，不显示公式
       const effectTxt = def.id === "01" ? "当前乘数 ×" + fmtLog(cmTimeMultLog()) : (def.effect ? def.effect() : "已解锁");
@@ -381,11 +383,12 @@ function updateCompactUI() {
     } else if (def.placeholder) {
       // 占位节点：无论上级是否已购一律显示「未实装」（信息对玩家无价值）
       txt = "未实装\n（后续版本）";
-    } else if (def.hiddenUntilIns && getLogTotalIns() < Math.log10(def.hiddenUntilIns)) {
-      // 节点51：总灵感 <50 时一律显示 ？？？
+    } else if (def.hiddenUntilIns && !reqLatch && getLogTotalIns() < Math.log10(def.hiddenUntilIns)) {
+      // 节点51：总灵感 <50 时一律显示 ？？？（曾购买免除）
       txt = "？？？\n？？？";
     } else {
-      const reqTxt = def.reqIns ? "需求：" + (def.reqA63 ? "拥有 A63、" : "") + (def.reqVPLog ? "达到 1e" + def.reqVPLog + " 虚粒子、" : "") + "总灵感 " + def.reqIns + "（不消耗）"
+      const reqTxt = def.reqIns ? (reqLatch ? "曾购买：需求已免除"
+        : "需求：" + (def.reqA63 ? "拥有 A63、" : "") + (def.reqVPLog ? "达到 1e" + def.reqVPLog + " 虚粒子、" : "") + "总灵感 " + def.reqIns + "（不消耗）")
         : (def.priceTBD ? "价格待定（暂无法购买）" : "花费 " + def.cost + " 灵感");
       if (def.descHtml) html = def.descHtml + "<br>" + reqTxt;
       else txt = `${def.desc}\n${reqTxt}`;

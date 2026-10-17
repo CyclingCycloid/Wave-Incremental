@@ -694,6 +694,7 @@ function defaultState() {
     tpV: 0, tpE: 0, tpF: 0, // 已转换的点 V / 边 E / 面 F（各消耗 1 TP，可退回）
     theoryNodes: {},       // 理论树已购节点（id→1，如 "01"）
     theory51Bought: 0,     // 节点51「曾购买过」闩锁（重置理论树不清；光学系列节点以此保持可见）
+    theoryReqBought: {},   // 需求门槛节点（51/91 及未来同类）「曾购买」闩锁：再次购买免除需求（任何重置不清，仅硬重置随新档消失）
     theoryRespec: false,   // 理论树重置开关：下次卷缩重置时清空已购理论并返还灵感
     theoryPresets: [1, 2, 3, 4, 5, 6].map(n => ({ name: "PR" + n, tree: "" })), // 理论树预设（右键管理）
     theoryDepth: 5,        // 理论深度：层号 ≤ TD 的理论树节点可购（v0.6.3）
@@ -2039,6 +2040,9 @@ function migrateState(rawObj, rawSave) {
   // 节点51「曾购买过」闩锁：defaultState 已给默认 0，老档不会出现 undefined——
   // 直接按「当前拥有 51 即置位」补记（新档购买路径必置位，不存在拥有 51 但 flag=0 的合法状态）
   if (theoryOwned("51")) state.theory51Bought = 1;
+  // 需求门槛节点「曾购买」闩锁（再次购买免需求）：老档按当前拥有补记（同 theory51Bought 口径）
+  if (typeof state.theoryReqBought !== "object" || state.theoryReqBought === null || Array.isArray(state.theoryReqBought)) state.theoryReqBought = {};
+  for (const def of THEORY_NODES) if (def.reqIns && theoryOwned(def.id)) state.theoryReqBought[def.id] = 1;
   if (state.annMaxTLog === undefined || !isFinite(state.annMaxTLog)) state.annMaxTLog = NLOG;
   // 历史最高持有 VF：仅对缺失/损坏的字段做一次性初始化（取当前持有量）。
   // 不得用「当前持有量」回填已清零的记录——「清空历史最高VF」测试按钮就是要把记录归 0 重测
@@ -5208,10 +5212,15 @@ function accretionExp() {
 function theoryAvailable(def) {
   if (theoryOwned(def.id) || def.placeholder) return false;
   if (+def.id[0] > theoryDepthEff() + 1e-9) return false; // 理论深度：更深层的节点暂不可购（显示？？？；1e-9 容差防浮点残差）
-  if (def.hiddenUntilIns && getLogTotalIns() < Math.log10(def.hiddenUntilIns)) return false; // 节点51：总灵感 <50 隐藏
-  if (def.reqIns && getLogTotalIns() < Math.log10(def.reqIns) - 1e-9) return false; // 节点51/91：总灵感门槛（含浮点容差）
-  if (def.reqVPLog !== undefined && getLogVP() < def.reqVPLog - 1e-9) return false; // 节点91：虚粒子门槛（达到 1e120）
-  if (def.reqA63 && !state.ach.normal.includes("A63")) return false;
+  // 需求门槛节点（51/91 及未来同类 reqIns 节点）「曾购买」闩锁：买过即免除全部需求
+  //（总灵感/虚粒子/A63/隐藏阈值——重置理论树或测试工具清树都不清闩锁；父节点规则照常）
+  const reqLatch = def.reqIns && state.theoryReqBought && state.theoryReqBought[def.id];
+  if (!reqLatch) {
+    if (def.hiddenUntilIns && getLogTotalIns() < Math.log10(def.hiddenUntilIns)) return false; // 节点51：总灵感 <50 隐藏
+    if (def.reqIns && getLogTotalIns() < Math.log10(def.reqIns) - 1e-9) return false; // 节点51/91：总灵感门槛（含浮点容差）
+    if (def.reqVPLog !== undefined && getLogVP() < def.reqVPLog - 1e-9) return false; // 节点91：虚粒子门槛（达到 1e120）
+    if (def.reqA63 && !state.ach.normal.includes("A63")) return false;
+  }
   if (def.priceTBD) return false; // 价格待定：暂无法购买
   if (theorySeriesLocked(def)) return false; // 光学系列互斥：另一系列已购则本系列不可购
   return def.parents.length === 0 || def.parents.some(p => theoryOwned(p));
@@ -5293,6 +5302,7 @@ function buyTheoryNode(id) {
   }
   state.theoryNodes[id] = 1;
   if (id === "51") state.theory51Bought = 1; // 曾购买过 51：光学系列节点此后一直可见
+  if (def.reqIns) (state.theoryReqBought = state.theoryReqBought || {})[id] = 1; // 曾购买闩锁：再次购买免除需求
   saveGame();
   setAutosaveStatus("理论解锁：" + def.name);
 }
@@ -5345,6 +5355,7 @@ function importTheoryTreeList(ids) {
     }
     state.theoryNodes[id] = 1;
     if (id === "51") state.theory51Bought = 1;
+    if (def.reqIns) (state.theoryReqBought = state.theoryReqBought || {})[id] = 1; // 曾购买闩锁：再次购买免除需求
 
     saveGame();
     bought++;
@@ -6405,6 +6416,8 @@ function updateCompactUI() {
     el.node.classList.toggle("locked", !owned && !theoryAvailable(def));
     let txt;
     let html = null; // 节点51 等带彩色描述的节点走 innerHTML（“理论”橙色、“研究”天蓝色）
+    // 需求门槛节点「曾购买」闩锁：免除需求后不再 ？？？遮蔽，需求行改显「已免除」
+    const reqLatch = def.reqIns && state.theoryReqBought && state.theoryReqBought[def.id];
     if (owned) {
       // 购买后：提示文字（描述）保持不变 + 显示当前效果，不显示公式
       const effectTxt = def.id === "01" ? "当前乘数 ×" + fmtLog(cmTimeMultLog()) : (def.effect ? def.effect() : "已解锁");
@@ -6416,11 +6429,12 @@ function updateCompactUI() {
     } else if (def.placeholder) {
       // 占位节点：无论上级是否已购一律显示「未实装」（信息对玩家无价值）
       txt = "未实装\n（后续版本）";
-    } else if (def.hiddenUntilIns && getLogTotalIns() < Math.log10(def.hiddenUntilIns)) {
-      // 节点51：总灵感 <50 时一律显示 ？？？
+    } else if (def.hiddenUntilIns && !reqLatch && getLogTotalIns() < Math.log10(def.hiddenUntilIns)) {
+      // 节点51：总灵感 <50 时一律显示 ？？？（曾购买免除）
       txt = "？？？\n？？？";
     } else {
-      const reqTxt = def.reqIns ? "需求：" + (def.reqA63 ? "拥有 A63、" : "") + (def.reqVPLog ? "达到 1e" + def.reqVPLog + " 虚粒子、" : "") + "总灵感 " + def.reqIns + "（不消耗）"
+      const reqTxt = def.reqIns ? (reqLatch ? "曾购买：需求已免除"
+        : "需求：" + (def.reqA63 ? "拥有 A63、" : "") + (def.reqVPLog ? "达到 1e" + def.reqVPLog + " 虚粒子、" : "") + "总灵感 " + def.reqIns + "（不消耗）")
         : (def.priceTBD ? "价格待定（暂无法购买）" : "花费 " + def.cost + " 灵感");
       if (def.descHtml) html = def.descHtml + "<br>" + reqTxt;
       else txt = `${def.desc}\n${reqTxt}`;
