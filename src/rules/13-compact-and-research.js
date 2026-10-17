@@ -793,7 +793,7 @@ const RESEARCH_EXPS = [
   { id: "slit", name: "双缝干涉实验", unlock: () => theoryOwned("51"),
     science: "展示光子或电子等微观粒子同时具有波动性与粒子性的经典量子力学实验，当粒子穿过双缝时会在屏上形成明暗相间的干涉条纹。",
     // 削弱倍数 <0.1 时（6 级起）用科学计数 X.XXXe-X，防 toFixed(4) 在深级丢失精度；
-    // 7 级后每级追加「波速获取 ÷1e((N−7)²·100)」（只削波速获取，不动波长公式）
+    // 8 级后追加「频率 ÷1e((N−7)²·100)」（作用于 F 本身，全链路联动）
     debuff: (n) => {
       if (n < 1) return "无削弱";
       const m = slitMult(n);
@@ -801,22 +801,24 @@ const RESEARCH_EXPS = [
         + (n > 7 ? `，频率 ÷1e${(n - 7) * (n - 7) * 100}` : "");
     } },
   // 迈克尔逊-莫雷实验（节点91 解锁，v0.6.3.3）：黑洞效果指数 ×0.6^n、奇点获取指数 ×0.8^n；
-  // 3 级起追加奇点效果指数 ×3/(n+1)（四个奇点效果指数同乘，见 mmSpEffectExpMult）
+  // 6 级起追加奇点效果指数 ×5/n（四个奇点效果指数同乘，见 mmSpEffectExpMult）
   { id: "mm", name: "迈克尔逊-莫雷实验", unlock: () => theoryOwned("91"),
     science: "旨在探测地球相对于假想「以太」运动的经典干涉实验。实验未发现预期中的干涉条纹位移，严重动摇了静止以太假说，并为狭义相对论的发展提供了重要的实验依据。",
     debuff: (n) => {
       if (n < 1) return "无削弱";
       const f = (v) => v < 0.1 ? v.toExponential(3) : v.toFixed(4);
       return `黑洞效果和奇点获取的指数分别变为原来的 ${f(Math.pow(0.6, n))} / ${f(Math.pow(0.8, n))} 倍`
-        + (n >= 3 ? `，奇点效果指数变为原来的 ${(3 / (n + 1)).toFixed(4)} 倍` : "");
+        + (n >= 6 ? `，奇点效果指数变为原来的 ${(5 / n).toFixed(4)} 倍` : "");
     } },
 ];
 // 双缝干涉实验的每级削弱倍数：等级 1–4 为 0.6·0.8^(n-1)（0.6/0.48/0.384/0.3072）；
-// 5 级 ×0.5（0.1536）；6 级起每级 ×0.2（0.0768/0.01536/0.0030722……三处实现共用）
+// 5 级 ×0.5（0.1536）；6 级 ×0.2（0.0768）；7 级 = 旧值×1.5（0.02304）；
+// 8 级起每级 ×0.8（0.018432/0.014746/……三处实现共用）。频率硬除式（slitCutLog）不随此调整
 function slitMult(n) {
   if (n <= 4) return 0.6 * Math.pow(0.8, n - 1);
   if (n === 5) return 0.1536;
-  return 0.0768 * Math.pow(0.2, n - 6);
+  if (n === 6) return 0.0768;
+  return 0.02304 * Math.pow(0.8, Math.max(0, n - 7));
 }
 // 双缝干涉的等级（实验进行中返回等级，否则 0）
 function researchSlitLevel() {
@@ -832,8 +834,8 @@ function researchMmLevel() {
 }
 // MM 削弱①②（两处实现各自内联，倍数不同）：黑洞效果指数 ×0.6^n（bhEffectLog）、
 // 奇点获取指数 ×0.8^n（spRawGainLog 整体幂）
-// MM 削弱③（3 级起）：奇点效果指数 ×3/(n+1)（n=3 时 ×0.75，随等级递减；n<3 时为 1）
-function mmSpEffectExpMult() { const n = researchMmLevel(); return n >= 3 ? 3 / (n + 1) : 1; }
+// MM 削弱③（6 级起）：奇点效果指数 ×5/n（n=6 时 ×0.8333，随等级递减；n<6 时为 1）
+function mmSpEffectExpMult() { const n = researchMmLevel(); return n >= 6 ? 5 / n : 1; }
 // ---------- 研究项目（v0.6.3.2：A71「乌云」解锁；消耗推论购买，每个理论深度 +1/3）----------
 // TODO(数值待定)：R6 的需求/价格为占位值，定稿后直接改这里
 const RESEARCH_DEFS = [
