@@ -1374,9 +1374,9 @@ function spRawGainLog() {
   // 首次保底 max(1, b)：log 域即 max(0, bLog)。
   // 注意不可写成 log10(1+10^bLog)（那是 1+b 的和）：普朗克温度处 b=1，首湮灭会变成 2 Sp
   const base = first > 0 ? Math.max(0, bLog) : bLog;
-  // 迈克尔逊-莫雷实验：奇点获取指数 ×0.6^n（log 域整体幂；乘在保底之后——首湮灭保底不丢）
+  // 迈克尔逊-莫雷实验：奇点获取指数 ×0.8^n（log 域整体幂；乘在保底之后——首湮灭保底不丢）
   const mmL = researchMmLevel();
-  return mmL >= 1 ? base * Math.pow(0.6, mmL) : base;
+  return mmL >= 1 ? base * Math.pow(0.8, mmL) : base;
 }
 function spGainExact() {
   if (state.testBreakRules) return 0;
@@ -5491,14 +5491,14 @@ const RESEARCH_EXPS = [
       return `波长和波速获取公式的指数变为原来的 ${m < 0.1 ? m.toExponential(3) : m.toFixed(4)} 倍`
         + (n > 7 ? `，频率 ÷1e${(n - 7) * (n - 7) * 100}` : "");
     } },
-  // 迈克尔逊-莫雷实验（节点91 解锁，v0.6.3.3）：黑洞效果与奇点获取的指数 ×0.6^n；
+  // 迈克尔逊-莫雷实验（节点91 解锁，v0.6.3.3）：黑洞效果指数 ×0.6^n、奇点获取指数 ×0.8^n；
   // 3 级起追加奇点效果指数 ×3/(n+1)（四个奇点效果指数同乘，见 mmSpEffectExpMult）
   { id: "mm", name: "迈克尔逊-莫雷实验", unlock: () => theoryOwned("91"),
     science: "旨在探测地球相对于假想「以太」运动的经典干涉实验。实验未发现预期中的干涉条纹位移，严重动摇了静止以太假说，并为狭义相对论的发展提供了重要的实验依据。",
     debuff: (n) => {
       if (n < 1) return "无削弱";
-      const m = Math.pow(0.6, n);
-      return `黑洞效果和奇点获取的指数变为原来的 ${m < 0.1 ? m.toExponential(3) : m.toFixed(4)} 倍`
+      const f = (v) => v < 0.1 ? v.toExponential(3) : v.toFixed(4);
+      return `黑洞效果和奇点获取的指数分别变为原来的 ${f(Math.pow(0.6, n))} / ${f(Math.pow(0.8, n))} 倍`
         + (n >= 3 ? `，奇点效果指数变为原来的 ${(3 / (n + 1)).toFixed(4)} 倍` : "");
     } },
 ];
@@ -5521,8 +5521,8 @@ function researchMmLevel() {
   const e = state.researchRun.exps.find(x => x.id === "mm");
   return e ? e.level : 0;
 }
-// MM 削弱①②：黑洞效果与奇点获取的指数倍数 0.6^n（分别作用于 bhEffectLog 的指数与 spRawGainLog 整体幂）
-function mmMult() { return Math.pow(0.6, researchMmLevel()); }
+// MM 削弱①②（两处实现各自内联，倍数不同）：黑洞效果指数 ×0.6^n（bhEffectLog）、
+// 奇点获取指数 ×0.8^n（spRawGainLog 整体幂）
 // MM 削弱③（3 级起）：奇点效果指数 ×3/(n+1)（n=3 时 ×0.75，随等级递减；n<3 时为 1）
 function mmSpEffectExpMult() { const n = researchMmLevel(); return n >= 3 ? 3 / (n + 1) : 1; }
 // ---------- 研究项目（v0.6.3.2：A71「乌云」解锁；消耗推论购买，每个理论深度 +1/3）----------
